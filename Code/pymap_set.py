@@ -10,6 +10,46 @@ import ctypes
 import tkinter as tk
 from tkinter import filedialog
 from tkinter import messagebox  # Import messagebox for pop-ups
+import socket
+import threading
+import math  # Add this import for the pulsating effect
+
+# === SETUP SERVER ===
+def start_map_socket_server():
+    def handle_tracker_message(client_socket):
+        global selected_token  # Ensure we update the global variable
+        #global active_index
+        while True:
+            try:
+                message = client_socket.recv(1024).decode('utf-8')
+                if not message:
+                    break
+                if message == "CLEAR_SELECTION":
+                    selected_token = None  # Clear the selected token
+                # Handle the message (e.g., select the corresponding token)
+                for idx, c in enumerate(combatants):
+                    if c['name'] == message:
+                        selected_token = c
+                        active_index = idx  # Update the active character index
+                        print(f"Selected token: {selected_token['name']}")  # Debug message
+                        break
+            except Exception as e:
+                print(f"Socket error: {e}")
+                break
+        client_socket.close()
+
+    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server.bind(('localhost', 65433))  # Use a free port
+    server.listen(5)
+    print("Map socket server started, waiting for connections...")
+    while True:
+        client_socket, _ = server.accept()
+        client_handler = threading.Thread(target=handle_tracker_message, args=(client_socket,))
+        client_handler.start()
+
+# Start the socket server in a separate thread
+socket_thread = threading.Thread(target=start_map_socket_server, daemon=True)
+socket_thread.start()
 
 # === INIT ===
 dir_path = 'C:/Users/Francesco/Desktop/Dnd_py/'
@@ -99,6 +139,7 @@ unplaced = []
 placed = []
 selected_token = None
 initial_token_pos = None #Initial position of the selected token
+active_index = -1  # No active combatant initially
 
 def update_caption():
     if unplaced:
@@ -151,6 +192,17 @@ def load_icon(file):
     return icons.get(file)
 
 pygame.display.set_caption(f"Place: {unplaced[0]['name']}") if unplaced else pygame.display.set_caption("D&D Map Grid")
+
+def send_message_to_tracker(message):
+    try:
+        client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        client.connect(('localhost', 65432))  # Connect to the tracker server
+        client.send(message.encode('utf-8'))
+        client.close()
+    except ConnectionRefusedError:
+        print("Tracker is not running. Unable to send message. Did you load the tracker?")
+    except Exception as e:
+        print(f"Error sending message to tracker: {e}")
 
 # === MAIN LOOP ===
 running = True
@@ -212,6 +264,8 @@ while running:
                 pan_start = event.pos
 
             elif event.button == 1: # Left mouse button
+                # Check if the click is on a token
+                clicked_on_token = False
                 # Check if the click is on a door tile
                 col = (mx - offset_x) // TILE_SIZE
                 row = (my - offset_y) // TILE_SIZE
@@ -238,7 +292,14 @@ while running:
                             dragging_token = c
                             dragging_offset = (mx - icon_x, my - icon_y)
                             initial_token_pos = c['pos'][:] # Store the initial position of the token
+                             # Send the character's name to the tracker
+                            send_message_to_tracker(c['name'])
+                            clicked_on_token = True
                             break
+                if not clicked_on_token:
+                    selected_token = None  # Clear the selected token
+                    send_message_to_tracker("CLEAR_SELECTION")  # Notify the tracker to clear the selection
+
                 if unplaced:
                     # Place a new token from unplaced list
                     col = (mx - offset_x) // TILE_SIZE
@@ -384,6 +445,20 @@ while running:
         highlight_rect = pygame.Rect(x, y, TILE_SIZE, TILE_SIZE)
         pygame.draw.rect(screen, (255, 255, 0), highlight_rect, 3)  # yellow border
 
+    # === HIGHLIGHT ACTIVE COMBATANT ===
+    if 0 <= active_index < len(combatants):
+        active_combatant = combatants[active_index]
+        if active_combatant.get("pos"):
+            cx, cy = active_combatant['pos']
+            x = cx * TILE_SIZE + offset_x + TILE_SIZE // 2
+            y = cy * TILE_SIZE + offset_y + TILE_SIZE // 2
+            # Pulsating effect (optional)
+            glow_radius = TILE_SIZE // 2 + int(10 * (1 + math.sin(pygame.time.get_ticks() * 0.005)))
+            # Draw the glow effect
+            glow_color = (255, 255, 0, 128)  # Yellow with transparency
+            surface = pygame.Surface((glow_radius * 2, glow_radius * 2), pygame.SRCALPHA)
+            pygame.draw.circle(surface, glow_color, (glow_radius, glow_radius), glow_radius)
+            screen.blit(surface, (x - glow_radius, y - glow_radius))
 
     # === DRAW MINIMAP ===
     pygame.draw.rect(screen, MINIMAP_BG, (*MINIMAP_POS, MINIMAP_WIDTH, MINIMAP_HEIGHT))

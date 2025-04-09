@@ -5,11 +5,51 @@ import os
 import tempfile
 import datetime
 import sys
+import socket
+import threading
+
+def start_tracker_socket_server():
+    def handle_client_connection(client_socket):
+        while True:
+            try:
+                message = client_socket.recv(1024).decode('utf-8')
+                if not message:
+                    break
+                if message == "CLEAR_SELECTION":
+                    window['-TABLE-'].update(select_rows=[])
+                else:
+                    # Handle the message (e.g., select the corresponding row)
+                    for idx, entry in enumerate(initiative_data):
+                        if entry['name'] == message:
+                            window['-TABLE-'].update(select_rows=[idx + 1])  # Select the row
+                            break
+            except Exception as e:
+                print(f"Socket error: {e}")
+                break
+        client_socket.close()
+
+    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server.bind(('localhost', 65432))  # Use a free port
+    server.listen(5)
+    print("Tracker socket server started, waiting for connections...")
+    while True:
+        client_socket, _ = server.accept()
+        client_handler = threading.Thread(target=handle_client_connection, args=(client_socket,))
+        client_handler.start()
+# Start the socket server in a separate thread
+socket_thread = threading.Thread(target=start_tracker_socket_server, daemon=True)
+socket_thread.start()
+
+def send_message_to_map(message):
+    try:
+        client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        client.connect(('localhost', 65433))  # Connect to the map's socket server
+        client.send(message.encode('utf-8'))
+        client.close()
+    except Exception as e:
+        print(f"Error sending message to map: {e}")
 
 dir_path='C:/Users/Francesco/Desktop/Dnd_py/'
-
-import sys
-import json
 
 initiative_data = []
 selected_index = None
@@ -158,6 +198,7 @@ while True:
                     for cond in conditions_list:
                         window[f'-COND_{cond}-'].update(False)
                     window['-TABLE-'].update(select_rows=[])
+                    send_message_to_map("CLEAR_SELECTION")
                 else:
                     entry = initiative_data[selected_index]
                     window['-NAME-'].update(entry['name'])
@@ -165,6 +206,7 @@ while True:
                     window['-HP-'].update(entry.get('hp', ''))
                     for cond in conditions_list:
                         window[f'-COND_{cond}-'].update(cond in entry['conditions'])
+                    send_message_to_map(entry['name'])
             else:
                 selected_index = None
         except IndexError:
@@ -247,10 +289,11 @@ while True:
 
     elif event == '⏮ Prev Char':
         if initiative_data:
-            active_index = (active_index - 1) % len(initiative_data)
-            if active_index < 1:
-                active_index = len(initiative_data) - 1
+            if active_index == 0: # first character of the turn
                 turn = max(1, turn - 1)
+                active_index = len(initiative_data) -1 # Back to the bottom
+            else: 
+                active_index -= 1 # go back one character
             window['-TURN-'].update(str(turn))
             refresh_table()
 
