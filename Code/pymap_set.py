@@ -12,7 +12,15 @@ from tkinter import filedialog
 from tkinter import messagebox  # Import messagebox for pop-ups
 import socket
 import threading
-import math  # Add this import for the pulsating effect
+import subprocess
+import math  # For the pulsating effect
+import argparse
+
+parser = argparse.ArgumentParser(description="Run the D&D Map Grid.")
+parser.add_argument("--no-tracker", action="store_true", help="Run the map without connecting to a tracker.")
+args = parser.parse_args()
+tracker_enabled = not args.no_tracker
+
 
 # === SETUP SERVER ===
 def start_map_socket_server():
@@ -31,7 +39,7 @@ def start_map_socket_server():
                     if c['name'] == message:
                         selected_token = c
                         active_index = idx  # Update the active character index
-                        print(f"Selected token: {selected_token['name']}")  # Debug message
+                        #print(f"Selected token: {selected_token['name']}")  # Debug message
                         break
             except Exception as e:
                 print(f"Socket error: {e}")
@@ -48,8 +56,26 @@ def start_map_socket_server():
         client_handler.start()
 
 # Start the socket server in a separate thread
-socket_thread = threading.Thread(target=start_map_socket_server, daemon=True)
-socket_thread.start()
+if tracker_enabled:
+    socket_thread = threading.Thread(target=start_map_socket_server, daemon=True)
+    socket_thread.start()
+    print("Tracker integration enabled.")
+else:
+    print("Tracker integration disabled.")
+
+def send_message_to_tracker(message):
+    if not tracker_enabled:
+        return  # The tracker is disabled
+    # Send a message to the tracker server
+    try:
+        client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        client.connect(('localhost', 65432))  # Connect to the tracker server
+        client.send(message.encode('utf-8'))
+        client.close()
+    except ConnectionRefusedError:
+        print("Tracker is not running. Unable to send message. Did you load the tracker?")
+    except Exception as e:
+        print(f"Error sending message to tracker: {e}")
 
 # === INIT ===
 dir_path = 'C:/Users/Francesco/Desktop/Dnd_py/'
@@ -193,17 +219,6 @@ def load_icon(file):
 
 pygame.display.set_caption(f"Place: {unplaced[0]['name']}") if unplaced else pygame.display.set_caption("D&D Map Grid")
 
-def send_message_to_tracker(message):
-    try:
-        client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        client.connect(('localhost', 65432))  # Connect to the tracker server
-        client.send(message.encode('utf-8'))
-        client.close()
-    except ConnectionRefusedError:
-        print("Tracker is not running. Unable to send message. Did you load the tracker?")
-    except Exception as e:
-        print(f"Error sending message to tracker: {e}")
-
 # === MAIN LOOP ===
 running = True
 while running:
@@ -233,12 +248,17 @@ while running:
                     unplaced[:] = [c for c in combatants if c['pos'] is None]
                     placed[:] = [c for c in combatants if c['pos'] is not None]
                     # Launch the tracker window
-                    import subprocess
-                    if tracker_file_path:
-                        subprocess.Popen(["python", dir_path + "Code/tracker.py", tracker_file_path])
+                    if tracker_file_path and tracker_enabled:
+                        try:
+                            message="python " + dir_path + "Code/tracker.py --file " + tracker_file_path
+                            print("Trying to run ",message)
+                            subprocess.Popen(message)
+                            print(f"Tracker launched with file: {tracker_file_path}")
+                        except Exception as e:
+                            print(f"Error launching tracker: {e}")
                     # Update the caption with the first unplaced character
                     update_caption()
-                    print(f"Loaded {len(combatants)} combatants.")
+                    print(f"Loaded {len(combatants)} creatures.")
             
         elif event.type == pygame.MOUSEWHEEL:
             prev_size = TILE_SIZE
@@ -450,15 +470,11 @@ while running:
         active_combatant = combatants[active_index]
         if active_combatant.get("pos"):
             cx, cy = active_combatant['pos']
-            x = cx * TILE_SIZE + offset_x + TILE_SIZE // 2
-            y = cy * TILE_SIZE + offset_y + TILE_SIZE // 2
-            # Pulsating effect (optional)
-            glow_radius = TILE_SIZE // 2 + int(10 * (1 + math.sin(pygame.time.get_ticks() * 0.005)))
-            # Draw the glow effect
-            glow_color = (255, 255, 0, 128)  # Yellow with transparency
-            surface = pygame.Surface((glow_radius * 2, glow_radius * 2), pygame.SRCALPHA)
-            pygame.draw.circle(surface, glow_color, (glow_radius, glow_radius), glow_radius)
-            screen.blit(surface, (x - glow_radius, y - glow_radius))
+            x = cx * TILE_SIZE + offset_x
+            y = cy * TILE_SIZE + offset_y
+            # Draw a green square around the active combatant
+            highlight_rect = pygame.Rect(x, y, TILE_SIZE, TILE_SIZE)
+            pygame.draw.rect(screen, (0, 255, 0), highlight_rect, 3)  # Green border
 
     # === DRAW MINIMAP ===
     pygame.draw.rect(screen, MINIMAP_BG, (*MINIMAP_POS, MINIMAP_WIDTH, MINIMAP_HEIGHT))

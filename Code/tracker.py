@@ -7,6 +7,14 @@ import datetime
 import sys
 import socket
 import threading
+import argparse
+
+parser = argparse.ArgumentParser(description="Run the D&D Initiative tracker.")
+parser.add_argument("--no-map", action="store_true", help="Run the tracker without connecting to a map.")
+parser.add_argument("--file", type=str, help="Path to the tracker file to load.")
+args = parser.parse_args()
+map_enabled = not args.no_map
+tracker_file_path = args.file 
 
 def start_tracker_socket_server():
     def handle_client_connection(client_socket):
@@ -36,11 +44,18 @@ def start_tracker_socket_server():
         client_socket, _ = server.accept()
         client_handler = threading.Thread(target=handle_client_connection, args=(client_socket,))
         client_handler.start()
-# Start the socket server in a separate thread
-socket_thread = threading.Thread(target=start_tracker_socket_server, daemon=True)
-socket_thread.start()
+
+if map_enabled:
+    # Start the socket server in a separate thread
+    socket_thread = threading.Thread(target=start_tracker_socket_server, daemon=True)
+    socket_thread.start()
+    print("Map integration enabled.")
+else:
+    print("Map integration disabled.")
 
 def send_message_to_map(message):
+    if not map_enabled:
+        return # Skip sending messages if map integration is disabled
     try:
         client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         client.connect(('localhost', 65433))  # Connect to the map's socket server
@@ -51,7 +66,7 @@ def send_message_to_map(message):
 
 dir_path='C:/Users/Francesco/Desktop/Dnd_py/'
 
-initiative_data = []
+initiative_data=[]
 selected_index = None
 active_index = 0
 turn = 1
@@ -143,7 +158,8 @@ def refresh_table():
 
 # Check if a tracker file is provided as a command-line argument
 if len(sys.argv) > 1:
-    tracker_file_path = sys.argv[1]
+    tracker_file_path = sys.argv[2]
+    print("sys.argv:", sys.argv)
     try:
         with open(tracker_file_path, 'r', encoding='utf-8') as f:
             data = json.load(f)
@@ -217,7 +233,6 @@ while True:
         updated_conditions = [
             cond for cond in conditions_list if values.get(f'-COND_{cond}-', False)
         ]
-    
         initiative_data[selected_index] = {
             'name': values['-NAME-'],
             'initiative': int(values['-INITIATIVE-']),
@@ -255,7 +270,6 @@ while True:
             current_hp = int(initiative_data[selected_index].get('hp') or 0)
             new_hp = max(0, current_hp - dmg)
             initiative_data[selected_index]['hp'] = str(new_hp)
-
             # Add "Down" condition if HP hits 0
             conditions = initiative_data[selected_index]['conditions']
             if new_hp == 0 and 'Down' not in conditions:
@@ -270,7 +284,6 @@ while True:
             current_hp = int(initiative_data[selected_index].get('hp') or 0)
             new_hp = current_hp + heal
             initiative_data[selected_index]['hp'] = str(new_hp)
-
             # Remove "Down" condition if HP goes above 0
             conditions = initiative_data[selected_index]['conditions']
             if new_hp > 0 and 'Down' in conditions:
@@ -281,6 +294,12 @@ while True:
 
     elif event == '⏭ Next Char':
         if initiative_data:
+            try:
+                # Synchronize the turn variable with the input field
+                turn = max(1, int(values['-TURN-']))
+            except ValueError:
+                sg.popup('Invalid turn value. Please enter a valid number.')
+                continue
             active_index = (active_index + 1) % len(initiative_data)
             if active_index == 0:
                 turn += 1
@@ -289,6 +308,12 @@ while True:
 
     elif event == '⏮ Prev Char':
         if initiative_data:
+            try:
+                # Synchronize the turn variable with the input field
+                turn = max(1, int(values['-TURN-']))
+            except ValueError:
+                sg.popup('Invalid turn value. Please enter a valid number.')
+                continue
             if active_index == 0: # first character of the turn
                 turn = max(1, turn - 1)
                 active_index = len(initiative_data) -1 # Back to the bottom
