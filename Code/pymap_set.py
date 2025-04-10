@@ -16,13 +16,15 @@ import subprocess
 import math  # For the pulsating effect
 import argparse
 
+
+# === ARGPARSE SETUP ===
 parser = argparse.ArgumentParser(description="Run the D&D Map Grid.")
 parser.add_argument("--no-tracker", action="store_true", help="Run the map without connecting to a tracker.")
 args = parser.parse_args()
 tracker_enabled = not args.no_tracker
 
 
-# === SETUP SERVER ===
+# === SOCKET SERVER SETUP ===
 def start_map_socket_server():
     def handle_tracker_message(client_socket):
         global selected_token  # Ensure we update the global variable
@@ -55,14 +57,6 @@ def start_map_socket_server():
         client_handler = threading.Thread(target=handle_tracker_message, args=(client_socket,))
         client_handler.start()
 
-# Start the socket server in a separate thread
-if tracker_enabled:
-    socket_thread = threading.Thread(target=start_map_socket_server, daemon=True)
-    socket_thread.start()
-    print("Tracker integration enabled.")
-else:
-    print("Tracker integration disabled.")
-
 def send_message_to_tracker(message):
     if not tracker_enabled:
         return  # The tracker is disabled
@@ -77,10 +71,25 @@ def send_message_to_tracker(message):
     except Exception as e:
         print(f"Error sending message to tracker: {e}")
 
+# Start the socket server in a separate thread
+if tracker_enabled:
+    socket_thread = threading.Thread(target=start_map_socket_server, daemon=True)
+    socket_thread.start()
+    print("Tracker integration enabled.")
+else:
+    print("Tracker integration disabled.")
+
+
 # === INIT ===
 dir_path = 'C:/Users/Francesco/Desktop/Dnd_py/'
 dragging_token = None  # The token being dragged
 dragging_offset = (0, 0)  # Offset between mouse position and token top-left corner
+combatants = []
+unplaced = []
+placed = []
+selected_token = None
+initial_token_pos = None #Initial position of the selected token
+active_index = -1  # No active combatant initially
 
 
 # === GRID SETUP ===
@@ -97,16 +106,19 @@ map_data = load_map_from_txt(dir_path + 'Maps/sample_dungeon_matrix_with_voids.t
 GRID_HEIGHT = len(map_data)
 GRID_WIDTH = len(map_data[0])
 
+
 # === COLORS ===
 GRID_COLOR = (180, 180, 180)
 MINIMAP_BG = (30, 30, 30)
 MINIMAP_VIEW = (255, 0, 0)
+
 
 # === MINIMAP ===
 MINIMAP_SCALE = 0.04
 MINIMAP_WIDTH = int(GRID_WIDTH * TILE_SIZE * MINIMAP_SCALE)
 MINIMAP_HEIGHT = int(GRID_HEIGHT * TILE_SIZE * MINIMAP_SCALE)
 MINIMAP_POS = (10, 10)
+
 
 # === PYGAME INIT ===
 pygame.init()
@@ -116,6 +128,7 @@ fullscreen = False
 screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.RESIZABLE)
 pygame.display.set_caption("D&D Map Grid")
 clock = pygame.time.Clock()
+
 
 # === TEXTURES ===
 WALL_COLOR = (100, 60, 40)
@@ -137,8 +150,8 @@ def scale_textures(tile_size):
         pygame.transform.scale(closed_door_texture_original, (tile_size, tile_size)),
         pygame.transform.scale(open_door_texture_original, (tile_size, tile_size))
     )
-
 floor_texture, wall_texture, secret_door_texture, closed_door_texture, open_door_texture = scale_textures(TILE_SIZE)
+
 
 # === CAMERA ===
 offset_x = SCREEN_WIDTH // 2 - (GRID_WIDTH * TILE_SIZE) // 2
@@ -146,7 +159,24 @@ offset_y = SCREEN_HEIGHT // 2 - (GRID_HEIGHT * TILE_SIZE) // 2
 panning = False
 pan_start = (0, 0)
 
-# === LOAD TRACKER ===
+def update_caption():
+    if unplaced:
+        # Show a pop-up message for the next character to place
+        messagebox.showinfo("Place Character", f"Place: {unplaced[0]['name']}")
+    else:
+        # Show a pop-up message when all characters are placed
+        messagebox.showinfo("Placement Complete", "All characters have been placed!")
+
+def is_tile_occupied(col, row, ignore_token=None):
+    for c in combatants:
+        if c == ignore_token:  # Ignore the token currently being dragged
+            continue
+        if c['pos'] == [col, row]:
+            return True
+    return False
+
+
+# === TRACKER ===
 def load_tracker(path):
     with open(path, 'r', encoding='utf-8') as f:
         data = json.load(f)
@@ -159,21 +189,6 @@ def save_tracker(combatants):
     with open(path, 'w', encoding='utf-8') as f:
         json.dump({"initiative": combatants}, f, indent=2)
     print(f"Tracker saved to {path}")
-
-combatants = []
-unplaced = []
-placed = []
-selected_token = None
-initial_token_pos = None #Initial position of the selected token
-active_index = -1  # No active combatant initially
-
-def update_caption():
-    if unplaced:
-        # Show a pop-up message for the next character to place
-        messagebox.showinfo("Place Character", f"Place: {unplaced[0]['name']}")
-    else:
-        # Show a pop-up message when all characters are placed
-        messagebox.showinfo("Placement Complete", "All characters have been placed!")
 
 def load_tracker_via_dialog():
     from tkinter import filedialog
@@ -194,17 +209,11 @@ def load_tracker_via_dialog():
             print(f"Error loading tracker: {e}")
     return [], None
 
-def is_tile_occupied(col, row, ignore_token=None):
-    for c in combatants:
-        if c == ignore_token:  # Ignore the token currently being dragged
-            continue
-        if c['pos'] == [col, row]:
-            return True
-    return False
 
 # === TK FILE PICKER SETUP ===
 root = tk.Tk()
 root.withdraw()
+
 
 # === ICON LOADING ===
 icons = {}
@@ -216,8 +225,8 @@ def load_icon(file):
         except Exception as e:
             print(f"Could not load icon {file}: {e}")
     return icons.get(file)
-
 pygame.display.set_caption(f"Place: {unplaced[0]['name']}") if unplaced else pygame.display.set_caption("D&D Map Grid")
+
 
 # === MAIN LOOP ===
 running = True

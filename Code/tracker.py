@@ -9,6 +9,8 @@ import socket
 import threading
 import argparse
 
+
+# === ARGPARSE SETUP ===
 parser = argparse.ArgumentParser(description="Run the D&D Initiative tracker.")
 parser.add_argument("--no-map", action="store_true", help="Run the tracker without connecting to a map.")
 parser.add_argument("--file", type=str, help="Path to the tracker file to load.")
@@ -16,6 +18,8 @@ args = parser.parse_args()
 map_enabled = not args.no_map
 tracker_file_path = args.file 
 
+
+# === SOCKET SERVER SETUP ===
 def start_tracker_socket_server():
     def handle_client_connection(client_socket):
         while True:
@@ -35,7 +39,6 @@ def start_tracker_socket_server():
                 print(f"Socket error: {e}")
                 break
         client_socket.close()
-
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.bind(('localhost', 65432))  # Use a free port
     server.listen(5)
@@ -44,14 +47,6 @@ def start_tracker_socket_server():
         client_socket, _ = server.accept()
         client_handler = threading.Thread(target=handle_client_connection, args=(client_socket,))
         client_handler.start()
-
-if map_enabled:
-    # Start the socket server in a separate thread
-    socket_thread = threading.Thread(target=start_tracker_socket_server, daemon=True)
-    socket_thread.start()
-    print("Map integration enabled.")
-else:
-    print("Map integration disabled.")
 
 def send_message_to_map(message):
     if not map_enabled:
@@ -63,15 +58,25 @@ def send_message_to_map(message):
         client.close()
     except Exception as e:
         print(f"Error sending message to map: {e}")
+if map_enabled:
+    # Start the socket server in a separate thread
+    socket_thread = threading.Thread(target=start_tracker_socket_server, daemon=True)
+    socket_thread.start()
+    print("Map integration enabled.")
+else:
+    print("Map integration disabled.")
 
+
+# === INIT ===
 dir_path='C:/Users/Francesco/Desktop/Dnd_py/'
-
 initiative_data=[]
 selected_index = None
 active_index = 0
 turn = 1
+font_size = 12
 
-# All D&D conditions + "Down"
+
+# D&D conditions + "Down"
 conditions_list = [
     'Blinded', 'Charmed', 'Deafened', 'Frightened', 'Grappled',
     'Incapacitated', 'Invisible', 'Paralyzed', 'Petrified', 'Poisoned',
@@ -86,9 +91,6 @@ condition_icons = {
     'See invisible': '👁️', 'Stunned': '😵', 'Unconscious': '🛑', 'Down': '💀'
 }
 
-# Font size for all elements
-font_size = 12
-
 def chunk(lst, size):
     return [lst[i:i + size] for i in range(0, len(lst), size)]
 
@@ -98,6 +100,8 @@ condition_rows = [
     for chunk_row in chunk(conditions_list, 5)
 ]
 
+
+# === GUI SETUP ===
 layout = [
     [sg.Text('Initiative Tracker', font=('Helvetica', font_size))],
     [sg.Table(values=[], headings=['Name', 'Initiative', 'HP', 'Conditions'],
@@ -120,11 +124,11 @@ layout = [
         sg.Button('↓ Move Down', font=('Segoe UI Emoji', font_size))
     ],
     [sg.Button('💾 Export', font=('Segoe UI Emoji', font_size)), sg.Button('📂 Load', font=('Segoe UI Emoji', font_size))]
-
 ]
-
 window = sg.Window('D&D Initiative Tracker', layout, resizable=True, finalize=True)
 
+
+# === TABLE SETUP ===
 def refresh_table():
     table_data = []
     row_colors = []
@@ -156,6 +160,7 @@ def refresh_table():
     else:
         window['-TABLE-'].update(select_rows=[])
 
+
 # Check if a tracker file is provided as a command-line argument
 if len(sys.argv) > 1:
     tracker_file_path = sys.argv[2]
@@ -177,6 +182,8 @@ if len(sys.argv) > 1:
 else:
     print("No tracker file provided.")
 
+
+# === MAIN LOOP ===
 while True:
     event, values = window.read()
     if event == sg.WIN_CLOSED:
