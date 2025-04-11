@@ -175,7 +175,8 @@ if len(sys.argv) > 1:
         turn = data.get('turn', 1)
         refresh_table()
         window['-TURN-'].update(str(turn))
-        # Use `data` to populate the tracker table
+        # Send the active character's name to the map
+        send_message_to_map(initiative_data[active_index]['name']+" active")
     except Exception as e:
         print(f"Error loading tracker file: {e}")
 else:
@@ -372,5 +373,6 @@ while True:
                     sg.popup(f'Data loaded from:\n{selected_file}')
                 except Exception as e:
                     sg.popup(f'Error loading file:\n{e}')
+            send_message_to_map(initiative_data[active_index]['name']+" active")
 
 window.close()

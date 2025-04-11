@@ -155,6 +155,14 @@ def scale_textures(tile_size):
     )
 floor_texture, wall_texture, secret_door_texture, closed_door_texture, open_door_texture = scale_textures(TILE_SIZE)
 
+def rescale_icons():
+    for file, original_icon in icons.items():
+        try:
+            img = pygame.image.load(dir_path + "Icons/" + file).convert_alpha()
+            icons[file] = pygame.transform.smoothscale(img, (TILE_SIZE, TILE_SIZE))
+        except Exception as e:
+            print(f"Could not rescale icon {file}: {e}")
+            
 
 # === CAMERA ===
 offset_x = SCREEN_WIDTH // 2 - (GRID_WIDTH * TILE_SIZE) // 2
@@ -162,6 +170,8 @@ offset_y = SCREEN_HEIGHT // 2 - (GRID_HEIGHT * TILE_SIZE) // 2
 panning = False
 pan_start = (0, 0)
 
+
+# === COMBATANTS PLACING ===
 def update_caption():
     if unplaced:
         # Show a pop-up message for the next character to place
@@ -276,7 +286,6 @@ while running:
                 TILE_SIZE = min(MAX_TILE_SIZE, TILE_SIZE + 5)
             elif event.y < 0:
                 TILE_SIZE = max(MIN_TILE_SIZE, TILE_SIZE - 5)
-
             if TILE_SIZE != prev_size:
                 # Adjust offsets to keep the map centered
                 center_x = SCREEN_WIDTH // 2
@@ -285,14 +294,14 @@ while running:
                 offset_y = center_y - ((center_y - offset_y) * TILE_SIZE) // prev_size
                 # Rescale textures
                 floor_texture, wall_texture, secret_door_texture, closed_door_texture, open_door_texture = scale_textures(TILE_SIZE)
+                # Rescale icons
+                rescale_icons()
 
         elif event.type == pygame.MOUSEBUTTONDOWN:
             mx, my = event.pos
-
             if event.button == 3: # Right mouse button
                 panning = True
                 pan_start = event.pos
-
             elif event.button == 1: # Left mouse button
                 # Check if the click is on a token
                 clicked_on_token = False
@@ -480,11 +489,17 @@ while running:
         active_combatant = combatants[active_index]
         if active_combatant.get("pos"):
             cx, cy = active_combatant['pos']
-            x = cx * TILE_SIZE + offset_x
-            y = cy * TILE_SIZE + offset_y
-            # Draw a green square around the active combatant
-            highlight_rect = pygame.Rect(x, y, TILE_SIZE, TILE_SIZE)
-            pygame.draw.rect(screen, (0, 255, 0), highlight_rect, 3)  # Green border
+            x = cx * TILE_SIZE + offset_x + TILE_SIZE // 2
+            y = cy * TILE_SIZE + offset_y + TILE_SIZE // 2
+            # Pulsating effect
+            glow_radius = TILE_SIZE // 4 + int((TILE_SIZE//8) * (1 + math.sin(pygame.time.get_ticks() * 0.005)))
+            # Create a semi-transparent surface for the glow
+            glow_surface = pygame.Surface((glow_radius * 2, glow_radius * 2), pygame.SRCALPHA)
+            pygame.draw.circle(glow_surface, (135, 206, 250, 100), (glow_radius, glow_radius), glow_radius)
+            # Blit the glow surface onto the screen
+            screen.blit(glow_surface, (x - glow_radius, y - glow_radius))# Draw a green square around the active combatant
+            #highlight_rect = pygame.Rect(x, y, TILE_SIZE, TILE_SIZE)
+            #pygame.draw.rect(screen, (0, 255, 0), highlight_rect, 3)  # Green border
 
     # === DRAW MINIMAP ===
     pygame.draw.rect(screen, MINIMAP_BG, (*MINIMAP_POS, MINIMAP_WIDTH, MINIMAP_HEIGHT))
