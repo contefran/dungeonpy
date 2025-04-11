@@ -27,8 +27,8 @@ tracker_enabled = not args.no_tracker
 # === SOCKET SERVER SETUP ===
 def start_map_socket_server():
     def handle_tracker_message(client_socket):
-        global selected_token  # Ensure we update the global variable
-        #global active_index
+        global selected_token  # Global to ensure we update the global variable
+        global active_index
         while True:
             try:
                 message = client_socket.recv(1024).decode('utf-8')
@@ -38,10 +38,13 @@ def start_map_socket_server():
                     selected_token = None  # Clear the selected token
                 # Handle the message (e.g., select the corresponding token)
                 for idx, c in enumerate(combatants):
-                    if c['name'] == message:
+                    if c['name']+" selected" == message:
                         selected_token = c
+                        print(f"Selected token: {selected_token['name']}")
+                        break
+                    elif c['name']+" active" == message:
                         active_index = idx  # Update the active character index
-                        #print(f"Selected token: {selected_token['name']}")  # Debug message
+                        print(f"Active character updated: {c['name']}")
                         break
             except Exception as e:
                 print(f"Socket error: {e}")
@@ -192,7 +195,6 @@ def save_tracker(combatants):
 
 def load_tracker_via_dialog():
     from tkinter import filedialog
-
     root = tk.Tk()
     root.withdraw()
     file_path = filedialog.askopenfilename(
@@ -260,7 +262,6 @@ while running:
                     if tracker_file_path and tracker_enabled:
                         try:
                             message="python " + dir_path + "Code/tracker.py --file " + tracker_file_path
-                            print("Trying to run ",message)
                             subprocess.Popen(message)
                             print(f"Tracker launched with file: {tracker_file_path}")
                         except Exception as e:

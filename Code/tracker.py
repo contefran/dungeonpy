@@ -164,7 +164,6 @@ def refresh_table():
 # Check if a tracker file is provided as a command-line argument
 if len(sys.argv) > 1:
     tracker_file_path = sys.argv[2]
-    print("sys.argv:", sys.argv)
     try:
         with open(tracker_file_path, 'r', encoding='utf-8') as f:
             data = json.load(f)
@@ -229,7 +228,7 @@ while True:
                     window['-HP-'].update(entry.get('hp', ''))
                     for cond in conditions_list:
                         window[f'-COND_{cond}-'].update(cond in entry['conditions'])
-                    send_message_to_map(entry['name'])
+                    send_message_to_map(entry['name']+" selected")
             else:
                 selected_index = None
         except IndexError:
@@ -312,6 +311,8 @@ while True:
                 turn += 1
             window['-TURN-'].update(str(turn))
             refresh_table()
+            # Send the active character's name to the map
+            send_message_to_map(initiative_data[active_index]['name']+" active")
 
     elif event == '⏮ Prev Char':
         if initiative_data:
@@ -328,6 +329,9 @@ while True:
                 active_index -= 1 # go back one character
             window['-TURN-'].update(str(turn))
             refresh_table()
+            # Send the active character's name to the map
+            send_message_to_map(initiative_data[active_index]['name']+" active")
+
 
     elif event == '💾 Export':
         import json
