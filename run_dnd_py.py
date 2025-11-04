@@ -9,7 +9,7 @@ def main():
     )
     parser.add_argument(
         "--dir", type=str,
-        default="C:/Users/Francesco/Desktop/Dnd_py/",
+        default="./",
         help="Base directory for maps, data, and textures."
     )
     parser.add_argument(

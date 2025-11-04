@@ -44,6 +44,13 @@ class MapManager:
         info = pygame.display.Info()
         screen_width = int(info.current_w * 0.5)
         screen_height = int(info.current_h * 0.5)
+
+        map_pixel_width = len(self.map_data[0]) * self.tile_size
+        map_pixel_height = len(self.map_data) * self.tile_size
+        # Center the map
+        self.offset_x = (screen_width // 2) - (map_pixel_width // 2)
+        self.offset_y = (screen_height // 2) - (map_pixel_height // 2)
+
         screen = pygame.display.set_mode((screen_width, screen_height), pygame.RESIZABLE)
         pygame.display.set_caption("D&D Map Grid")
 
@@ -341,6 +348,10 @@ class MapManager:
                             print(f"[Map] Selected token: {c.name}")
                             print(f"[Map] Token rectangle: ({x}, {y}, {self.tile_size}, {self.tile_size})")
                         break
+                    else:
+                        if self.verbose:
+                            print(f"[Map] No token selected")
+                        self.send_to_tracker("CLEAR_SELECTION")
 
             if unplaced_list:
                 combatant = unplaced_list.pop(0)

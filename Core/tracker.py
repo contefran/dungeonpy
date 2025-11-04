@@ -35,12 +35,17 @@ class Tracker:
 
         if message == "CLEAR_SELECTION":
             self.window['-TABLE-'].update(select_rows=[])
+            self.window['-NAME-'].update('')
+            self.window['-INITIATIVE-'].update('')
+            self.window['-HP-'].update('')
+            for cond in self.conditions_list:
+                self.window[f'-COND_{cond}-'].update(False)
         elif message.endswith(" selected"):
             name = message.replace(" selected", "")
             for i, c in enumerate(self.combatants):
-                print(f"[Tracker] Going through combatants: {i}, {c.name}")
+                #print(f"[Tracker] Going through combatants: {i}, {c.name}")
                 if c.name == name:
-                    print(f"Selecting row {i+1}") # because of the blank row at the top
+                    #print(f"Selecting row {i+1}") # because of the blank row at the top
                     self.window['-TABLE-'].update(select_rows=[i+1])
                     break
         elif message.endswith(" active"):
