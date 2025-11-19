@@ -1,2 +1,4 @@
 Presentation/
-data/combat_tracker_*.json
+Data/combat_tracker_*.json
+Core/__pycache__/
+.vscode/
