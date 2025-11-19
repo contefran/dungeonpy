@@ -26,6 +26,7 @@ class Tracker:
         
         self.window = None
 
+
     def _handle_incoming_message(self, message):
         if not self.window:
             return
@@ -54,13 +55,15 @@ class Tracker:
                 if c.name == name:
                     self.active_index = i
                     self.window['-TURN-'].update(str(self.turn))
-                    self.refresh_table(self.window)
+                    self.refresh_table()
                     break
+
 
     def send_to_map(self, message):
         if self.verbose:
             print(f"[Tracker] Sending to map: {message}")
         self.bridge.send(65433, message)
+
 
     def load_from_file(self, filepath):
         with open(filepath, 'r', encoding='utf-8') as f:
@@ -70,6 +73,7 @@ class Tracker:
         self.turn = data.get("turn", 1)
         if self.verbose:
             print(f"[Tracker] Loaded {len(self.combatants)} combatants from {filepath}")
+
 
     def save_to_file(self, filepath):
         data = {
@@ -82,14 +86,17 @@ class Tracker:
         if self.verbose:
             print(f"[Tracker] Saved tracker state to {filepath}")
 
+
     def add(self, combatant: Combatant):
         self.combatants.append(combatant)
         self.sort_by_initiative()
         if self.verbose:
             print(f"[Tracker] Added combatant: {combatant.name} (init {combatant.initiative})")
 
+
     def sort_by_initiative(self):
         self.combatants.sort(key=lambda c: c.initiative, reverse=True)
+
 
     def next(self):
         if not self.combatants:
@@ -100,6 +107,7 @@ class Tracker:
         if self.verbose:
             print(f"[Tracker] Turn advanced: {self.turn}, Active: {self.get_active().name}")
         return self.get_active()
+
 
     def previous(self):
         if not self.combatants:
@@ -113,10 +121,12 @@ class Tracker:
             print(f"[Tracker] Turn advanced: {self.turn}, Active: {self.get_active().name}")
         return self.get_active()
 
+
     def get_active(self):
         if 0 <= self.active_index < len(self.combatants):
             return self.combatants[self.active_index]
         return None
+
 
     def select_by_name(self, name):
         for i, c in enumerate(self.combatants):
@@ -124,6 +134,7 @@ class Tracker:
                 self.active_index = i
                 return c
         return None
+
 
     def build_gui_layout(self):
 
@@ -135,7 +146,6 @@ class Tracker:
             for cond in row]
             for row in chunk(self.conditions_list, 5)
         ]
-
         layout = [
             [sg.Text('Initiative Tracker', font=('Helvetica', 12))],
             [sg.Table(values=[], headings=['Name', 'Initiative', 'HP', 'Conditions'],
@@ -160,7 +170,8 @@ class Tracker:
         ]
         return layout
 
-    def refresh_table(self):
+
+    def refresh_table(self, selected_index=None):
         #data = []
         data = [['', '', '', '']]  # blank row for deselection
         for i, c in enumerate(self.combatants):
@@ -168,6 +179,11 @@ class Tracker:
             name = f"➡️ {c.name}" if i == self.active_index else c.name
             data.append([name, c.initiative, c.hp, icons])
         self.window['-TABLE-'].update(values=data)
+
+        # Keep selection visible if we know it
+        if selected_index is not None and 0 <= selected_index < len(self.combatants):
+            self.window['-TABLE-'].update(select_rows=[selected_index + 1])  # +1 because of blank row
+
 
     def handle_event(self, event, values, selected_index_ref, dir_path):
         selected_index = selected_index_ref[0]
@@ -180,13 +196,13 @@ class Tracker:
         if event == '-TABLE-':
             try:
                 if values['-TABLE-']:
-                    selected_index = values['-TABLE-'][0]
+                    row_index = values['-TABLE-'][0] # table row index (0 = blank)
                     if self.verbose:
-                        print(f"[Tracker] Handling row selection: {selected_index}")
-                    if selected_index == 0:
+                        print(f"[Tracker] Handling row selection: {row_index}")
+                    if row_index == 0: # blank row selected
                         selected_index = None
-                        self.send_to_map("CLEAR_SELECTION")
                         selected_index_ref[0] = None
+                        self.send_to_map("CLEAR_SELECTION")
                         self.window['-TABLE-'].update(select_rows=[])
                         self.window['-NAME-'].update('')
                         self.window['-INITIATIVE-'].update('')
@@ -195,8 +211,11 @@ class Tracker:
                             self.window[f'-COND_{cond}-'].update(False)
                         self.window.refresh()
                     else:
-                        #print(self.combatants)
-                        c = self.combatants[selected_index-1]
+                        selected_index = row_index - 1
+                        selected_index_ref[0] = selected_index
+                        c = self.combatants[selected_index] # The combatant is clearly linked to the table row now
+                        if self.verbose:
+                            print(f"[Tracker] Seleted index = {selected_index}, Combatant selected: {c}")
                         self.window['-NAME-'].update(c.name)
                         self.window['-INITIATIVE-'].update(c.initiative)
                         self.window['-HP-'].update(c.hp)
@@ -208,6 +227,7 @@ class Tracker:
             except Exception as e:
                 print(f"Selection error: {e}")
                 selected_index = None
+                selected_index_ref[0] = None
                 self.send_to_map("CLEAR_SELECTION")
 
         elif event == 'Add New':
@@ -218,8 +238,13 @@ class Tracker:
                 conditions = [cond for cond in self.conditions_list if values.get(f'-COND_{cond}-')]
                 new_c = Combatant(name, init, hp, conditions)
                 self.add(new_c)
-                selected_index = 0
-                self.refresh_table()
+                # After sorting, find index of new combatant
+                for i, c in enumerate(self.combatants):
+                    if c is new_c:
+                        selected_index = i
+                        break
+                selected_index_ref[0] = selected_index # Adjust accordingly
+                self.refresh_table(selected_index)
             except ValueError:
                 sg.popup('Invalid initiative value.')
 
@@ -229,28 +254,36 @@ class Tracker:
             c.initiative = int(values['-INITIATIVE-'])
             c.hp = values['-HP-']
             c.conditions = [cond for cond in self.conditions_list if values.get(f'-COND_{cond}-')]
+            self.sort_by_initiative() # just in case initiative changed
+            # Check the new index of the updated combatant
+            for i, x in enumerate(self.combatants):
+                if x is c:
+                    selected_index = i
+                    break
             selected_index_ref[0] = selected_index
-            self.refresh_table()
+            self.refresh_table(selected_index)
 
         elif event == 'Delete Selected' and selected_index is not None:
             if 0 <= selected_index < len(self.combatants):
                 self.combatants.pop(selected_index)
-            selected_index = None
-            self.send_to_map("CLEAR_SELECTION")
+            selected_index = None # reset selection
             selected_index_ref[0] = None
+            self.send_to_map("CLEAR_SELECTION")
             self.refresh_table()
 
         elif event == '↑ Move Up' and selected_index is not None and selected_index > 0:
             self.combatants[selected_index], self.combatants[selected_index - 1] = \
                 self.combatants[selected_index - 1], self.combatants[selected_index]
             selected_index -= 1
-            self.refresh_table()
+            selected_index_ref[0] = selected_index
+            self.refresh_table(selected_index)
 
         elif event == '↓ Move Down' and selected_index is not None and selected_index < len(self.combatants) - 1:
             self.combatants[selected_index], self.combatants[selected_index + 1] = \
                 self.combatants[selected_index + 1], self.combatants[selected_index]
             selected_index += 1
-            self.refresh_table()
+            selected_index_ref[0] = selected_index
+            self.refresh_table(selected_index)
 
         elif event == 'Wound' and selected_index is not None:
             try:
@@ -260,7 +293,7 @@ class Tracker:
                 c.hp = str(max(0, current_hp - dmg))
                 if c.hp == "0" and "Down" not in c.conditions:
                     c.conditions.append("Down")
-                self.refresh_table()
+                self.refresh_table(selected_index)
             except ValueError:
                 sg.popup("Invalid damage value")
 
@@ -272,7 +305,7 @@ class Tracker:
                 c.hp = str(current_hp + heal)
                 if int(c.hp) > 0 and "Down" in c.conditions:
                     c.conditions.remove("Down")
-                self.refresh_table()
+                self.refresh_table(selected_index)
             except ValueError:
                 sg.popup("Invalid heal value")
 
@@ -304,8 +337,10 @@ class Tracker:
                 self.load_from_file(file_path)
                 self.window['-TURN-'].update(str(self.turn))
                 selected_index = None
+                selected_index_ref[0] = None
                 self.send_to_map("CLEAR_SELECTION")
                 self.refresh_table()
+
 
     def run_gui(self, dir_path):
         layout = self.build_gui_layout()
