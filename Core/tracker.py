@@ -1,4 +1,5 @@
 from datetime import datetime
+import os
 import json
 import PySimpleGUI as sg
 from Core.combatant import Combatant
@@ -31,13 +32,22 @@ class Tracker:
 
 
     def _handle_incoming_message(self, message):
-        if not self.window:
-            return
-
+        # Never touch the GUI here; this runs on the socket thread.
+        # Just post an event back to the GUI thread.
         if self.verbose:
             print(f"[{datetime.now().strftime('%-I:%M:%S')}.{datetime.now().microsecond // 1000} {datetime.now().strftime('%p')}]", end='')
             print(f"[Tracker] Received message: {message}")
+        if not self.window:
+            return
+        else:
+            # deliver the payload to the event loop
+            self.window.write_event_value('SOCKET_MSG', message)
 
+
+    def _process_socket_message_on_gui_thread(self, message):
+        if self.verbose:
+            print(f"[{datetime.now().strftime('%-I:%M:%S')}.{datetime.now().microsecond // 1000} {datetime.now().strftime('%p')}]", end='')
+            print(f"[Tracker] (GUI thread) Processing socket message: {message}")
         if message == "CLEAR_SELECTION":
             self.window['-TABLE-'].update(select_rows=[])
             self.window['-NAME-'].update('')
@@ -52,10 +62,15 @@ class Tracker:
                     print(f"[{datetime.now().strftime('%-I:%M:%S')}.{datetime.now().microsecond // 1000} {datetime.now().strftime('%p')}]", end='')
                     print(f"[Tracker] Going through combatants: {i}, {c.name}")
                 if c.name == name:
-                    if self.super_verbose:
+                    if self.verbose:
                         print(f"[{datetime.now().strftime('%-I:%M:%S')}.{datetime.now().microsecond // 1000} {datetime.now().strftime('%p')}]", end='')
-                        print(f"Selecting row {i+1}") # because of the blank row at the top
-                    self.window['-TABLE-'].update(select_rows=[i+1])
+                        print(f"Selecting row {i+1}, character {name}") # +1 because of the blank row at the top
+                    self.window['-TABLE-'].update(select_rows=[i + 1])
+                    self.window['-NAME-'].update(c.name)
+                    self.window['-INITIATIVE-'].update(c.initiative)
+                    self.window['-HP-'].update(c.hp)
+                    for cond in self.conditions_list:
+                        self.window[f'-COND_{cond}-'].update(cond in c.conditions)
                     break
         elif message.endswith(" active"):
             name = message.replace(" active", "")
@@ -343,7 +358,6 @@ class Tracker:
             self.refresh_table()
 
         elif event == '💾 Export':
-            import datetime, os
             path = os.path.join(dir_path, f'Data/combat_tracker_{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}.json')
             self.save_to_file(path)
             sg.popup(f"Saved to {path}")
@@ -364,13 +378,16 @@ class Tracker:
         self.window = sg.Window('D&D Initiative Tracker', layout, resizable=True, finalize=True)
     
         selected_index = [None]
-
         self.refresh_table()
 
         while True:
             event, values = self.window.read()
             if event == sg.WIN_CLOSED:
                 break
+            if event == 'SOCKET_MSG': #s
+                self._process_socket_message_on_gui_thread(values[event])
+                continue
+
             self.handle_event(event, values, selected_index, dir_path)
 
         self.window.close()
