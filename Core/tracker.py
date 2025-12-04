@@ -17,6 +17,7 @@ class Tracker:
         self.turn = 1
         self.verbose = verbose
         self.super_verbose = super_verbose
+        self._squelch_table_event = False # to avoid feedback loops when updating table from the map
 
         self.condition_icons = {
             'Blinded': '🙈', 'Charmed': '💘', 'Deafened': '🙉', 'Frightened': '😱',
@@ -49,6 +50,10 @@ class Tracker:
             print(f"[{datetime.now().strftime('%-I:%M:%S')}.{datetime.now().microsecond // 1000} {datetime.now().strftime('%p')}]", end='')
             print(f"[Tracker] (GUI thread) Processing socket message: {message}")
         if message == "CLEAR_SELECTION":
+            if self.verbose:
+                print(f"[{datetime.now().strftime('%-I:%M:%S')}.{datetime.now().microsecond // 1000} {datetime.now().strftime('%p')}]", end='')
+                print(f"[Tracker] (GUI thread) Clearing selection")
+            self._squelch_table_event = True
             self.window['-TABLE-'].update(select_rows=[])
             self.window['-NAME-'].update('')
             self.window['-INITIATIVE-'].update('')
@@ -60,11 +65,12 @@ class Tracker:
             for i, c in enumerate(self.combatants):
                 if self.super_verbose:
                     print(f"[{datetime.now().strftime('%-I:%M:%S')}.{datetime.now().microsecond // 1000} {datetime.now().strftime('%p')}]", end='')
-                    print(f"[Tracker] Going through combatants: {i}, {c.name}")
+                    print(f"[Tracker] (GUI thread) Going through combatants: {i}, {c.name}")
                 if c.name == name:
                     if self.verbose:
                         print(f"[{datetime.now().strftime('%-I:%M:%S')}.{datetime.now().microsecond // 1000} {datetime.now().strftime('%p')}]", end='')
-                        print(f"Selecting row {i+1}, character {name}") # +1 because of the blank row at the top
+                        print(f"[Tracker] (GUI thread) Selecting row {i+1}, character {name}") # +1 because of the blank row at the top
+                    self._squelch_table_event = True
                     self.window['-TABLE-'].update(select_rows=[i + 1])
                     self.window['-NAME-'].update(c.name)
                     self.window['-INITIATIVE-'].update(c.initiative)
@@ -224,6 +230,9 @@ class Tracker:
             return
 
         if event == '-TABLE-':
+            if self._squelch_table_event: # do not bounce back to the map
+                self._squelch_table_event = False
+                return
             try:
                 if values['-TABLE-']:
                     row_index = values['-TABLE-'][0] # table row index (0 = blank)
