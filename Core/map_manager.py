@@ -336,36 +336,33 @@ class MapManager:
                         print(f"[Map] Toggled door at ({col}, {row})")
 
             selected_token_ref[0] = None
+            hit=False
             for c in self.combatants:
                 if not c.pos:
                     if self.verbose:
                         print(f"[{datetime.now().strftime('%-I:%M:%S')}.{datetime.now().microsecond // 1000} {datetime.now().strftime('%p')}]", end='')
                         print(f"[Map] Skipping token {c.name} — no position set")
                     continue
-                else:
-                    cx, cy = c.pos
-                    x = cx * self.tile_size + self.offset_x
-                    y = cy * self.tile_size + self.offset_y
-                    rect = pygame.Rect(x, y, self.tile_size, self.tile_size)
-                    if self.super_verbose:
-                        print(f"[{datetime.now().strftime('%-I:%M:%S')}.{datetime.now().microsecond // 1000} {datetime.now().strftime('%p')}]", end='')
-                        print(f"[Map] Checking token {c.name} at tile {c.pos} -> pixel ({x},{y})")
-                        print(f"rect: {rect}, tile size: {self.tile_size}, offset: ({self.offset_x}, {self.offset_y})")
-                    if rect.collidepoint(mx, my):
-                        selected_token_ref[0] = c
-                        self.send_to_tracker(f"{c.name} selected")
-                        if self.super_verbose:
-                            print(f"[{datetime.now().strftime('%-I:%M:%S')}.{datetime.now().microsecond // 1000} {datetime.now().strftime('%p')}]", end='')
-                            print(f"[Map] Selected token: {c.name}")
-                            print(f"[Map] Token rectangle: ({x}, {y}, {self.tile_size}, {self.tile_size})")
-                        break
-                    else:
-                        if self.verbose:
-                            print(f"[{datetime.now().strftime('%-I:%M:%S')}.{datetime.now().microsecond // 1000} {datetime.now().strftime('%p')}]", end='')
-                            print(f"[Map] No token selected")
-                        self.send_to_tracker("CLEAR_SELECTION")
 
-            if unplaced_list:
+                cx, cy = c.pos
+                x = cx * self.tile_size + self.offset_x
+                y = cy * self.tile_size + self.offset_y
+                rect = pygame.Rect(x, y, self.tile_size, self.tile_size)
+                if self.super_verbose:
+                    print(f"[{datetime.now().strftime('%-I:%M:%S')}.{datetime.now().microsecond // 1000} {datetime.now().strftime('%p')}]", end='')
+                    print(f"[Map] Checking token {c.name} at tile {c.pos} -> pixel ({x},{y})")
+                    print(f"rect: {rect}, tile size: {self.tile_size}, offset: ({self.offset_x}, {self.offset_y})")
+                if rect.collidepoint(mx, my):
+                    selected_token_ref[0] = c
+                    self.send_to_tracker(f"{c.name} selected")
+                    if self.verbose:
+                        print(f"[{datetime.now().strftime('%-I:%M:%S')}.{datetime.now().microsecond // 1000} {datetime.now().strftime('%p')}]", end='')
+                        print(f"[Map] Selected token: {c.name}")
+                        print(f"[Map] Token rectangle: ({x}, {y}, {self.tile_size}, {self.tile_size})")
+                    hit = True # token found
+                    break # stop searching
+
+            if not hit and unplaced_list:
                 combatant = unplaced_list.pop(0)
                 combatant.pos = [col, row]
                 if combatant.icon:
@@ -376,6 +373,13 @@ class MapManager:
                 if self.verbose:
                     print(f"[{datetime.now().strftime('%-I:%M:%S')}.{datetime.now().microsecond // 1000} {datetime.now().strftime('%p')}]", end='')
                     print(f"[Map] Placed new token: {combatant.name} at ({col},{row})")
+
+            if not hit:
+                if self.verbose:
+                    print(f"[{datetime.now().strftime('%-I:%M:%S')}.{datetime.now().microsecond // 1000} {datetime.now().strftime('%p')}]", end='')
+                    print(f"[Map] No token selected")
+                self.send_to_tracker("CLEAR_SELECTION")
+
 
     def get_token_at_pixel(self, mx, my):
         for c in self.combatants:
