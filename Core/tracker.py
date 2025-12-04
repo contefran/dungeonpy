@@ -215,7 +215,7 @@ class Tracker:
                         selected_index_ref[0] = selected_index
                         c = self.combatants[selected_index] # The combatant is clearly linked to the table row now
                         if self.verbose:
-                            print(f"[Tracker] Seleted index = {selected_index}, Combatant selected: {c}")
+                            print(f"[Tracker] Selected index = {selected_index}, Combatant selected: {c}")
                         self.window['-NAME-'].update(c.name)
                         self.window['-INITIATIVE-'].update(c.initiative)
                         self.window['-HP-'].update(c.hp)

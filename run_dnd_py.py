@@ -18,7 +18,7 @@ def main():
     )
     parser.add_argument(
         "--super_verbose", action="store_true",
-        help="Enable verbose logging of user actions, messages, and system events."
+        help="Enable more verbose logging of user actions, messages, and system events."
     )
     args = parser.parse_args()
 
