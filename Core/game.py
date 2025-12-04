@@ -1,7 +1,7 @@
 from Core.map_manager import MapManager
 from Core.tracker import Tracker
 import threading
-
+from datetime import datetime
 
 class Game:
     
@@ -25,14 +25,17 @@ class Game:
             self.screen, self.clock = self.map_manager.init_pygame()
             self.map_manager.combatants = self.tracker.combatants
         if self.verbose:
+            print(f"[{datetime.now().strftime('%-I:%M:%S')}.{datetime.now().microsecond // 1000} {datetime.now().strftime('%p')}]", end='')
             print(f"[Game] Initialized in mode: {self.mode}")
 
     def run(self):
         if self.verbose:
+            print(f"[{datetime.now().strftime('%-I:%M:%S')}.{datetime.now().microsecond // 1000} {datetime.now().strftime('%p')}]", end='')
             print(f"[Game] Launching in {self.mode} mode...")
 
         if self.mode == 'map':
             if self.verbose:
+                print(f"[{datetime.now().strftime('%-I:%M:%S')}.{datetime.now().microsecond // 1000} {datetime.now().strftime('%p')}]", end='')
                 print("[Game] Starting map-only loop.")
 
             selected_token = [None]
@@ -45,11 +48,13 @@ class Game:
             )
         elif self.mode == 'tracker':
             if self.verbose:
+                print(f"[{datetime.now().strftime('%-I:%M:%S')}.{datetime.now().microsecond // 1000} {datetime.now().strftime('%p')}]", end='')
                 print("[Game] Starting tracker gui only.")
             self.tracker.run_gui(self.dir_path)
 
         elif self.mode == 'both':
             if self.verbose:
+                print(f"[{datetime.now().strftime('%-I:%M:%S')}.{datetime.now().microsecond // 1000} {datetime.now().strftime('%p')}]", end='')
                 print("[Game] Starting map and tracker.")
 
             file_path = self.dir_path + 'Data/combat_tracker_example.json'
@@ -91,11 +96,13 @@ class Game:
         print("[Game] Shutting down socket bridges...")
         if hasattr(self.tracker, "bridge") and self.tracker.bridge:
             if self.verbose:
+                print(f"[{datetime.now().strftime('%-I:%M:%S')}.{datetime.now().microsecond // 1000} {datetime.now().strftime('%p')}]", end='')
                 print("[Game] Shutting down tracker bridge...")
             self.tracker.bridge.stop()
 
         if self.map_manager and hasattr(self.map_manager, "bridge") and self.map_manager.bridge:
             if self.verbose:
+                print(f"[{datetime.now().strftime('%-I:%M:%S')}.{datetime.now().microsecond // 1000} {datetime.now().strftime('%p')}]", end='')
                 print("[Game] Shutting down map manager bridge...")
             self.map_manager.bridge.stop()
         

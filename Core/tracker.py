@@ -1,9 +1,12 @@
+from datetime import datetime
 import json
 import PySimpleGUI as sg
 from Core.combatant import Combatant
 from Core.socket_bridge import SocketBridge
 
 
+print(f"[{datetime.now().strftime('%-I:%M:%S')}.{datetime.now().microsecond // 1000} {datetime.now().strftime('%p')}]", end='')
+print("[Tracker] Tracker module loaded.")
 
 class Tracker:
     
@@ -32,6 +35,7 @@ class Tracker:
             return
 
         if self.verbose:
+            print(f"[{datetime.now().strftime('%-I:%M:%S')}.{datetime.now().microsecond // 1000} {datetime.now().strftime('%p')}]", end='')
             print(f"[Tracker] Received message: {message}")
 
         if message == "CLEAR_SELECTION":
@@ -44,9 +48,13 @@ class Tracker:
         elif message.endswith(" selected"):
             name = message.replace(" selected", "")
             for i, c in enumerate(self.combatants):
-                #print(f"[Tracker] Going through combatants: {i}, {c.name}")
+                if self.super_verbose:
+                    print(f"[{datetime.now().strftime('%-I:%M:%S')}.{datetime.now().microsecond // 1000} {datetime.now().strftime('%p')}]", end='')
+                    print(f"[Tracker] Going through combatants: {i}, {c.name}")
                 if c.name == name:
-                    #print(f"Selecting row {i+1}") # because of the blank row at the top
+                    if self.super_verbose:
+                        print(f"[{datetime.now().strftime('%-I:%M:%S')}.{datetime.now().microsecond // 1000} {datetime.now().strftime('%p')}]", end='')
+                        print(f"Selecting row {i+1}") # because of the blank row at the top
                     self.window['-TABLE-'].update(select_rows=[i+1])
                     break
         elif message.endswith(" active"):
@@ -61,6 +69,7 @@ class Tracker:
 
     def send_to_map(self, message):
         if self.verbose:
+            print(f"[{datetime.now().strftime('%-I:%M:%S')}.{datetime.now().microsecond // 1000} {datetime.now().strftime('%p')}]", end='')
             print(f"[Tracker] Sending to map: {message}")
         self.bridge.send(65433, message)
 
@@ -72,6 +81,7 @@ class Tracker:
         self.active_index = data.get("active_index", 0)
         self.turn = data.get("turn", 1)
         if self.verbose:
+            print(f"[{datetime.now().strftime('%-I:%M:%S')}.{datetime.now().microsecond // 1000} {datetime.now().strftime('%p')}]", end='')
             print(f"[Tracker] Loaded {len(self.combatants)} combatants from {filepath}")
 
 
@@ -84,6 +94,7 @@ class Tracker:
         with open(filepath, 'w', encoding='utf-8') as f:
             json.dump(data, f, indent=2)
         if self.verbose:
+            print(f"[{datetime.now().strftime('%-I:%M:%S')}.{datetime.now().microsecond // 1000} {datetime.now().strftime('%p')}]", end='')
             print(f"[Tracker] Saved tracker state to {filepath}")
 
 
@@ -91,6 +102,7 @@ class Tracker:
         self.combatants.append(combatant)
         self.sort_by_initiative()
         if self.verbose:
+            print(f"[{datetime.now().strftime('%-I:%M:%S')}.{datetime.now().microsecond // 1000} {datetime.now().strftime('%p')}]", end='')
             print(f"[Tracker] Added combatant: {combatant.name} (init {combatant.initiative})")
 
 
@@ -105,6 +117,7 @@ class Tracker:
         if self.active_index == 0:
             self.turn += 1
         if self.verbose:
+            print(f"[{datetime.now().strftime('%-I:%M:%S')}.{datetime.now().microsecond // 1000} {datetime.now().strftime('%p')}]", end='')
             print(f"[Tracker] Turn advanced: {self.turn}, Active: {self.get_active().name}")
         return self.get_active()
 
@@ -118,6 +131,7 @@ class Tracker:
         else:
             self.active_index -= 1
         if self.verbose:
+            print(f"[{datetime.now().strftime('%-I:%M:%S')}.{datetime.now().microsecond // 1000} {datetime.now().strftime('%p')}]", end='')
             print(f"[Tracker] Turn advanced: {self.turn}, Active: {self.get_active().name}")
         return self.get_active()
 
@@ -188,6 +202,7 @@ class Tracker:
     def handle_event(self, event, values, selected_index_ref, dir_path):
         selected_index = selected_index_ref[0]
         if self.verbose:
+            print(f"[{datetime.now().strftime('%-I:%M:%S')}.{datetime.now().microsecond // 1000} {datetime.now().strftime('%p')}]", end='')
             print(f"[Tracker] Event: {event}, index: {selected_index}")
 
         if event == sg.WIN_CLOSED:
@@ -198,6 +213,7 @@ class Tracker:
                 if values['-TABLE-']:
                     row_index = values['-TABLE-'][0] # table row index (0 = blank)
                     if self.verbose:
+                        print(f"[{datetime.now().strftime('%-I:%M:%S')}.{datetime.now().microsecond // 1000} {datetime.now().strftime('%p')}]", end='')
                         print(f"[Tracker] Handling row selection: {row_index}")
                     if row_index == 0: # blank row selected
                         selected_index = None
@@ -215,6 +231,7 @@ class Tracker:
                         selected_index_ref[0] = selected_index
                         c = self.combatants[selected_index] # The combatant is clearly linked to the table row now
                         if self.verbose:
+                            print(f"[{datetime.now().strftime('%-I:%M:%S')}.{datetime.now().microsecond // 1000} {datetime.now().strftime('%p')}]", end='')
                             print(f"[Tracker] Selected index = {selected_index}, Combatant selected: {c}")
                         self.window['-NAME-'].update(c.name)
                         self.window['-INITIATIVE-'].update(c.initiative)

@@ -2,6 +2,7 @@ import pygame
 import os
 from Core.socket_bridge import SocketBridge
 import math
+from datetime import datetime
 
 class MapManager:
 
@@ -116,12 +117,14 @@ class MapManager:
             new = 'closed' if current == 'open' else 'open'
             self.door_states[key] = new
             if self.verbose:
+                print(f"[{datetime.now().strftime('%-I:%M:%S')}.{datetime.now().microsecond // 1000} {datetime.now().strftime('%p')}]", end='')
                 print(f"[Map] Door at ({x},{y}) toggled to: {new}")
         elif tile == 4:  # Secret door
             current = self.secret_door_states.get(key, 'closed')
             new = 'closed' if current == 'open' else 'open'
             self.secret_door_states[key] = new
             if self.verbose:
+                print(f"[{datetime.now().strftime('%-I:%M:%S')}.{datetime.now().microsecond // 1000} {datetime.now().strftime('%p')}]", end='')
                 print(f"[Map] Secret door at ({x},{y}) toggled to: {new}")
 
     def get_pixel_coords(self, grid_pos):
@@ -199,6 +202,7 @@ class MapManager:
                 screen.blit(glow_surface, (x + self.tile_size // 2 - glow_radius, y + self.tile_size // 2 - glow_radius))
 
             #if self.verbose:
+            #    print(f"[{datetime.now().strftime('%-I:%M:%S')}.{datetime.now().microsecond // 1000} {datetime.now().strftime('%p')}]", end='')
             #    print(f"[Map] Token {c.name} position: {c.pos}, rectangle: ({x}, {y}, {self.tile_size}, {self.tile_size})")
 
     def draw_minimap(self, screen):
@@ -292,6 +296,7 @@ class MapManager:
             self.floor_texture, self.wall_texture, self.secret_door_texture, self.closed_door_texture, self.open_door_texture = self.scale_textures(self.tile_size)
             self.rescale_icons()
         if self.verbose:
+            print(f"[{datetime.now().strftime('%-I:%M:%S')}.{datetime.now().microsecond // 1000} {datetime.now().strftime('%p')}]", end='')
             print(f"[Map] Zoom level changed to tile_size = {self.tile_size}")
 
     def start_panning(self, pos):
@@ -309,6 +314,7 @@ class MapManager:
             self.offset_y += dy
             self.pan_start = pos
             if self.verbose:
+                print(f"[{datetime.now().strftime('%-I:%M:%S')}.{datetime.now().microsecond // 1000} {datetime.now().strftime('%p')}]", end='')
                 print(f"[Map] Panning by ({dx}, {dy})")
 
     def handle_click(self, pos, button, selected_token_ref, unplaced_list):
@@ -317,6 +323,7 @@ class MapManager:
         row = (my - self.offset_y) // self.tile_size
 
         if self.verbose:
+            print(f"[{datetime.now().strftime('%-I:%M:%S')}.{datetime.now().microsecond // 1000} {datetime.now().strftime('%p')}]", end='')
             print(f"[Map] Mouse click at pixel=({mx},{my}) tile=({col},{row})")
 
         if button == 1:
@@ -325,12 +332,14 @@ class MapManager:
                 if tile == 3 or tile == 4:  # Only if it's a door or secret door
                     self.toggle_door(col, row)
                     if self.verbose:
+                        print(f"[{datetime.now().strftime('%-I:%M:%S')}.{datetime.now().microsecond // 1000} {datetime.now().strftime('%p')}]", end='')
                         print(f"[Map] Toggled door at ({col}, {row})")
 
             selected_token_ref[0] = None
             for c in self.combatants:
                 if not c.pos:
                     if self.verbose:
+                        print(f"[{datetime.now().strftime('%-I:%M:%S')}.{datetime.now().microsecond // 1000} {datetime.now().strftime('%p')}]", end='')
                         print(f"[Map] Skipping token {c.name} — no position set")
                     continue
                 else:
@@ -339,17 +348,20 @@ class MapManager:
                     y = cy * self.tile_size + self.offset_y
                     rect = pygame.Rect(x, y, self.tile_size, self.tile_size)
                     if self.super_verbose:
+                        print(f"[{datetime.now().strftime('%-I:%M:%S')}.{datetime.now().microsecond // 1000} {datetime.now().strftime('%p')}]", end='')
                         print(f"[Map] Checking token {c.name} at tile {c.pos} -> pixel ({x},{y})")
                         print(f"rect: {rect}, tile size: {self.tile_size}, offset: ({self.offset_x}, {self.offset_y})")
                     if rect.collidepoint(mx, my):
                         selected_token_ref[0] = c
                         self.send_to_tracker(f"{c.name} selected")
                         if self.super_verbose:
+                            print(f"[{datetime.now().strftime('%-I:%M:%S')}.{datetime.now().microsecond // 1000} {datetime.now().strftime('%p')}]", end='')
                             print(f"[Map] Selected token: {c.name}")
                             print(f"[Map] Token rectangle: ({x}, {y}, {self.tile_size}, {self.tile_size})")
                         break
                     else:
                         if self.verbose:
+                            print(f"[{datetime.now().strftime('%-I:%M:%S')}.{datetime.now().microsecond // 1000} {datetime.now().strftime('%p')}]", end='')
                             print(f"[Map] No token selected")
                         self.send_to_tracker("CLEAR_SELECTION")
 
@@ -362,6 +374,7 @@ class MapManager:
                 selected_token_ref[0] = combatant
                 self.send_to_tracker(f"{combatant.name} selected")
                 if self.verbose:
+                    print(f"[{datetime.now().strftime('%-I:%M:%S')}.{datetime.now().microsecond // 1000} {datetime.now().strftime('%p')}]", end='')
                     print(f"[Map] Placed new token: {combatant.name} at ({col},{row})")
 
     def get_token_at_pixel(self, mx, my):
@@ -400,6 +413,7 @@ class MapManager:
                 self.dragging_token = self.drag_candidate
                 self.drag_candidate = None
                 if self.verbose:
+                    print(f"[{datetime.now().strftime('%-I:%M:%S')}.{datetime.now().microsecond // 1000} {datetime.now().strftime('%p')}]", end='')
                     print(f"[Map] Dragging token: {self.dragging_token.name} from {self.dragging_token.pos}")
 
         if self.dragging_token:
@@ -421,10 +435,12 @@ class MapManager:
             and not self.is_tile_occupied(col, row, ignore_token=self.dragging_token)):
             self.dragging_token.pos = [col, row]
             if self.verbose:
+                print(f"[{datetime.now().strftime('%-I:%M:%S')}.{datetime.now().microsecond // 1000} {datetime.now().strftime('%p')}]", end='')
                 print(f"[Map] Dropped token {self.dragging_token.name} at ({col},{row})")
         else:
             self.dragging_token.pos = self.initial_token_pos
             if self.verbose:
+                print(f"[{datetime.now().strftime('%-I:%M:%S')}.{datetime.now().microsecond // 1000} {datetime.now().strftime('%p')}]", end='')
                 print(f"[Map] Invalid drop, reverted {self.dragging_token.name} to {self.initial_token_pos}")
 
         self.dragging_token = None
@@ -434,6 +450,7 @@ class MapManager:
     def start_socket_server(self, tracker, selected_token_ref):
         def handle_message(message):
             if self.verbose:
+                print(f"[{datetime.now().strftime('%-I:%M:%S')}.{datetime.now().microsecond // 1000} {datetime.now().strftime('%p')}]", end='')
                 print(f"[Map] Received message: {message}")
 
             if message == "CLEAR_SELECTION":
@@ -455,6 +472,7 @@ class MapManager:
 
     def send_to_tracker(self, message):
         if self.verbose:
+            print(f"[{datetime.now().strftime('%-I:%M:%S')}.{datetime.now().microsecond // 1000} {datetime.now().strftime('%p')}]", end='')
             print(f"[Map] Sending to tracker: {message}")
         if self.bridge:
             self.bridge.send(65432, message)
