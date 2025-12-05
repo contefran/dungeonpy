@@ -357,8 +357,7 @@ class MapManager:
                     self.send_to_tracker(f"{c.name} selected")
                     if self.verbose:
                         print(f"[{datetime.now().strftime('%-I:%M:%S')}.{datetime.now().microsecond // 1000} {datetime.now().strftime('%p')}]", end='')
-                        print(f"[Map] Selected token: {c.name}")
-                        print(f"[Map] Token rectangle: ({x}, {y}, {self.tile_size}, {self.tile_size})")
+                        print(f"[Map] Token rectangle: ({x}, {y}, {self.tile_size}, {self.tile_size}) -> Selected token: {c.name}")
                     hit = True # token found
                     break # stop searching
 

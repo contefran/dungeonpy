@@ -213,18 +213,22 @@ class Tracker:
             icons = ''.join(self.condition_icons.get(cond, '') for cond in c.conditions)
             name = f"➡️ {c.name}" if i == self.active_index else c.name
             data.append([name, c.initiative, c.hp, icons])
-        self.window['-TABLE-'].update(values=data)
+        #self.window['-TABLE-'].update(values=data)
 
         # Keep selection visible if we know it
+        self._squelch_table_event = True
         if selected_index is not None and 0 <= selected_index < len(self.combatants):
             self.window['-TABLE-'].update(select_rows=[selected_index + 1])  # +1 because of blank row
+        else:
+            self.window['-TABLE-'].update(values=data)
+        self._squelch_table_event = False
 
 
     def handle_event(self, event, values, selected_index_ref, dir_path):
         selected_index = selected_index_ref[0]
         if self.verbose:
             print(f"[{datetime.now().strftime('%-I:%M:%S')}.{datetime.now().microsecond // 1000} {datetime.now().strftime('%p')}]", end='')
-            print(f"[Tracker] Event: {event}, Values: {values}")
+            print(f"[Tracker] Event: {event}")
 
         if event == sg.WIN_CLOSED:
             return
