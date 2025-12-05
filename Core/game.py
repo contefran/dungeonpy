@@ -93,6 +93,7 @@ class Game:
         pass  # For now, nothing to update outside of input/rendering
 
     def shutdown(self):
+        print(f"[{datetime.now().strftime('%-I:%M:%S')}.{datetime.now().microsecond // 1000} {datetime.now().strftime('%p')}]", end='')
         print("[Game] Shutting down socket bridges...")
         if hasattr(self.tracker, "bridge") and self.tracker.bridge:
             if self.verbose:

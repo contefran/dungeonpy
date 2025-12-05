@@ -37,7 +37,7 @@ class Tracker:
         # Just post an event back to the GUI thread.
         if self.verbose:
             print(f"[{datetime.now().strftime('%-I:%M:%S')}.{datetime.now().microsecond // 1000} {datetime.now().strftime('%p')}]", end='')
-            print(f"[Tracker] Received message: {message}")
+            print(f"[Tracker] (GUI thread) Incoming message: {message}")
         if not self.window:
             return
         else:
@@ -224,7 +224,7 @@ class Tracker:
         selected_index = selected_index_ref[0]
         if self.verbose:
             print(f"[{datetime.now().strftime('%-I:%M:%S')}.{datetime.now().microsecond // 1000} {datetime.now().strftime('%p')}]", end='')
-            print(f"[Tracker] Event: {event}, index: {selected_index}")
+            print(f"[Tracker] Event: {event}, Values: {values}")
 
         if event == sg.WIN_CLOSED:
             return

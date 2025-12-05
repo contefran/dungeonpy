@@ -1,6 +1,6 @@
 import socket
 import threading
-
+from datetime import datetime
 class SocketBridge:
     
     def __init__(self, listen_port, on_message=None, verbose=False, super_verbose=False):
@@ -20,12 +20,12 @@ class SocketBridge:
                     if not message:
                         break
                     if self.verbose:
+                        print(f"[{datetime.now().strftime('%-I:%M:%S')}.{datetime.now().microsecond // 1000} {datetime.now().strftime('%p')}]", end='')
                         print(f"[SocketBridge:{self.listen_port}] Received: {message}")
                     if self.on_message:
                         self.on_message(message)
                 except Exception as e:
-                    if self.verbose:
-                        print(f"[SocketBridge:{self.listen_port}] Error: {e}")
+                    print(f"[SocketBridge:{self.listen_port}] Error: {e}")
                     break
             client_socket.close()
 
@@ -35,6 +35,7 @@ class SocketBridge:
             self._server_socket.bind(('localhost', self.listen_port))
             self._server_socket.listen(5)
             if self.verbose:
+                print(f"[{datetime.now().strftime('%-I:%M:%S')}.{datetime.now().microsecond // 1000} {datetime.now().strftime('%p')}]", end='')
                 print(f"[SocketBridge] Listening on port {self.listen_port}")
             while self.running:
                 try:
@@ -51,17 +52,17 @@ class SocketBridge:
                 client.connect(('localhost', target_port))
                 client.send(message.encode('utf-8'))
             if self.verbose:
+                print(f"[{datetime.now().strftime('%-I:%M:%S')}.{datetime.now().microsecond // 1000} {datetime.now().strftime('%p')}]", end='')
                 print(f"[SocketBridge] Sent to {target_port}: {message}")
         except ConnectionRefusedError:
-            if self.verbose:
-                print(f"[SocketBridge] Target on port {target_port} is not running.")
+            print(f"[SocketBridge] Target on port {target_port} is not running.")
         except Exception as e:
-            if self.verbose:
-                print(f"[SocketBridge] Error sending to port {target_port}: {e}")
+            print(f"[SocketBridge] Error sending to port {target_port}: {e}")
 
     def stop(self):
         self.running = False
         if self._server_socket:
             self._server_socket.close()
         if self.verbose:
+            print(f"[{datetime.now().strftime('%-I:%M:%S')}.{datetime.now().microsecond // 1000} {datetime.now().strftime('%p')}]", end='')
             print(f"[SocketBridge] Stopped listening on port {self.listen_port}")
