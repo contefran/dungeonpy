@@ -1,5 +1,6 @@
 from datetime import datetime
 import os
+import sys
 import json
 import PySimpleGUI as sg
 from Core.combatant import Combatant
@@ -176,26 +177,36 @@ class Tracker:
         def chunk(lst, size):
             return [lst[i:i + size] for i in range(0, len(lst), size)]
 
+        if self.verbose:
+            print(f'Platform: {sys.platform}')
+        if sys.platform == "win32":
+            emoji_font = ("Segoe UI Emoji", 12) # Windows default emoji font
+        elif sys.platform == "darwin":
+            emoji_font = ("Apple Color Emoji", 12) # macOS default emoji font
+        else:
+            emoji_font = ("Noto Emoji", 12) # Common Linux emoji font
+        table_font = ("Helvetica", 12) # Should work cross-platform
+
         condition_rows = [
-            [sg.Checkbox(f"{self.condition_icons[cond]} {cond}", key=f'-COND_{cond}-', font=('Segoe UI Emoji', 12))
+            [sg.Checkbox(f"{self.condition_icons[cond]} {cond}", key=f'-COND_{cond}-', font=emoji_font)
             for cond in row]
             for row in chunk(self.conditions_list, 5)
         ]
         layout = [
-            [sg.Text('Initiative Tracker', font=('Helvetica', 12))],
+            [sg.Text('Initiative Tracker', font=table_font)],
             [sg.Table(values=[], headings=['Name', 'Initiative', 'HP', 'Conditions'],
                     auto_size_columns=False, justification='left', col_widths=[20, 10, 10, 20],
-                    key='-TABLE-', enable_events=True, row_height=25, expand_x=True, num_rows=10,
-                    background_color='white', text_color='black', font=('Segoe UI Emoji', 12))],
-            [sg.Text('Turn:', font=('Segoe UI Emoji', 12)), sg.Input(str(self.turn), key='-TURN-', size=(5, 1)),
+                    key='-TABLE-', enable_events=True, row_height=28, expand_x=True, num_rows=10,
+                    background_color='white', text_color='black', font=emoji_font)],
+            [sg.Text('Turn:', font=table_font), sg.Input(str(self.turn), key='-TURN-', size=(5, 1)),
             sg.Button('⏮ Prev Char'), sg.Button('⏭ Next Char')],
             [sg.HorizontalSeparator()],
-            [sg.Text('Name', size=(10, 1)), sg.Input(key='-NAME-', size=(30, 1))],
-            [sg.Text('Initiative', size=(10, 1)), sg.Input(key='-INITIATIVE-', size=(5, 1))],
-            [sg.Text('HP (optional):', size=(12, 1)), sg.Input(key='-HP-', size=(5, 1)),
-            sg.Text('   Change:'), sg.Input('0', key='-HP_CHANGE-', size=(5, 1)),
+            [sg.Text('Name', size=(10, 1), font=table_font), sg.Input(key='-NAME-', size=(30, 1))],
+            [sg.Text('Initiative', size=(10, 1), font=table_font), sg.Input(key='-INITIATIVE-', size=(5, 1))],
+            [sg.Text('HP (optional):', size=(12, 1), font=table_font), sg.Input(key='-HP-', size=(5, 1)),
+            sg.Text('   Change:', font=table_font), sg.Input('0', key='-HP_CHANGE-', size=(5, 1)),
             sg.Button('Wound'), sg.Button('Heal')],
-            [sg.Text('Conditions:')],
+            [sg.Text('Conditions:', font=emoji_font)],
             *condition_rows,
             [
                 sg.Button('Add New'), sg.Button('Update Selected'),
@@ -207,7 +218,6 @@ class Tracker:
 
 
     def refresh_table(self, selected_index=None):
-        #data = []
         data = [['', '', '', '']]  # blank row for deselection
         for i, c in enumerate(self.combatants):
             icons = ''.join(self.condition_icons.get(cond, '') for cond in c.conditions)
@@ -218,9 +228,9 @@ class Tracker:
         # Keep selection visible if we know it
         self._squelch_table_event = True
         if selected_index is not None and 0 <= selected_index < len(self.combatants):
-            self.window['-TABLE-'].update(select_rows=[selected_index + 1])  # +1 because of blank row
+            self.window['-TABLE-'].update(values=data, select_rows=[selected_index + 1])  # +1 because of blank row
         else:
-            self.window['-TABLE-'].update(values=data)
+            self.window['-TABLE-'].update(values=data, select_rows=[])
         self._squelch_table_event = False
 
 
@@ -371,7 +381,7 @@ class Tracker:
             self.refresh_table()
 
         elif event == '💾 Export':
-            path = os.path.join(dir_path, f'Data/combat_tracker_{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}.json')
+            path = os.path.join(dir_path, f'Data/combat_tracker_{datetime.now().strftime("%Y%m%d_%H%M%S")}.json')
             self.save_to_file(path)
             sg.popup(f"Saved to {path}")
 
