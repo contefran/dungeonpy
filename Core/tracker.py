@@ -7,42 +7,6 @@ from Core.combatant import Combatant
 from Core.socket_bridge import SocketBridge
 
 
-import tkinter as tk
-import tkinter.font as tkfont
-
-
-def debug_print_element_font(window, key):
-    elem = window[key]
-    widget = elem.Widget
-
-    # 1) try to read widget's 'font' option
-    try:
-        font_spec = widget.cget("font")
-    except tk.TclError as e:
-        print(f"[Font debug] {key!r}: widget has no 'font' option ({e})")
-        return
-
-    print(f"[Font debug] {key!r}: widget.cget('font') -> {font_spec!r}")
-
-    # 2) Try to interpret it as a named font first
-    try:
-        named = tkfont.nametofont(font_spec)
-    except tk.TclError:
-        # Not a named Tk font, treat as literal spec ("{Noto Emoji} 12", "Helvetica 10", ...)
-        f = tkfont.Font(font=font_spec)
-        print(f"[Font debug] {key!r}: treating as literal spec")
-    else:
-        # It *is* a named font (e.g. "TkDefaultFont")
-        f = named
-        print(f"[Font debug] {key!r}: treating as named font")
-
-    print(f"   family = {f.actual('family')}")
-    print(f"   size   = {f.actual('size')}")
-    print(f"   weight = {f.actual('weight')}")
-    print(f"   slant  = {f.actual('slant')}")
-
-
-
 class Tracker:
     
     def __init__(self, verbose=False, super_verbose=False):
@@ -54,21 +18,21 @@ class Tracker:
         self._squelch_table_event = False # to avoid feedback loops when updating table from the map
 
         condition_dict={
-                'Blinded': '🙈',
-                'Charmed': '💘',
-                'Deafened': '🙉',
-                'Frightened': '😱',
-                'Grappled': '🤼',
-                'Incapacitated': '💤',
-                'Invisible': '👻',
-                'Paralyzed': '🧊',
-                'Petrified': '🗿',
-                'Poisoned': '🩸',
+                'Blind': '🙈',
+                'Charm': '💘',
+                'Deaf': '🙉',
+                'Fright': '😱',
+                'Grapple': '🤼',
+                'Incap': '💤',
+                'Invis': '👻',
+                'Paral': '🧊',
+                'Petr': '🗿',
+                'Poison': '🩸',
                 'Prone': '🛌',
-                'Restrained': '⛓',
-                'See invisible': '👁',
-                'Stunned': '😵',
-                'Unconscious': '🛑',
+                'Restrain': '⛓',
+                'See-inv': '👁',
+                'Stun': '😵',
+                'Uncon': '🛑',
                 'Down': '💀',
             }
         self.condition_list=list(condition_dict.keys()) # set up the list of conditions
@@ -454,10 +418,6 @@ class Tracker:
     def run_gui(self, dir_path):
         layout = self.build_gui_layout()
         self.window = sg.Window('D&D Initiative Tracker', layout, resizable=True, finalize=True)
-
-     
-        debug_print_element_font(self.window, '-COND_Poisoned-')  # or any condition key you have
-
 
         selected_index = [None]
         self.refresh_table()

@@ -1,13 +1,11 @@
 {
-  "turn": 5,
-  "active_index": 5,
   "initiative": [
     {
       "name": "Rogue",
       "initiative": 21,
-      "hp": "",
+      "hp": "14",
       "conditions": [
-        "Invisible"
+        "Invis"
       ],
       "pos": [
         27,
@@ -19,7 +17,9 @@
       "name": "Skeleton",
       "initiative": 14,
       "hp": "13",
-      "conditions": [],
+      "conditions": [
+        "Prone"
+      ],
       "pos": [
         27,
         32
@@ -29,10 +29,9 @@
     {
       "name": "Warrior",
       "initiative": 13,
-      "hp": "",
+      "hp": "19",
       "conditions": [
-        "Blinded",
-        "Deafened"
+        "Charm"
       ],
       "pos": [
         27,
@@ -45,7 +44,7 @@
       "initiative": 11,
       "hp": "29",
       "conditions": [
-        "Invisible"
+        "Invis"
       ],
       "pos": [
         24,
@@ -67,9 +66,10 @@
     {
       "name": "Wizard",
       "initiative": 6,
-      "hp": "",
+      "hp": "9",
       "conditions": [
-        "Frightened"
+        "Paral",
+        "See-inv"
       ],
       "pos": [
         30,
@@ -77,5 +77,7 @@
       ],
       "icon": "wizard.png"
     }
-  ]
+  ],
+  "active_index": 5,
+  "turn": 5
 }
