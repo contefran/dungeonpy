@@ -7,8 +7,41 @@ from Core.combatant import Combatant
 from Core.socket_bridge import SocketBridge
 
 
-print(f"[{datetime.now().strftime('%-I:%M:%S')}.{datetime.now().microsecond // 1000} {datetime.now().strftime('%p')}]", end='')
-print("[Tracker] Tracker module loaded.")
+import tkinter as tk
+import tkinter.font as tkfont
+
+
+def debug_print_element_font(window, key):
+    elem = window[key]
+    widget = elem.Widget
+
+    # 1) try to read widget's 'font' option
+    try:
+        font_spec = widget.cget("font")
+    except tk.TclError as e:
+        print(f"[Font debug] {key!r}: widget has no 'font' option ({e})")
+        return
+
+    print(f"[Font debug] {key!r}: widget.cget('font') -> {font_spec!r}")
+
+    # 2) Try to interpret it as a named font first
+    try:
+        named = tkfont.nametofont(font_spec)
+    except tk.TclError:
+        # Not a named Tk font, treat as literal spec ("{Noto Emoji} 12", "Helvetica 10", ...)
+        f = tkfont.Font(font=font_spec)
+        print(f"[Font debug] {key!r}: treating as literal spec")
+    else:
+        # It *is* a named font (e.g. "TkDefaultFont")
+        f = named
+        print(f"[Font debug] {key!r}: treating as named font")
+
+    print(f"   family = {f.actual('family')}")
+    print(f"   size   = {f.actual('size')}")
+    print(f"   weight = {f.actual('weight')}")
+    print(f"   slant  = {f.actual('slant')}")
+
+
 
 class Tracker:
     
@@ -20,17 +53,39 @@ class Tracker:
         self.super_verbose = super_verbose
         self._squelch_table_event = False # to avoid feedback loops when updating table from the map
 
-        self.condition_icons = {
-            'Blinded': '🙈', 'Charmed': '💘', 'Deafened': '🙉', 'Frightened': '😱',
-            'Grappled': '🤼', 'Incapacitated': '💤', 'Invisible': '👻', 'Paralyzed': '🧊',
-            'Petrified': '🪨', 'Poisoned': '🩸', 'Prone': '🛌', 'Restrained': '⛓️',
-            'See invisible': '👁️', 'Stunned': '😵', 'Unconscious': '🛑', 'Down': '💀'
-        }
-        self.conditions_list = list(self.condition_icons.keys())
+        condition_dict={
+                'Blinded': '🙈',
+                'Charmed': '💘',
+                'Deafened': '🙉',
+                'Frightened': '😱',
+                'Grappled': '🤼',
+                'Incapacitated': '💤',
+                'Invisible': '👻',
+                'Paralyzed': '🧊',
+                'Petrified': '🗿',
+                'Poisoned': '🩸',
+                'Prone': '🛌',
+                'Restrained': '⛓',
+                'See invisible': '👁',
+                'Stunned': '😵',
+                'Unconscious': '🛑',
+                'Down': '💀',
+            }
+        self.condition_list=list(condition_dict.keys()) # set up the list of conditions
+        def sanitize_emoji(s: str) -> str: # remove U+FE0F (variation selector-16)
+            return s.replace('\ufe0f', '')
+        if sys.platform.startswith("linux"):
+            self.condition_icons={k: sanitize_emoji(v) for k, v in condition_dict.items()}
+        else:
+            self.condition_icons=condition_dict.items()
 
         self.bridge = SocketBridge(65432, on_message=self._handle_incoming_message, verbose=self.verbose)
         
         self.window = None
+
+        if self.verbose:
+            print(f"[{datetime.now().strftime('%-I:%M:%S')}.{datetime.now().microsecond // 1000} {datetime.now().strftime('%p')}]", end='')
+            print("[Tracker] Tracker module loaded.")
 
 
     def _handle_incoming_message(self, message):
@@ -59,7 +114,7 @@ class Tracker:
             self.window['-NAME-'].update('')
             self.window['-INITIATIVE-'].update('')
             self.window['-HP-'].update('')
-            for cond in self.conditions_list:
+            for cond in self.condition_list:
                 self.window[f'-COND_{cond}-'].update(False)
         elif message.endswith(" selected"):
             name = message.replace(" selected", "")
@@ -76,7 +131,7 @@ class Tracker:
                     self.window['-NAME-'].update(c.name)
                     self.window['-INITIATIVE-'].update(c.initiative)
                     self.window['-HP-'].update(c.hp)
-                    for cond in self.conditions_list:
+                    for cond in self.condition_list:
                         self.window[f'-COND_{cond}-'].update(cond in c.conditions)
                     break
         elif message.endswith(" active"):
@@ -190,20 +245,20 @@ class Tracker:
         condition_rows = [
             [sg.Checkbox(f"{self.condition_icons[cond]} {cond}", key=f'-COND_{cond}-', font=emoji_font)
             for cond in row]
-            for row in chunk(self.conditions_list, 5)
+            for row in chunk(self.condition_list, 5)
         ]
         layout = [
             [sg.Text('Initiative Tracker', font=table_font)],
             [sg.Table(values=[], headings=['Name', 'Initiative', 'HP', 'Conditions'],
                     auto_size_columns=False, justification='left', col_widths=[20, 10, 10, 20],
                     key='-TABLE-', enable_events=True, row_height=28, expand_x=True, num_rows=10,
-                    background_color='white', text_color='black', font=emoji_font)],
+                    background_color='white', text_color='black', font=table_font)],
             [sg.Text('Turn:', font=table_font), sg.Input(str(self.turn), key='-TURN-', size=(5, 1)),
             sg.Button('⏮ Prev Char'), sg.Button('⏭ Next Char')],
             [sg.HorizontalSeparator()],
             [sg.Text('Name', size=(10, 1), font=table_font), sg.Input(key='-NAME-', size=(30, 1))],
             [sg.Text('Initiative', size=(10, 1), font=table_font), sg.Input(key='-INITIATIVE-', size=(5, 1))],
-            [sg.Text('HP (optional):', size=(12, 1), font=table_font), sg.Input(key='-HP-', size=(5, 1)),
+            [sg.Text('HP:', size=(10, 1), font=table_font), sg.Input(key='-HP-', size=(5, 1)),
             sg.Text('   Change:', font=table_font), sg.Input('0', key='-HP_CHANGE-', size=(5, 1)),
             sg.Button('Wound'), sg.Button('Heal')],
             [sg.Text('Conditions:', font=emoji_font)],
@@ -261,7 +316,7 @@ class Tracker:
                         self.window['-NAME-'].update('')
                         self.window['-INITIATIVE-'].update('')
                         self.window['-HP-'].update('')
-                        for cond in self.conditions_list:
+                        for cond in self.condition_list:
                             self.window[f'-COND_{cond}-'].update(False)
                         self.window.refresh()
                     else:
@@ -274,7 +329,7 @@ class Tracker:
                         self.window['-NAME-'].update(c.name)
                         self.window['-INITIATIVE-'].update(c.initiative)
                         self.window['-HP-'].update(c.hp)
-                        for cond in self.conditions_list:
+                        for cond in self.condition_list:
                             self.window[f'-COND_{cond}-'].update(cond in c.conditions)
                         self.send_to_map(f"{c.name} selected")
                         self.window.refresh()
@@ -290,7 +345,7 @@ class Tracker:
                 name = values['-NAME-']
                 init = int(values['-INITIATIVE-'])
                 hp = values['-HP-']
-                conditions = [cond for cond in self.conditions_list if values.get(f'-COND_{cond}-')]
+                conditions = [cond for cond in self.condition_list if values.get(f'-COND_{cond}-')]
                 new_c = Combatant(name, init, hp, conditions)
                 self.add(new_c)
                 # After sorting, find index of new combatant
@@ -308,7 +363,7 @@ class Tracker:
             c.name = values['-NAME-']
             c.initiative = int(values['-INITIATIVE-'])
             c.hp = values['-HP-']
-            c.conditions = [cond for cond in self.conditions_list if values.get(f'-COND_{cond}-')]
+            c.conditions = [cond for cond in self.condition_list if values.get(f'-COND_{cond}-')]
             self.sort_by_initiative() # just in case initiative changed
             # Check the new index of the updated combatant
             for i, x in enumerate(self.combatants):
@@ -399,10 +454,13 @@ class Tracker:
     def run_gui(self, dir_path):
         layout = self.build_gui_layout()
         self.window = sg.Window('D&D Initiative Tracker', layout, resizable=True, finalize=True)
-    
+
+     
+        debug_print_element_font(self.window, '-COND_Poisoned-')  # or any condition key you have
+
+
         selected_index = [None]
         self.refresh_table()
-
         while True:
             event, values = self.window.read()
             if event == sg.WIN_CLOSED:
