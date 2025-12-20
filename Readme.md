@@ -6,11 +6,8 @@ DungeonPy is a tool to aid DMs to host virtual Dungeons&Dragons sessions. It is 
 ### Packages used:
 - Pygame
 - PySimpleGUI
-- argparse
-- json
-- threading
-- os
-- path
+- + standard Python libraries
 
 ## Coming up soon(ish)
 A separate server/client mode for DMs and players, so that the DM hosts the server, a client with unlocked informations (e.g. the tracker) and the player client only visualizes the allowed info (e.g. line-of-sight-based information, invisible creatures not on map, etc.)
+
