@@ -2,12 +2,9 @@ from datetime import datetime
 import io
 import os
 import sys
-import json
 import PySimpleGUI as sg
 from Core.combatant import Combatant
-from Core.socket_bridge import SocketBridge
 from Core.log_utils import log
-import Core.protocol as proto
 
 try:
     from PIL import Image, ImageDraw, ImageFont as PILFont, ImageTk
@@ -40,15 +37,13 @@ def _render_emoji_png(char: str, size: int = 22) -> bytes | None:
 
 class Tracker:
 
-    def __init__(self, verbose=False, super_verbose=False):
-        self.combatants = []
-        self.active_index = 0
-        self.turn = 1
+    def __init__(self, server, verbose=False, super_verbose=False):
+        self.server = server
         self.verbose = verbose
         self.super_verbose = super_verbose
-        self._squelch_table_event = False  # to avoid feedback loops when updating table from the map
-        self.on_load = None              # optional callback set by Game to resync the map after a load
-        self.on_combatant_added = None   # optional callback set by Game to add new combatant to the map queue
+        self._squelch_table_event = False
+        self._selected_index = None
+        self.window = None
 
         condition_dict = {
             'Blind': '🙈',
@@ -85,47 +80,47 @@ class Tracker:
         }
         self._table_photos = {}   # keeps ImageTk.PhotoImage refs alive (tkinter GC guard)
 
-        self.bridge = SocketBridge(65432, on_message=self._handle_incoming_message, verbose=self.verbose)
-        self.window = None
-
         if self.verbose:
             log("[Tracker] Tracker module loaded.")
 
+    # ------------------------------------------------------------------
+    # Server event handling (pub/sub)
+    # ------------------------------------------------------------------
 
-    def _handle_incoming_message(self, message):
-        # Never touch the GUI here; this runs on the socket thread.
-        # Just post an event back to the GUI thread.
-        if self.verbose:
-            log(f"[Tracker] (socket thread) Incoming message: {message}")
-        if not self.window:
+    def handle_server_event(self, event: dict):
+        """Called by the server on any thread — posts to the GUI event queue."""
+        if self.window:
+            self.window.write_event_value('SERVER_EVENT', event)
+
+    def _apply_server_event(self, event: dict):
+        """Handle a server event on the GUI thread."""
+        if event.get("type") == "snapshot":
+            # Refresh table with current selection; _selected_index was set by caller
+            self.window['-TURN-'].update(str(self.server.turn))
+            self.refresh_table(self._selected_index)
             return
-        self.window.write_event_value('SOCKET_MSG', message)
 
+        action = event.get("action")
 
-    def _process_socket_message_on_gui_thread(self, message):
-        if self.verbose:
-            log(f"[Tracker] (GUI thread) Processing socket message: {message}")
-        msg = proto.parse(message)
-        if msg is None:
-            return
-        if msg["type"] == proto.TYPE_CLEAR:
-            if self.verbose:
-                log("[Tracker] (GUI thread) Clearing selection")
-            self._squelch_table_event = True
-            self.window['-TABLE-'].update(select_rows=[])
-            self.window['-NAME-'].update('')
-            self.window['-INITIATIVE-'].update('')
-            self.window['-HP-'].update('')
-            for cond in self.condition_list:
-                self.window[f'-COND_{cond}-'].update(False)
-        elif msg["type"] == proto.TYPE_SELECTED:
-            name = msg["name"]
-            for i, c in enumerate(self.combatants):
-                if self.super_verbose:
-                    log(f"[Tracker] (GUI thread) Going through combatants: {i}, {c.name}")
+        if action == "combatant_updated":
+            self.refresh_table(self._selected_index)
+
+        elif action == "combatant_added":
+            self.refresh_table(self._selected_index)
+
+        elif action == "combatant_removed":
+            self._selected_index = None
+            self.refresh_table()
+
+        elif action == "turn_advanced":
+            self.window['-TURN-'].update(str(event["turn"]))
+            self.refresh_table()
+
+        elif action == "selection_changed":
+            name = event["name"]
+            for i, c in enumerate(self.server.combatants):
                 if c.name == name:
-                    if self.verbose:
-                        log(f"[Tracker] (GUI thread) Selecting row {i+1}, character {name}")
+                    self._selected_index = i
                     self._squelch_table_event = True
                     self.window['-TABLE-'].update(select_rows=[i + 1])
                     self.window['-NAME-'].update(c.name)
@@ -133,109 +128,30 @@ class Tracker:
                     self.window['-HP-'].update('' if c.hp is None else c.hp)
                     for cond in self.condition_list:
                         self.window[f'-COND_{cond}-'].update(cond in c.conditions)
-                    break
-        elif msg["type"] == proto.TYPE_ACTIVE:
-            name = msg["name"]
-            for i, c in enumerate(self.combatants):
-                if c.name == name:
-                    self.active_index = i
-                    self.window['-TURN-'].update(str(self.turn))
-                    self.refresh_table()
+                    self.window.refresh()
                     break
 
+        elif action == "selection_cleared":
+            self._selected_index = None
+            self._squelch_table_event = True
+            self.window['-TABLE-'].update(select_rows=[])
+            self._clear_form()
 
-    def send_to_map(self, message):
-        if self.verbose:
-            log(f"[Tracker] Sending to map: {message}")
-        self.bridge.send(65433, message)
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
 
+    def _clear_form(self):
+        self.window['-NAME-'].update('')
+        self.window['-INITIATIVE-'].update('')
+        self.window['-HP-'].update('')
+        for cond in self.condition_list:
+            self.window[f'-COND_{cond}-'].update(False)
+        self.window.refresh()
 
-    def load_from_file(self, filepath):
-        with open(filepath, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-        new_combatants = [Combatant.from_dict(c) for c in data.get("initiative", [])]
-        self.combatants.clear()
-        self.combatants.extend(new_combatants)
-        self.active_index = data.get("active_index", 0)
-        self.turn = data.get("turn", 1)
-        if self.on_load:
-            self.on_load()
-        if self.verbose:
-            log(f"[Tracker] Loaded {len(self.combatants)} combatants from {filepath}")
-
-
-    def save_to_file(self, filepath):
-        data = {
-            "initiative": [c.to_dict() for c in self.combatants],
-            "active_index": self.active_index,
-            "turn": self.turn
-        }
-        with open(filepath, 'w', encoding='utf-8') as f:
-            json.dump(data, f, indent=2)
-        if self.verbose:
-            log(f"[Tracker] Saved tracker state to {filepath}")
-
-
-    def add(self, combatant: Combatant):
-        self.combatants.append(combatant)
-        self.sort_by_initiative()
-        if self.verbose:
-            log(f"[Tracker] Added combatant: {combatant.name} (init {combatant.initiative})")
-
-
-    def sort_by_initiative(self):
-        self.combatants.sort(key=lambda c: c.initiative, reverse=True)
-
-
-    def next(self):
-        if not self.combatants:
-            return None
-        self.active_index = (self.active_index + 1) % len(self.combatants)
-        if self.active_index == 0:
-            self.turn += 1
-        if self.verbose:
-            log(f"[Tracker] Turn advanced: {self.turn}, Active: {self.get_active().name}")
-        return self.get_active()
-
-
-    def previous(self):
-        if not self.combatants:
-            return None
-        if self.active_index == 0:
-            self.active_index = len(self.combatants) - 1
-            self.turn = max(1, self.turn - 1)
-        else:
-            self.active_index -= 1
-        if self.verbose:
-            log(f"[Tracker] Turn retreated: {self.turn}, Active: {self.get_active().name}")
-        return self.get_active()
-
-
-    def get_active(self):
-        if 0 <= self.active_index < len(self.combatants):
-            return self.combatants[self.active_index]
-        return None
-
-
-    def apply_damage(self, combatant, amount):
-        current_hp = combatant.hp if combatant.hp is not None else 0
-        combatant.hp = max(0, current_hp - amount)
-        if combatant.hp == 0 and "Down" not in combatant.conditions:
-            combatant.conditions.append("Down")
-
-    def apply_heal(self, combatant, amount):
-        current_hp = combatant.hp if combatant.hp is not None else 0
-        combatant.hp = current_hp + amount
-        if combatant.hp > 0 and "Down" in combatant.conditions:
-            combatant.conditions.remove("Down")
-
-    def select_by_name(self, name):
-        for i, c in enumerate(self.combatants):
-            if c.name == name:
-                self.active_index = i
-                return c
-        return None
-
+    # ------------------------------------------------------------------
+    # Table rendering
+    # ------------------------------------------------------------------
 
     def _make_condition_strip(self, conditions: list):
         """Return an ImageTk.PhotoImage strip of condition icons, or None."""
@@ -290,7 +206,7 @@ class Tracker:
                       auto_size_columns=False, justification='left', col_widths=[20, 10, 10],
                       key='-TABLE-', enable_events=True, row_height=28, expand_x=True, num_rows=10,
                       background_color='white', text_color='black', font=table_font)],
-            [sg.Text('Turn:', font=table_font), sg.Input(str(self.turn), key='-TURN-', size=(5, 1)),
+            [sg.Text('Turn:', font=table_font), sg.Input(str(self.server.turn), key='-TURN-', size=(5, 1)),
              sg.Button('⏮ Prev Char'), sg.Button('⏭ Next Char')],
             [sg.HorizontalSeparator()],
             [sg.Text('Name', size=(10, 1), font=table_font), sg.Input(key='-NAME-', size=(30, 1))],
@@ -308,17 +224,16 @@ class Tracker:
         ]
         return layout
 
-
     def refresh_table(self, selected_index=None):
         data = [['', '', '']]  # blank row for deselection
         row_conditions = [[]]  # parallel list of condition lists per row
-        for i, c in enumerate(self.combatants):
-            name = f"→ {c.name}" if i == self.active_index else c.name
+        for i, c in enumerate(self.server.combatants):
+            name = f"→ {c.name}" if i == self.server.active_index else c.name
             data.append([name, c.initiative, '' if c.hp is None else c.hp])
             row_conditions.append(list(c.conditions))
 
         self._squelch_table_event = True
-        if selected_index is not None and 0 <= selected_index < len(self.combatants):
+        if selected_index is not None and 0 <= selected_index < len(self.server.combatants):
             self.window['-TABLE-'].update(values=data, select_rows=[selected_index + 1])
         else:
             self.window['-TABLE-'].update(values=data, select_rows=[])
@@ -334,9 +249,11 @@ class Tracker:
                     new_photos[item_id] = photo
             self._table_photos = new_photos  # replace; old refs released
 
+    # ------------------------------------------------------------------
+    # Event handling
+    # ------------------------------------------------------------------
 
-    def handle_event(self, event, values, selected_index_ref, dir_path):
-        selected_index = selected_index_ref[0]
+    def handle_event(self, event, values, dir_path):
         if self.verbose:
             log(f"[Tracker] Event: {event}")
 
@@ -353,35 +270,26 @@ class Tracker:
                     if self.verbose:
                         log(f"[Tracker] Handling row selection: {row_index}")
                     if row_index == 0:
-                        selected_index = None
-                        selected_index_ref[0] = None
-                        self.send_to_map(proto.CLEAR_SELECTION)
+                        self._selected_index = None
+                        self.server.submit({"action": "clear_selection"})
                         self.window['-TABLE-'].update(select_rows=[])
-                        self.window['-NAME-'].update('')
-                        self.window['-INITIATIVE-'].update('')
-                        self.window['-HP-'].update('')
-                        for cond in self.condition_list:
-                            self.window[f'-COND_{cond}-'].update(False)
-                        self.window.refresh()
+                        self._clear_form()
                     else:
-                        selected_index = row_index - 1
-                        selected_index_ref[0] = selected_index
-                        c = self.combatants[selected_index]
+                        self._selected_index = row_index - 1
+                        c = self.server.combatants[self._selected_index]
                         if self.verbose:
-                            log(f"[Tracker] Selected index = {selected_index}, Combatant selected: {c}")
+                            log(f"[Tracker] Selected index = {self._selected_index}, Combatant: {c}")
                         self.window['-NAME-'].update(c.name)
                         self.window['-INITIATIVE-'].update(c.initiative)
                         self.window['-HP-'].update('' if c.hp is None else c.hp)
                         for cond in self.condition_list:
                             self.window[f'-COND_{cond}-'].update(cond in c.conditions)
-                        self.send_to_map(proto.make_selected(c.name))
+                        self.server.submit({"action": "select", "name": c.name})
                         self.window.refresh()
-
             except Exception as e:
                 print(f"Selection error: {e}")
-                selected_index = None
-                selected_index_ref[0] = None
-                self.send_to_map(proto.CLEAR_SELECTION)
+                self._selected_index = None
+                self.server.submit({"action": "clear_selection"})
 
         elif event == 'Add New':
             try:
@@ -401,133 +309,104 @@ class Tracker:
                     no_window=False,
                 )
                 icon = os.path.basename(icon_path) if icon_path else None
-                new_c = Combatant(name, init, hp, conditions, icon=icon)
-                self.add(new_c)
-                if self.on_combatant_added:
-                    self.on_combatant_added(new_c)
-                # Clear form and deselect after adding
-                selected_index = None
-                selected_index_ref[0] = None
-                self.window['-NAME-'].update('')
-                self.window['-INITIATIVE-'].update('')
-                self.window['-HP-'].update('')
-                for cond in self.condition_list:
-                    self.window[f'-COND_{cond}-'].update(False)
-                self.send_to_map(proto.CLEAR_SELECTION)
-                self.refresh_table()
+                self.server.submit({"action": "add_combatant", "combatant": {
+                    "name": name, "initiative": init, "hp": hp,
+                    "conditions": conditions, "icon": icon,
+                }})
+                self._selected_index = None
+                self.server.submit({"action": "clear_selection"})
+                self._clear_form()
             except ValueError:
                 sg.popup('Initiative must be a whole number.')
 
-        elif event == 'Update Selected' and selected_index is not None:
-            c = self.combatants[selected_index]
-            c.name = values['-NAME-']
-            c.initiative = int(values['-INITIATIVE-'])
-            hp_str = values['-HP-'].strip()
-            c.hp = int(hp_str) if hp_str else None
-            c.conditions = [cond for cond in self.condition_list if values.get(f'-COND_{cond}-')]
-            self.sort_by_initiative()
-            for i, x in enumerate(self.combatants):
-                if x is c:
-                    selected_index = i
-                    break
-            selected_index_ref[0] = selected_index
-            self.refresh_table(selected_index)
-
-        elif event == 'Delete Selected' and selected_index is not None:
-            if 0 <= selected_index < len(self.combatants):
-                self.combatants.pop(selected_index)
-                if not self.combatants:
-                    self.active_index = 0
-                elif selected_index == self.active_index:
-                    self.active_index = min(self.active_index, len(self.combatants) - 1)
-                elif selected_index < self.active_index:
-                    self.active_index -= 1
-            selected_index = None
-            selected_index_ref[0] = None
-            self.send_to_map(proto.CLEAR_SELECTION)
-            self.refresh_table()
-
-        elif event == '↑ Move Up' and selected_index is not None and selected_index > 0:
-            self.combatants[selected_index], self.combatants[selected_index - 1] = \
-                self.combatants[selected_index - 1], self.combatants[selected_index]
-            if selected_index == self.active_index:
-                self.active_index -= 1
-            elif selected_index - 1 == self.active_index:
-                self.active_index += 1
-            selected_index -= 1
-            selected_index_ref[0] = selected_index
-            self.refresh_table(selected_index)
-
-        elif event == '↓ Move Down' and selected_index is not None and selected_index < len(self.combatants) - 1:
-            self.combatants[selected_index], self.combatants[selected_index + 1] = \
-                self.combatants[selected_index + 1], self.combatants[selected_index]
-            if selected_index == self.active_index:
-                self.active_index += 1
-            elif selected_index + 1 == self.active_index:
-                self.active_index -= 1
-            selected_index += 1
-            selected_index_ref[0] = selected_index
-            self.refresh_table(selected_index)
-
-        elif event == 'Wound' and selected_index is not None:
+        elif event == 'Update Selected' and self._selected_index is not None:
+            c = self.server.combatants[self._selected_index]
+            old_name = c.name
             try:
-                self.apply_damage(self.combatants[selected_index], int(values['-HP_CHANGE-']))
-                self.refresh_table(selected_index)
+                fields = {
+                    "name": values['-NAME-'],
+                    "initiative": int(values['-INITIATIVE-']),
+                    "hp": int(values['-HP-'].strip()) if values['-HP-'].strip() else None,
+                    "conditions": [cond for cond in self.condition_list if values.get(f'-COND_{cond}-')],
+                }
+            except ValueError:
+                sg.popup('Initiative must be a whole number.')
+                return
+            self.server.submit({"action": "update_combatant", "name": old_name, "fields": fields})
+            # server.combatants is already re-sorted; find new index by name
+            new_name = fields["name"]
+            for i, x in enumerate(self.server.combatants):
+                if x.name == new_name:
+                    self._selected_index = i
+                    break
+            self.refresh_table(self._selected_index)
+
+        elif event == 'Delete Selected' and self._selected_index is not None:
+            if 0 <= self._selected_index < len(self.server.combatants):
+                name = self.server.combatants[self._selected_index].name
+                self.server.submit({"action": "delete_combatant", "name": name})
+            self._selected_index = None
+            self.server.submit({"action": "clear_selection"})
+
+        elif event == '↑ Move Up' and self._selected_index is not None and self._selected_index > 0:
+            name = self.server.combatants[self._selected_index].name
+            self.server.submit({"action": "move_up", "name": name})
+            self._selected_index -= 1
+            self.refresh_table(self._selected_index)
+
+        elif event == '↓ Move Down' and (
+            self._selected_index is not None
+            and self._selected_index < len(self.server.combatants) - 1
+        ):
+            name = self.server.combatants[self._selected_index].name
+            self.server.submit({"action": "move_down", "name": name})
+            self._selected_index += 1
+            self.refresh_table(self._selected_index)
+
+        elif event == 'Wound' and self._selected_index is not None:
+            try:
+                name = self.server.combatants[self._selected_index].name
+                self.server.submit({"action": "apply_damage", "name": name,
+                                    "amount": int(values['-HP_CHANGE-'])})
+                self.refresh_table(self._selected_index)
             except ValueError:
                 sg.popup("Invalid damage value")
 
-        elif event == 'Heal' and selected_index is not None:
+        elif event == 'Heal' and self._selected_index is not None:
             try:
-                self.apply_heal(self.combatants[selected_index], int(values['-HP_CHANGE-']))
-                self.refresh_table(selected_index)
+                name = self.server.combatants[self._selected_index].name
+                self.server.submit({"action": "apply_heal", "name": name,
+                                    "amount": int(values['-HP_CHANGE-'])})
+                self.refresh_table(self._selected_index)
             except ValueError:
                 sg.popup("Invalid heal value")
 
         elif event == '⏭ Next Char':
-            self.next()
-            active = self.get_active()
-            selected_index_ref[0] = None
-            self.send_to_map(proto.CLEAR_SELECTION)
-            self.window['-NAME-'].update('')
-            self.window['-INITIATIVE-'].update('')
-            self.window['-HP-'].update('')
-            for cond in self.condition_list:
-                self.window[f'-COND_{cond}-'].update(False)
-            if active:
-                self.send_to_map(proto.make_active(active.name))
-            self.window['-TURN-'].update(str(self.turn))
+            self.server.submit({"action": "advance_turn"})
+            self._selected_index = None
+            self._clear_form()
+            self.window['-TURN-'].update(str(self.server.turn))
             self.refresh_table()
 
         elif event == '⏮ Prev Char':
-            self.previous()
-            active = self.get_active()
-            selected_index_ref[0] = None
-            self.send_to_map(proto.CLEAR_SELECTION)
-            self.window['-NAME-'].update('')
-            self.window['-INITIATIVE-'].update('')
-            self.window['-HP-'].update('')
-            for cond in self.condition_list:
-                self.window[f'-COND_{cond}-'].update(False)
-            if active:
-                self.send_to_map(proto.make_active(active.name))
-            self.window['-TURN-'].update(str(self.turn))
+            self.server.submit({"action": "retreat_turn"})
+            self._selected_index = None
+            self._clear_form()
+            self.window['-TURN-'].update(str(self.server.turn))
             self.refresh_table()
 
         elif event == '💾 Export':
             path = os.path.join(dir_path, f'Data/combat_tracker_{datetime.now().strftime("%Y%m%d_%H%M%S")}.json')
-            self.save_to_file(path)
+            self.server.submit({"action": "save", "path": path})
             sg.popup(f"Saved to {path}")
 
         elif event == '📂 Load':
-            file_path = sg.popup_get_file("Select tracker file", initial_folder=dir_path + "Data", file_types=(("JSON Files", "*.json"),))
+            file_path = sg.popup_get_file("Select tracker file", initial_folder=dir_path + "Data",
+                                          file_types=(("JSON Files", "*.json"),))
             if file_path:
-                self.load_from_file(file_path)
-                self.window['-TURN-'].update(str(self.turn))
-                selected_index = None
-                selected_index_ref[0] = None
-                self.send_to_map(proto.CLEAR_SELECTION)
-                self.refresh_table()
-
+                self._selected_index = None
+                self._clear_form()
+                self.server.submit({"action": "load", "path": file_path})
 
     def run_gui(self, dir_path):
         layout = self.build_gui_layout()
@@ -539,15 +418,14 @@ class Tracker:
             tree.column('#0', width=150, stretch=False, anchor='w')
             tree.heading('#0', text='')
 
-        selected_index = [None]
         self.refresh_table()
         while True:
             event, values = self.window.read()
             if event == sg.WIN_CLOSED:
                 break
-            if event == 'SOCKET_MSG':
-                self._process_socket_message_on_gui_thread(values[event])
+            if event == 'SERVER_EVENT':
+                self._apply_server_event(values[event])
                 continue
-            self.handle_event(event, values, selected_index, dir_path)
+            self.handle_event(event, values, dir_path)
 
         self.window.close()

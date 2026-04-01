@@ -22,6 +22,22 @@ class GameServer:
         self.turn: int = 1
         self.door_states: dict[tuple, str] = {}         # (row, col) → 'open'|'closed'
         self.secret_door_states: dict[tuple, str] = {}  # (row, col) → 'open'|'closed'
+        self._subscribers: list = []
+
+    # ------------------------------------------------------------------
+    # Pub/sub
+    # ------------------------------------------------------------------
+
+    def subscribe(self, callback):
+        """Register a callback(event: dict) to receive all broadcast events."""
+        self._subscribers.append(callback)
+
+    def submit(self, intent: dict):
+        """Submit an intent, process it, and broadcast all resulting events."""
+        events = self.process_intent(intent)
+        for cb in self._subscribers:
+            for event in events:
+                cb(event)
 
     # ------------------------------------------------------------------
     # Helpers

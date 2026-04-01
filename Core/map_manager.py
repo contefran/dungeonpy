@@ -1,13 +1,12 @@
 import pygame
 import os
-from Core.socket_bridge import SocketBridge
 from Core.log_utils import log
-import Core.protocol as proto
 import math
 
 class MapManager:
 
-    def __init__(self, map_path, dir_path, verbose=False, super_verbose=False):
+    def __init__(self, server, map_path, dir_path, verbose=False, super_verbose=False):
+        self.server = server
         self.dir_path = dir_path
         self.verbose = verbose
         self.super_verbose = super_verbose
@@ -23,8 +22,9 @@ class MapManager:
         self.pan_start = (0, 0)
 
         self.icons = {}
-        self.door_states = {}
-        self.secret_door_states = {}
+        self.unplaced = []
+        self.selected_token = None
+        self.running = True
 
         self.floor_texture_original = pygame.image.load(dir_path + 'Textures/stonefloor3.jpg')
         self.wall_texture_original = pygame.image.load(dir_path + 'Textures/stonefloor4.jpg')
@@ -33,13 +33,10 @@ class MapManager:
         self.secret_door_texture_original = self.wall_texture_original
         self.floor_texture, self.wall_texture, self.secret_door_texture, self.closed_door_texture, self.open_door_texture = self.scale_textures(self.tile_size)
 
-        self.combatants = []
         self.dragging_token = None
         self.drag_candidate = None
         self.dragging_offset = (0, 0)
         self.initial_token_pos = None
-        self.unplaced = []
-        self.bridge = None
         self.ui_font = None
         self._minimap_surface = None
 
@@ -73,12 +70,12 @@ class MapManager:
             lines = f.readlines()
         return [[int(ch) for ch in line.strip()] for line in lines]
 
-    def render(self, screen, selected_token, active_combatant):
+    def render(self, screen):
         screen.fill((0, 0, 0))
         self.draw_map(screen)
         self.draw_grid(screen)
         mx, my = pygame.mouse.get_pos()
-        self.draw_tokens(screen, selected_token, active_combatant, (mx, my))
+        self.draw_tokens(screen, self.selected_token, self.server.get_active(), (mx, my))
         self.draw_minimap(screen)
         if self.unplaced and self.ui_font:
             label = f"Click to place: {self.unplaced[0].name}"
@@ -104,7 +101,7 @@ class MapManager:
             except Exception as e:
                 print(f"Could not rescale icon {file}: {e}")
 
-    def load_icon(self,file):
+    def load_icon(self, file):
         try:
             img = pygame.image.load(self.dir_path + "Icons/" + file).convert_alpha()
             self.icons[file] = pygame.transform.smoothscale(img, (self.tile_size, self.tile_size))
@@ -113,32 +110,63 @@ class MapManager:
         return self.icons.get(file)
 
     def is_tile_occupied(self, x, y, ignore_token=None):
-        for c in self.combatants:
+        for c in self.server.combatants:
             if c == ignore_token:
                 continue
             if c.pos == [x, y]:
                 return True
         return False
 
-    def toggle_door(self, x, y):
-        tile = self.map_data[y][x]
-        key = (y, x)
-        if tile == 3:  # Normal door
-            current = self.door_states.get(key, 'closed')
-            new = 'closed' if current == 'open' else 'open'
-            self.door_states[key] = new
-            if self.verbose:
-                log(f"[Map] Door at ({x},{y}) toggled to: {new}")
-        elif tile == 4:  # Secret door
-            current = self.secret_door_states.get(key, 'closed')
-            new = 'closed' if current == 'open' else 'open'
-            self.secret_door_states[key] = new
-            if self.verbose:
-                log(f"[Map] Secret door at ({x},{y}) toggled to: {new}")
+    # ------------------------------------------------------------------
+    # Server event handling (pub/sub)
+    # ------------------------------------------------------------------
 
-    def get_pixel_coords(self, grid_pos):
-        cx, cy = grid_pos
-        return cx * self.tile_size + self.offset_x, cy * self.tile_size + self.offset_y
+    def handle_server_event(self, event: dict):
+        """Handle a server event — called on whatever thread submitted the triggering intent."""
+        if event.get("type") == "snapshot":
+            self._sync_from_snapshot(event["state"])
+            return
+
+        action = event.get("action")
+
+        if action == "selection_changed":
+            name = event["name"]
+            self.selected_token = next(
+                (c for c in self.server.combatants if c.name == name), None
+            )
+
+        elif action == "selection_cleared":
+            self.selected_token = None
+
+        elif action == "turn_advanced":
+            # Advancing turn naturally deselects the map token
+            self.selected_token = None
+
+        elif action == "combatant_added":
+            c_dict = event.get("combatant", {})
+            name = c_dict.get("name")
+            c = next((x for x in self.server.combatants if x.name == name), None)
+            if c:
+                if c.pos is None:
+                    self.unplaced.append(c)
+                if c.icon and c.icon not in self.icons:
+                    self.load_icon(c.icon)
+
+        elif action == "token_placed":
+            name = event["name"]
+            self.unplaced = [c for c in self.unplaced if c.name != name]
+
+    def _sync_from_snapshot(self, state):
+        """Rebuild local view state from a server snapshot (e.g. after load)."""
+        self.unplaced = [c for c in self.server.combatants if c.pos is None]
+        for c in self.server.combatants:
+            if c.icon and c.icon not in self.icons:
+                self.load_icon(c.icon)
+        self.selected_token = None
+
+    # ------------------------------------------------------------------
+    # Map rendering
+    # ------------------------------------------------------------------
 
     def draw_map(self, screen):
         for row in range(len(self.map_data)):
@@ -150,11 +178,11 @@ class MapManager:
 
                 if tile == 4:
                     screen.blit(self.wall_texture, (x, y))
-                    if self.secret_door_states.get(key) == "open":
+                    if self.server.secret_door_states.get(key) == "open":
                         screen.blit(self.open_door_texture, (x, y))
                 elif tile == 3:
                     screen.blit(self.floor_texture, (x, y))
-                    if self.door_states.get(key) == "open":
+                    if self.server.door_states.get(key) == "open":
                         screen.blit(self.open_door_texture, (x, y))
                     else:
                         screen.blit(self.closed_door_texture, (x, y))
@@ -179,7 +207,7 @@ class MapManager:
             pygame.draw.line(screen, grid_color, (self.offset_x, y), (cols * self.tile_size + self.offset_x, y))
 
     def draw_tokens(self, screen, selected_token=None, active_combatant=None, mouse_pos=None):
-        for i, c in enumerate(self.combatants):
+        for i, c in enumerate(self.server.combatants):
             if not c.pos:
                 continue
 
@@ -207,6 +235,10 @@ class MapManager:
                 glow_surface = pygame.Surface((glow_radius * 2, glow_radius * 2), pygame.SRCALPHA)
                 pygame.draw.circle(glow_surface, (135, 206, 250, 100), (glow_radius, glow_radius), glow_radius)
                 screen.blit(glow_surface, (x + self.tile_size // 2 - glow_radius, y + self.tile_size // 2 - glow_radius))
+
+    # ------------------------------------------------------------------
+    # Minimap
+    # ------------------------------------------------------------------
 
     def _build_minimap_surface(self):
         rows = len(self.map_data)
@@ -265,21 +297,25 @@ class MapManager:
         view_rect = pygame.Rect(view_x, view_y, ratio_x * rect.width, ratio_y * rect.height)
         pygame.draw.rect(screen, (255, 0, 0), view_rect, 2)
 
-    def run_loop(self, screen, tracker, selected_token_ref, running_flag):
+    # ------------------------------------------------------------------
+    # Input handling
+    # ------------------------------------------------------------------
+
+    def run_loop(self, screen):
         clock = pygame.time.Clock()
-        while running_flag[0]:
+        while self.running:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
-                    running_flag[0] = False
+                    self.running = False
 
                 elif event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_ESCAPE:
-                        running_flag[0] = False
+                        self.running = False
 
                 elif event.type == pygame.MOUSEBUTTONDOWN:
                     if event.button == 1:
-                        self.handle_click(event.pos, 1, selected_token_ref, self.unplaced)
-                        if selected_token_ref[0]:
+                        self.handle_click(event.pos, 1)
+                        if self.selected_token:
                             self.start_drag(*event.pos)
                     elif event.button == 3:
                         self.start_panning(event.pos)
@@ -297,7 +333,7 @@ class MapManager:
                 elif event.type == pygame.MOUSEWHEEL:
                     self.handle_zoom(event)
 
-            self.render(screen, selected_token_ref[0], tracker.get_active())
+            self.render(screen)
             pygame.display.flip()
             clock.tick(60)
 
@@ -338,7 +374,7 @@ class MapManager:
             if self.verbose:
                 log(f"[Map] Panning by ({dx}, {dy})")
 
-    def handle_click(self, pos, button, selected_token_ref, unplaced_list):
+    def handle_click(self, pos, button):
         mx, my = pos
 
         if button == 1:
@@ -356,15 +392,14 @@ class MapManager:
         if button == 1:
             if 0 <= col < len(self.map_data[0]) and 0 <= row < len(self.map_data):
                 tile = self.map_data[row][col]
-                if tile == 3 or tile == 4:  # Only if it's a door or secret door
-                    self.toggle_door(col, row)
+                if tile == 3 or tile == 4:
+                    self.server.submit({"action": "toggle_door", "x": col, "y": row, "tile_type": tile})
                     if self.verbose:
                         log(f"[Map] Toggled door at ({col}, {row})")
                     return
 
-            selected_token_ref[0] = None
             hit = False
-            for c in self.combatants:
+            for c in self.server.combatants:
                 if not c.pos:
                     if self.verbose:
                         log(f"[Map] Skipping token {c.name} — no position set")
@@ -378,31 +413,27 @@ class MapManager:
                     log(f"[Map] Checking token {c.name} at tile {c.pos} -> pixel ({x},{y})")
                     log(f"rect: {rect}, tile size: {self.tile_size}, offset: ({self.offset_x}, {self.offset_y})")
                 if rect.collidepoint(mx, my):
-                    selected_token_ref[0] = c
-                    self.send_to_tracker(proto.make_selected(c.name))
+                    self.server.submit({"action": "select", "name": c.name})
                     if self.verbose:
-                        log(f"[Map] Token rectangle: ({x}, {y}, {self.tile_size}, {self.tile_size}) -> Selected token: {c.name}")
+                        log(f"[Map] Selected token: {c.name}")
                     hit = True
                     break
 
-            if not hit and unplaced_list:
-                combatant = unplaced_list.pop(0)
-                combatant.pos = [col, row]
-                if combatant.icon:
-                    self.load_icon(combatant.icon)
-                self.combatants.append(combatant)
-                selected_token_ref[0] = combatant
-                self.send_to_tracker(proto.make_selected(combatant.name))
+            if not hit and self.unplaced:
+                combatant = self.unplaced[0]  # peek; handle_server_event removes it on token_placed
+                self.server.submit({"action": "place_token", "name": combatant.name, "pos": [col, row]})
+                self.server.submit({"action": "select", "name": combatant.name})
                 if self.verbose:
                     log(f"[Map] Placed new token: {combatant.name} at ({col},{row})")
+                hit = True
 
             if not hit:
                 if self.verbose:
                     log(f"[Map] No token selected")
-                self.send_to_tracker(proto.CLEAR_SELECTION)
+                self.server.submit({"action": "clear_selection"})
 
     def get_token_at_pixel(self, mx, my):
-        for c in self.combatants:
+        for c in self.server.combatants:
             if c.pos:
                 cx, cy = c.pos
                 x = cx * self.tile_size + self.offset_x
@@ -447,12 +478,12 @@ class MapManager:
         row = (my - self.offset_y) // self.tile_size
 
         if (0 <= col < len(self.map_data[0]) and 0 <= row < len(self.map_data)
-            and not self.is_tile_occupied(col, row, ignore_token=self.dragging_token)):
-            self.dragging_token.pos = [col, row]
+                and not self.is_tile_occupied(col, row, ignore_token=self.dragging_token)):
+            self.server.submit({"action": "move_token", "name": self.dragging_token.name, "pos": [col, row]})
             if self.verbose:
                 log(f"[Map] Dropped token {self.dragging_token.name} at ({col},{row})")
         else:
-            self.dragging_token.pos = self.initial_token_pos
+            self.server.submit({"action": "move_token", "name": self.dragging_token.name, "pos": self.initial_token_pos})
             if self.verbose:
                 log(f"[Map] Invalid drop, reverted {self.dragging_token.name} to {self.initial_token_pos}")
 
@@ -460,32 +491,6 @@ class MapManager:
         self.drag_candidate = None
         self.initial_token_pos = None
 
-    def start_socket_server(self, tracker, selected_token_ref):
-        def handle_message(message):
-            if self.verbose:
-                log(f"[Map] Received message: {message}")
-            msg = proto.parse(message)
-            if msg is None:
-                return
-            if msg["type"] == proto.TYPE_CLEAR:
-                selected_token_ref[0] = None
-            elif msg["type"] == proto.TYPE_SELECTED:
-                name = msg["name"]
-                for c in self.combatants:
-                    if c.name == name:
-                        selected_token_ref[0] = c
-                        break
-            elif msg["type"] == proto.TYPE_ACTIVE:
-                name = msg["name"]
-                for i, c in enumerate(self.combatants):
-                    if c.name == name:
-                        tracker.active_index = i
-                        break
-
-        self.bridge = SocketBridge(65433, on_message=handle_message, verbose=self.verbose)
-
-    def send_to_tracker(self, message):
-        if self.verbose:
-            log(f"[Map] Sending to tracker: {message}")
-        if self.bridge:
-            self.bridge.send(65432, message)
+    def get_pixel_coords(self, grid_pos):
+        cx, cy = grid_pos
+        return cx * self.tile_size + self.offset_x, cy * self.tile_size + self.offset_y
