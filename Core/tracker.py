@@ -120,9 +120,11 @@ class Tracker:
             name = event["name"]
             for i, c in enumerate(self.server.combatants):
                 if c.name == name:
-                    self._selected_index = i
-                    self._squelch_table_event = True
-                    self.window['-TABLE-'].update(select_rows=[i + 1])
+                    # Only highlight the row if selection actually moved (avoids echo from our own click)
+                    if i != self._selected_index:
+                        self._selected_index = i
+                        self._squelch_table_event = True
+                        self.window['-TABLE-'].update(select_rows=[i + 1])
                     self.window['-NAME-'].update(c.name)
                     self.window['-INITIATIVE-'].update(c.initiative)
                     self.window['-HP-'].update('' if c.hp is None else c.hp)
@@ -132,9 +134,10 @@ class Tracker:
                     break
 
         elif action == "selection_cleared":
-            self._selected_index = None
-            self._squelch_table_event = True
-            self.window['-TABLE-'].update(select_rows=[])
+            if self._selected_index is not None:
+                self._selected_index = None
+                self._squelch_table_event = True
+                self.window['-TABLE-'].update(select_rows=[])
             self._clear_form()
 
     # ------------------------------------------------------------------
@@ -254,9 +257,6 @@ class Tracker:
     # ------------------------------------------------------------------
 
     def handle_event(self, event, values, dir_path):
-        if self.verbose:
-            log(f"[Tracker] Event: {event}")
-
         if event == sg.WIN_CLOSED:
             return
 
@@ -264,6 +264,9 @@ class Tracker:
             if self._squelch_table_event:
                 self._squelch_table_event = False
                 return
+
+        if self.verbose:
+            log(f"[Tracker] Event: {event}")
             try:
                 if values['-TABLE-']:
                     row_index = values['-TABLE-'][0]
