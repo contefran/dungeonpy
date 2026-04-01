@@ -1,8 +1,9 @@
 import pygame
 import os
 from Core.socket_bridge import SocketBridge
+from Core.log_utils import log
+import Core.protocol as proto
 import math
-from datetime import datetime
 
 class MapManager:
 
@@ -39,6 +40,8 @@ class MapManager:
         self.initial_token_pos = None
         self.unplaced = []
         self.bridge = None
+        self.ui_font = None
+        self._minimap_surface = None
 
     def init_pygame(self):
         pygame.init()
@@ -60,6 +63,8 @@ class MapManager:
         self.closed_door_texture_original = self.closed_door_texture_original.convert_alpha()
         self.open_door_texture_original = self.open_door_texture_original.convert_alpha()
 
+        self.ui_font = pygame.font.SysFont('Arial', 18)
+        self._build_minimap_surface()
         clock = pygame.time.Clock()
         return screen, clock
 
@@ -75,7 +80,13 @@ class MapManager:
         mx, my = pygame.mouse.get_pos()
         self.draw_tokens(screen, selected_token, active_combatant, (mx, my))
         self.draw_minimap(screen)
-        
+        if self.unplaced and self.ui_font:
+            label = f"Click to place: {self.unplaced[0].name}"
+            text = self.ui_font.render(label, True, (255, 220, 50))
+            x = screen.get_width() // 2 - text.get_width() // 2
+            y = screen.get_height() - text.get_height() - 10
+            screen.blit(text, (x, y))
+
     def scale_textures(self, tile_size):
         return (
             pygame.transform.scale(self.floor_texture_original, (tile_size, tile_size)),
@@ -84,7 +95,7 @@ class MapManager:
             pygame.transform.scale(self.closed_door_texture_original, (tile_size, tile_size)),
             pygame.transform.scale(self.open_door_texture_original, (tile_size, tile_size))
         )
-    
+
     def rescale_icons(self):
         for file, icon in self.icons.items():
             try:
@@ -108,7 +119,7 @@ class MapManager:
             if c.pos == [x, y]:
                 return True
         return False
-    
+
     def toggle_door(self, x, y):
         tile = self.map_data[y][x]
         key = (y, x)
@@ -117,15 +128,13 @@ class MapManager:
             new = 'closed' if current == 'open' else 'open'
             self.door_states[key] = new
             if self.verbose:
-                print(f"[{datetime.now().strftime('%-I:%M:%S')}.{datetime.now().microsecond // 1000} {datetime.now().strftime('%p')}]", end='')
-                print(f"[Map] Door at ({x},{y}) toggled to: {new}")
+                log(f"[Map] Door at ({x},{y}) toggled to: {new}")
         elif tile == 4:  # Secret door
             current = self.secret_door_states.get(key, 'closed')
             new = 'closed' if current == 'open' else 'open'
             self.secret_door_states[key] = new
             if self.verbose:
-                print(f"[{datetime.now().strftime('%-I:%M:%S')}.{datetime.now().microsecond // 1000} {datetime.now().strftime('%p')}]", end='')
-                print(f"[Map] Secret door at ({x},{y}) toggled to: {new}")
+                log(f"[Map] Secret door at ({x},{y}) toggled to: {new}")
 
     def get_pixel_coords(self, grid_pos):
         cx, cy = grid_pos
@@ -155,7 +164,7 @@ class MapManager:
                     screen.blit(self.wall_texture, (x, y))
                 else:
                     screen.blit(self.floor_texture, (x, y))
-    
+
     def draw_grid(self, screen):
         grid_color = (180, 180, 180)
         rows = len(self.map_data)
@@ -173,7 +182,7 @@ class MapManager:
         for i, c in enumerate(self.combatants):
             if not c.pos:
                 continue
-            
+
             x, y = self.get_pixel_coords(c.pos)
 
             # Handle dragging tokens
@@ -181,11 +190,9 @@ class MapManager:
                 mx, my = mouse_pos
                 x = mx - self.dragging_offset[0]
                 y = my - self.dragging_offset[1]
-            
+
             icon_file = c.icon
             if icon_file and icon_file in self.icons:
-                #if self.verbose:
-                #    print(f"[Map] Drawing {c.name} icon at ({x}, {y})")
                 screen.blit(self.icons[icon_file], (x, y))
             else:
                 pygame.draw.circle(screen, (255, 0, 0), (x + self.tile_size // 2, y + self.tile_size // 2), self.tile_size // 3)
@@ -201,34 +208,32 @@ class MapManager:
                 pygame.draw.circle(glow_surface, (135, 206, 250, 100), (glow_radius, glow_radius), glow_radius)
                 screen.blit(glow_surface, (x + self.tile_size // 2 - glow_radius, y + self.tile_size // 2 - glow_radius))
 
-            #if self.verbose:
-            #    print(f"[{datetime.now().strftime('%-I:%M:%S')}.{datetime.now().microsecond // 1000} {datetime.now().strftime('%p')}]", end='')
-            #    print(f"[Map] Token {c.name} position: {c.pos}, rectangle: ({x}, {y}, {self.tile_size}, {self.tile_size})")
-
-    def draw_minimap(self, screen):
+    def _build_minimap_surface(self):
         rows = len(self.map_data)
         cols = len(self.map_data[0])
         scale = 0.04
-        mini_w = int(cols * self.tile_size * scale)
-        mini_h = int(rows * self.tile_size * scale)
-        mini_pos = (10, 10)
+        mini_w = max(1, int(cols * self.tile_size * scale))
+        mini_h = max(1, int(rows * self.tile_size * scale))
 
-        pygame.draw.rect(screen, (30, 30, 30), (*mini_pos, mini_w, mini_h))
-        mini_tile_w = mini_w / cols
-        mini_tile_h = mini_h / rows
-
+        # Draw one pixel per tile, then scale up — avoids float-rounding grid artefacts
+        pixel_surf = pygame.Surface((cols, rows))
         for row in range(rows):
             for col in range(cols):
                 color = (100, 60, 40) if self.map_data[row][col] == 1 else (210, 210, 200)
-                rect = pygame.Rect(
-                    mini_pos[0] + col * mini_tile_w,
-                    mini_pos[1] + row * mini_tile_h,
-                    mini_tile_w,
-                    mini_tile_h
-                )
-                pygame.draw.rect(screen, color, rect)
+                pixel_surf.set_at((col, row), color)
+        self._minimap_surface = pygame.transform.scale(pixel_surf, (mini_w, mini_h))
+
+    def draw_minimap(self, screen):
+        if self._minimap_surface is None:
+            return
+        mini_pos = (10, 10)
+        screen.blit(self._minimap_surface, mini_pos)
 
         # Viewport rectangle
+        rows = len(self.map_data)
+        cols = len(self.map_data[0])
+        mini_w = self._minimap_surface.get_width()
+        mini_h = self._minimap_surface.get_height()
         screen_w, screen_h = screen.get_size()
         map_px_w = cols * self.tile_size
         map_px_h = rows * self.tile_size
@@ -279,7 +284,7 @@ class MapManager:
             clock.tick(60)
 
         pygame.quit()
-        
+
     def handle_zoom(self, event):
         prev_size = self.tile_size
         if event.y > 0:
@@ -295,9 +300,9 @@ class MapManager:
             self.offset_y = center_y - ((center_y - self.offset_y) * self.tile_size) // prev_size
             self.floor_texture, self.wall_texture, self.secret_door_texture, self.closed_door_texture, self.open_door_texture = self.scale_textures(self.tile_size)
             self.rescale_icons()
+            self._build_minimap_surface()
         if self.verbose:
-            print(f"[{datetime.now().strftime('%-I:%M:%S')}.{datetime.now().microsecond // 1000} {datetime.now().strftime('%p')}]", end='')
-            print(f"[Map] Zoom level changed to tile_size = {self.tile_size}")
+            log(f"[Map] Zoom level changed to tile_size = {self.tile_size}")
 
     def start_panning(self, pos):
         self.panning = True
@@ -314,8 +319,7 @@ class MapManager:
             self.offset_y += dy
             self.pan_start = pos
             if self.verbose:
-                print(f"[{datetime.now().strftime('%-I:%M:%S')}.{datetime.now().microsecond // 1000} {datetime.now().strftime('%p')}]", end='')
-                print(f"[Map] Panning by ({dx}, {dy})")
+                log(f"[Map] Panning by ({dx}, {dy})")
 
     def handle_click(self, pos, button, selected_token_ref, unplaced_list):
         mx, my = pos
@@ -323,8 +327,7 @@ class MapManager:
         row = (my - self.offset_y) // self.tile_size
 
         if self.verbose:
-            print(f"[{datetime.now().strftime('%-I:%M:%S')}.{datetime.now().microsecond // 1000} {datetime.now().strftime('%p')}]", end='')
-            print(f"[Map] Mouse click at pixel=({mx},{my}) tile=({col},{row})")
+            log(f"[Map] Mouse click at pixel=({mx},{my}) tile=({col},{row})")
 
         if button == 1:
             if 0 <= col < len(self.map_data[0]) and 0 <= row < len(self.map_data):
@@ -332,16 +335,15 @@ class MapManager:
                 if tile == 3 or tile == 4:  # Only if it's a door or secret door
                     self.toggle_door(col, row)
                     if self.verbose:
-                        print(f"[{datetime.now().strftime('%-I:%M:%S')}.{datetime.now().microsecond // 1000} {datetime.now().strftime('%p')}]", end='')
-                        print(f"[Map] Toggled door at ({col}, {row})")
+                        log(f"[Map] Toggled door at ({col}, {row})")
+                    return
 
             selected_token_ref[0] = None
-            hit=False
+            hit = False
             for c in self.combatants:
                 if not c.pos:
                     if self.verbose:
-                        print(f"[{datetime.now().strftime('%-I:%M:%S')}.{datetime.now().microsecond // 1000} {datetime.now().strftime('%p')}]", end='')
-                        print(f"[Map] Skipping token {c.name} — no position set")
+                        log(f"[Map] Skipping token {c.name} — no position set")
                     continue
 
                 cx, cy = c.pos
@@ -349,17 +351,15 @@ class MapManager:
                 y = cy * self.tile_size + self.offset_y
                 rect = pygame.Rect(x, y, self.tile_size, self.tile_size)
                 if self.super_verbose:
-                    print(f"[{datetime.now().strftime('%-I:%M:%S')}.{datetime.now().microsecond // 1000} {datetime.now().strftime('%p')}]", end='')
-                    print(f"[Map] Checking token {c.name} at tile {c.pos} -> pixel ({x},{y})")
-                    print(f"rect: {rect}, tile size: {self.tile_size}, offset: ({self.offset_x}, {self.offset_y})")
+                    log(f"[Map] Checking token {c.name} at tile {c.pos} -> pixel ({x},{y})")
+                    log(f"rect: {rect}, tile size: {self.tile_size}, offset: ({self.offset_x}, {self.offset_y})")
                 if rect.collidepoint(mx, my):
                     selected_token_ref[0] = c
-                    self.send_to_tracker(f"{c.name} selected")
+                    self.send_to_tracker(proto.make_selected(c.name))
                     if self.verbose:
-                        print(f"[{datetime.now().strftime('%-I:%M:%S')}.{datetime.now().microsecond // 1000} {datetime.now().strftime('%p')}]", end='')
-                        print(f"[Map] Token rectangle: ({x}, {y}, {self.tile_size}, {self.tile_size}) -> Selected token: {c.name}")
-                    hit = True # token found
-                    break # stop searching
+                        log(f"[Map] Token rectangle: ({x}, {y}, {self.tile_size}, {self.tile_size}) -> Selected token: {c.name}")
+                    hit = True
+                    break
 
             if not hit and unplaced_list:
                 combatant = unplaced_list.pop(0)
@@ -368,17 +368,14 @@ class MapManager:
                     self.load_icon(combatant.icon)
                 self.combatants.append(combatant)
                 selected_token_ref[0] = combatant
-                self.send_to_tracker(f"{combatant.name} selected")
+                self.send_to_tracker(proto.make_selected(combatant.name))
                 if self.verbose:
-                    print(f"[{datetime.now().strftime('%-I:%M:%S')}.{datetime.now().microsecond // 1000} {datetime.now().strftime('%p')}]", end='')
-                    print(f"[Map] Placed new token: {combatant.name} at ({col},{row})")
+                    log(f"[Map] Placed new token: {combatant.name} at ({col},{row})")
 
             if not hit:
                 if self.verbose:
-                    print(f"[{datetime.now().strftime('%-I:%M:%S')}.{datetime.now().microsecond // 1000} {datetime.now().strftime('%p')}]", end='')
-                    print(f"[Map] No token selected")
-                self.send_to_tracker("CLEAR_SELECTION")
-
+                    log(f"[Map] No token selected")
+                self.send_to_tracker(proto.CLEAR_SELECTION)
 
     def get_token_at_pixel(self, mx, my):
         for c in self.combatants:
@@ -416,16 +413,7 @@ class MapManager:
                 self.dragging_token = self.drag_candidate
                 self.drag_candidate = None
                 if self.verbose:
-                    print(f"[{datetime.now().strftime('%-I:%M:%S')}.{datetime.now().microsecond // 1000} {datetime.now().strftime('%p')}]", end='')
-                    print(f"[Map] Dragging token: {self.dragging_token.name} from {self.dragging_token.pos}")
-
-        if self.dragging_token:
-            icon_x = mx - self.dragging_offset[0] + (self.tile_size // 2)
-            icon_y = my - self.dragging_offset[1] + (self.tile_size // 2)
-            self.dragging_token.pos = [
-                (icon_x - self.offset_x) // self.tile_size,
-                (icon_y - self.offset_y) // self.tile_size
-            ]
+                    log(f"[Map] Dragging token: {self.dragging_token.name} from {self.dragging_token.pos}")
 
     def drop_token(self, mx, my):
         if not self.dragging_token:
@@ -438,13 +426,11 @@ class MapManager:
             and not self.is_tile_occupied(col, row, ignore_token=self.dragging_token)):
             self.dragging_token.pos = [col, row]
             if self.verbose:
-                print(f"[{datetime.now().strftime('%-I:%M:%S')}.{datetime.now().microsecond // 1000} {datetime.now().strftime('%p')}]", end='')
-                print(f"[Map] Dropped token {self.dragging_token.name} at ({col},{row})")
+                log(f"[Map] Dropped token {self.dragging_token.name} at ({col},{row})")
         else:
             self.dragging_token.pos = self.initial_token_pos
             if self.verbose:
-                print(f"[{datetime.now().strftime('%-I:%M:%S')}.{datetime.now().microsecond // 1000} {datetime.now().strftime('%p')}]", end='')
-                print(f"[Map] Invalid drop, reverted {self.dragging_token.name} to {self.initial_token_pos}")
+                log(f"[Map] Invalid drop, reverted {self.dragging_token.name} to {self.initial_token_pos}")
 
         self.dragging_token = None
         self.drag_candidate = None
@@ -453,19 +439,20 @@ class MapManager:
     def start_socket_server(self, tracker, selected_token_ref):
         def handle_message(message):
             if self.verbose:
-                print(f"[{datetime.now().strftime('%-I:%M:%S')}.{datetime.now().microsecond // 1000} {datetime.now().strftime('%p')}]", end='')
-                print(f"[Map] Received message: {message}")
-
-            if message == "CLEAR_SELECTION":
+                log(f"[Map] Received message: {message}")
+            msg = proto.parse(message)
+            if msg is None:
+                return
+            if msg["type"] == proto.TYPE_CLEAR:
                 selected_token_ref[0] = None
-            elif message.endswith(" selected"):
-                name = message.replace(" selected", "")
+            elif msg["type"] == proto.TYPE_SELECTED:
+                name = msg["name"]
                 for c in self.combatants:
                     if c.name == name:
                         selected_token_ref[0] = c
                         break
-            elif message.endswith(" active"):
-                name = message.replace(" active", "")
+            elif msg["type"] == proto.TYPE_ACTIVE:
+                name = msg["name"]
                 for i, c in enumerate(self.combatants):
                     if c.name == name:
                         tracker.active_index = i
@@ -475,7 +462,6 @@ class MapManager:
 
     def send_to_tracker(self, message):
         if self.verbose:
-            print(f"[{datetime.now().strftime('%-I:%M:%S')}.{datetime.now().microsecond // 1000} {datetime.now().strftime('%p')}]", end='')
-            print(f"[Map] Sending to tracker: {message}")
+            log(f"[Map] Sending to tracker: {message}")
         if self.bridge:
             self.bridge.send(65432, message)

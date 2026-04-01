@@ -2,3 +2,12 @@ Presentation/
 Data/combat_tracker_*.json
 Core/__pycache__/
 .vscode/
+.pytest_cache/
+tests/__pycache__/
+DungeonPy.odt
+test.md
+CLAUDE.md
+bug.md
+.gitignore
+plan.txt
+
