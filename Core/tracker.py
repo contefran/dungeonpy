@@ -1,4 +1,5 @@
 from datetime import datetime
+import io
 import os
 import sys
 import json
@@ -7,6 +8,34 @@ from Core.combatant import Combatant
 from Core.socket_bridge import SocketBridge
 from Core.log_utils import log
 import Core.protocol as proto
+
+try:
+    from PIL import Image, ImageDraw, ImageFont as PILFont, ImageTk
+    _PIL_OK = True
+except ImportError:
+    _PIL_OK = False
+
+_NOTO_COLOR_EMOJI = "/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf"
+
+
+def _render_emoji_png(char: str, size: int = 22) -> bytes | None:
+    """Render a single emoji as a colour PNG via NotoColorEmoji. Returns None on failure."""
+    if not _PIL_OK or not os.path.exists(_NOTO_COLOR_EMOJI):
+        return None
+    try:
+        font = PILFont.truetype(_NOTO_COLOR_EMOJI, 109)  # 109 = native bitmap size
+        dummy = Image.new("RGBA", (1, 1))
+        bbox = ImageDraw.Draw(dummy).textbbox((0, 0), char, font=font, embedded_color=True)
+        w = max(1, bbox[2] - bbox[0])
+        h = max(1, bbox[3] - bbox[1])
+        img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+        ImageDraw.Draw(img).text((-bbox[0], -bbox[1]), char, font=font, embedded_color=True)
+        img = img.resize((size, size), Image.LANCZOS)
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        return buf.getvalue()
+    except Exception:
+        return None
 
 
 class Tracker:
@@ -48,6 +77,13 @@ class Tracker:
             self.condition_icons = {k: sanitize_emoji(v) for k, v in condition_dict.items()}
         else:
             self.condition_icons = dict(condition_dict)
+
+        # Pre-render each condition emoji as a colour PNG (None if PIL unavailable)
+        self.condition_images = {
+            cond: _render_emoji_png(icon)
+            for cond, icon in self.condition_icons.items()
+        }
+        self._table_photos = {}   # keeps ImageTk.PhotoImage refs alive (tkinter GC guard)
 
         self.bridge = SocketBridge(65432, on_message=self._handle_incoming_message, verbose=self.verbose)
         self.window = None
@@ -201,6 +237,24 @@ class Tracker:
         return None
 
 
+    def _make_condition_strip(self, conditions: list):
+        """Return an ImageTk.PhotoImage strip of condition icons, or None."""
+        if not _PIL_OK or not conditions:
+            return None
+        size, gap = 22, 2
+        imgs = []
+        for cond in conditions:
+            raw = self.condition_images.get(cond)
+            if raw:
+                imgs.append(Image.open(io.BytesIO(raw)).convert("RGBA"))
+        if not imgs:
+            return None
+        total_w = len(imgs) * size + (len(imgs) - 1) * gap
+        strip = Image.new("RGB", (total_w, size), (255, 255, 255))
+        for i, img in enumerate(imgs):
+            strip.paste(img, (i * (size + gap), 0), img)
+        return ImageTk.PhotoImage(strip)
+
     def build_gui_layout(self):
 
         def chunk(lst, size):
@@ -216,15 +270,24 @@ class Tracker:
             emoji_font = ("Noto Emoji", 12)
         table_font = ("Helvetica", 12)
 
-        condition_rows = [
-            [sg.Checkbox(f"{self.condition_icons[cond]} {cond}", key=f'-COND_{cond}-', font=emoji_font)
-             for cond in row]
-            for row in chunk(self.condition_list, 5)
-        ]
+        condition_rows = []
+        for row_conds in chunk(self.condition_list, 5):
+            row_elements = []
+            for cond in row_conds:
+                img_data = self.condition_images.get(cond)
+                if img_data:
+                    row_elements.append(sg.Image(data=img_data))
+                    row_elements.append(sg.Checkbox(cond, key=f'-COND_{cond}-', font=table_font))
+                else:
+                    row_elements.append(sg.Checkbox(
+                        f"{self.condition_icons[cond]} {cond}", key=f'-COND_{cond}-', font=emoji_font
+                    ))
+            condition_rows.append(row_elements)
+
         layout = [
             [sg.Text('Initiative Tracker', font=table_font)],
-            [sg.Table(values=[], headings=['Name', 'Initiative', 'HP', 'Conditions'],
-                      auto_size_columns=False, justification='left', col_widths=[20, 10, 10, 20],
+            [sg.Table(values=[], headings=['Name', 'Initiative', 'HP'],
+                      auto_size_columns=False, justification='left', col_widths=[20, 10, 10],
                       key='-TABLE-', enable_events=True, row_height=28, expand_x=True, num_rows=10,
                       background_color='white', text_color='black', font=table_font)],
             [sg.Text('Turn:', font=table_font), sg.Input(str(self.turn), key='-TURN-', size=(5, 1)),
@@ -235,7 +298,7 @@ class Tracker:
             [sg.Text('HP:', size=(10, 1), font=table_font), sg.Input(key='-HP-', size=(5, 1)),
              sg.Text('   Change:', font=table_font), sg.Input('0', key='-HP_CHANGE-', size=(5, 1)),
              sg.Button('Wound'), sg.Button('Heal')],
-            [sg.Text('Conditions:', font=emoji_font)],
+            [sg.Text('Conditions:', font=table_font)],
             *condition_rows,
             [
                 sg.Button('Add New'), sg.Button('Update Selected'),
@@ -247,11 +310,12 @@ class Tracker:
 
 
     def refresh_table(self, selected_index=None):
-        data = [['', '', '', '']]  # blank row for deselection
+        data = [['', '', '']]  # blank row for deselection
+        row_conditions = [[]]  # parallel list of condition lists per row
         for i, c in enumerate(self.combatants):
-            icons = ''.join(self.condition_icons.get(cond, '') for cond in c.conditions)
-            name = f"➡️ {c.name}" if i == self.active_index else c.name
-            data.append([name, c.initiative, '' if c.hp is None else c.hp, icons])
+            name = f"→ {c.name}" if i == self.active_index else c.name
+            data.append([name, c.initiative, '' if c.hp is None else c.hp])
+            row_conditions.append(list(c.conditions))
 
         self._squelch_table_event = True
         if selected_index is not None and 0 <= selected_index < len(self.combatants):
@@ -259,6 +323,16 @@ class Tracker:
         else:
             self.window['-TABLE-'].update(values=data, select_rows=[])
         self._squelch_table_event = False
+
+        if _PIL_OK:
+            tree = self.window['-TABLE-'].Widget
+            new_photos = {}
+            for item_id, conditions in zip(tree.get_children(), row_conditions):
+                photo = self._make_condition_strip(conditions)
+                tree.item(item_id, text='', image=photo if photo else '')
+                if photo:
+                    new_photos[item_id] = photo
+            self._table_photos = new_photos  # replace; old refs released
 
 
     def handle_event(self, event, values, selected_index_ref, dir_path):
@@ -458,6 +532,12 @@ class Tracker:
     def run_gui(self, dir_path):
         layout = self.build_gui_layout()
         self.window = sg.Window('D&D Initiative Tracker', layout, resizable=True, finalize=True)
+
+        if _PIL_OK:
+            tree = self.window['-TABLE-'].Widget
+            tree.configure(show='tree headings')
+            tree.column('#0', width=150, stretch=False, anchor='w')
+            tree.heading('#0', text='')
 
         selected_index = [None]
         self.refresh_table()

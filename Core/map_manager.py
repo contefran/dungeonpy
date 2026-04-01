@@ -211,9 +211,9 @@ class MapManager:
     def _build_minimap_surface(self):
         rows = len(self.map_data)
         cols = len(self.map_data[0])
-        scale = 0.04
-        mini_w = max(1, int(cols * self.tile_size * scale))
-        mini_h = max(1, int(rows * self.tile_size * scale))
+        # Fixed 2.4 px per tile (= 60 * 0.04) — independent of zoom level
+        mini_w = max(1, int(cols * 2.4))
+        mini_h = max(1, int(rows * 2.4))
 
         # Draw one pixel per tile, then scale up — avoids float-rounding grid artefacts
         pixel_surf = pygame.Surface((cols, rows))
@@ -223,17 +223,35 @@ class MapManager:
                 pixel_surf.set_at((col, row), color)
         self._minimap_surface = pygame.transform.scale(pixel_surf, (mini_w, mini_h))
 
-    def draw_minimap(self, screen):
+    def _minimap_rect(self):
+        """Bounding rect of the minimap on screen. Single source of truth for its position."""
         if self._minimap_surface is None:
+            return None
+        return pygame.Rect(10, 10, self._minimap_surface.get_width(), self._minimap_surface.get_height())
+
+    def _recenter_on_minimap_click(self, mx, my):
+        rect = self._minimap_rect()
+        rows = len(self.map_data)
+        cols = len(self.map_data[0])
+        map_px_w = cols * self.tile_size
+        map_px_h = rows * self.tile_size
+        frac_x = (mx - rect.x) / rect.width
+        frac_y = (my - rect.y) / rect.height
+        screen_w, screen_h = pygame.display.get_surface().get_size()
+        self.offset_x = screen_w // 2 - int(frac_x * map_px_w)
+        self.offset_y = screen_h // 2 - int(frac_y * map_px_h)
+        if self.verbose:
+            log(f"[Map] Minimap click at ({mx},{my}) -> recentered to frac ({frac_x:.2f},{frac_y:.2f})")
+
+    def draw_minimap(self, screen):
+        rect = self._minimap_rect()
+        if rect is None:
             return
-        mini_pos = (10, 10)
-        screen.blit(self._minimap_surface, mini_pos)
+        screen.blit(self._minimap_surface, rect.topleft)
 
         # Viewport rectangle
         rows = len(self.map_data)
         cols = len(self.map_data[0])
-        mini_w = self._minimap_surface.get_width()
-        mini_h = self._minimap_surface.get_height()
         screen_w, screen_h = screen.get_size()
         map_px_w = cols * self.tile_size
         map_px_h = rows * self.tile_size
@@ -242,9 +260,9 @@ class MapManager:
         ratio_x = screen_w / map_px_w
         ratio_y = screen_h / map_px_h
 
-        view_x = mini_pos[0] + (center_x / map_px_w) * mini_w - (ratio_x * mini_w) / 2
-        view_y = mini_pos[1] + (center_y / map_px_h) * mini_h - (ratio_y * mini_h) / 2
-        view_rect = pygame.Rect(view_x, view_y, ratio_x * mini_w, ratio_y * mini_h)
+        view_x = rect.x + (center_x / map_px_w) * rect.width  - (ratio_x * rect.width)  / 2
+        view_y = rect.y + (center_y / map_px_h) * rect.height - (ratio_y * rect.height) / 2
+        view_rect = pygame.Rect(view_x, view_y, ratio_x * rect.width, ratio_y * rect.height)
         pygame.draw.rect(screen, (255, 0, 0), view_rect, 2)
 
     def run_loop(self, screen, tracker, selected_token_ref, running_flag):
@@ -300,7 +318,6 @@ class MapManager:
             self.offset_y = center_y - ((center_y - self.offset_y) * self.tile_size) // prev_size
             self.floor_texture, self.wall_texture, self.secret_door_texture, self.closed_door_texture, self.open_door_texture = self.scale_textures(self.tile_size)
             self.rescale_icons()
-            self._build_minimap_surface()
         if self.verbose:
             log(f"[Map] Zoom level changed to tile_size = {self.tile_size}")
 
@@ -323,6 +340,13 @@ class MapManager:
 
     def handle_click(self, pos, button, selected_token_ref, unplaced_list):
         mx, my = pos
+
+        if button == 1:
+            minimap = self._minimap_rect()
+            if minimap and minimap.collidepoint(mx, my):
+                self._recenter_on_minimap_click(mx, my)
+                return
+
         col = (mx - self.offset_x) // self.tile_size
         row = (my - self.offset_y) // self.tile_size
 
