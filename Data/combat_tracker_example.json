@@ -11,7 +11,7 @@
         27,
         29
       ],
-      "icon": "RangerW_T.png"
+      "icon": "Ranger.png"
     },
     {
       "name": "Skeleton",
@@ -37,7 +37,20 @@
         27,
         31
       ],
-      "icon": "WarriorM_T.png"
+      "icon": "Warrior.png"
+    },
+    {
+      "name": "Mage",
+      "initiative": 12,
+      "hp": 11,
+      "conditions": [
+        "Frightened"
+      ],
+      "pos": [
+        29,
+        30
+      ],
+      "icon": "Mage.png"
     },
     {
       "name": "Wraith",
@@ -75,9 +88,9 @@
         30,
         28
       ],
-      "icon": "ClericW_T.png"
+      "icon": "Cleric.png"
     }
   ],
-  "active_index": 5,
+  "active_index": 6,
   "turn": 3
 }

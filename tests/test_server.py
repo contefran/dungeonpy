@@ -51,6 +51,22 @@ def test_advance_turn_wraps_and_increments_turn(server):
 def test_advance_turn_empty_no_crash(server):
     server.process_intent({"action": "advance_turn"})  # should not raise
 
+def test_advance_turn_skips_dead(server):
+    add(server, "A", 20)
+    add(server, "B", 10)
+    add(server, "C", 5)
+    server.process_intent({"action": "update_combatant", "name": "B", "fields": {"conditions": ["Dead"]}})
+    server.active_index = 0
+    server.process_intent({"action": "advance_turn"})
+    assert server.combatants[server.active_index].name == "C"
+
+def test_advance_turn_all_dead_no_crash(server):
+    add(server, "A", 20)
+    server.process_intent({"action": "update_combatant", "name": "A", "fields": {"conditions": ["Dead"]}})
+    server.active_index = 0
+    server.process_intent({"action": "advance_turn"})  # should not raise or loop
+    assert server.active_index == 0
+
 
 # --- retreat_turn ---
 
@@ -79,6 +95,22 @@ def test_retreat_turn_floor_is_one(server):
 
 def test_retreat_turn_empty_no_crash(server):
     server.process_intent({"action": "retreat_turn"})  # should not raise
+
+def test_retreat_turn_skips_dead(server):
+    add(server, "A", 20)
+    add(server, "B", 10)
+    add(server, "C", 5)
+    server.process_intent({"action": "update_combatant", "name": "B", "fields": {"conditions": ["Dead"]}})
+    server.active_index = 2
+    server.process_intent({"action": "retreat_turn"})
+    assert server.combatants[server.active_index].name == "A"
+
+def test_retreat_turn_all_dead_no_crash(server):
+    add(server, "A", 20)
+    server.process_intent({"action": "update_combatant", "name": "A", "fields": {"conditions": ["Dead"]}})
+    server.active_index = 0
+    server.process_intent({"action": "retreat_turn"})  # should not raise or loop
+    assert server.active_index == 0
 
 
 # --- get_active ---
@@ -159,6 +191,20 @@ def test_apply_heal_none_hp_treated_as_zero(server):
     }})
     server.process_intent({"action": "apply_heal", "name": "A", "amount": 10})
     assert server.combatants[0].hp == 10
+
+def test_apply_heal_capped_at_max_hp(server):
+    server.process_intent({"action": "add_combatant", "combatant": {
+        "name": "A", "initiative": 10, "hp": 8, "max_hp": 10
+    }})
+    server.process_intent({"action": "apply_heal", "name": "A", "amount": 5})
+    assert server.combatants[0].hp == 10
+
+def test_apply_heal_no_cap_without_max_hp(server):
+    server.process_intent({"action": "add_combatant", "combatant": {
+        "name": "A", "initiative": 10, "hp": 8
+    }})
+    server.process_intent({"action": "apply_heal", "name": "A", "amount": 5})
+    assert server.combatants[0].hp == 13
 
 
 # --- save / load roundtrip ---

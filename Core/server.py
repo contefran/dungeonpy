@@ -124,7 +124,10 @@ class GameServer:
 
     def _apply_heal(self, combatant: Combatant, amount: int):
         current = combatant.hp if combatant.hp is not None else 0
-        combatant.hp = current + amount
+        new_hp = current + amount
+        if combatant.max_hp is not None:
+            new_hp = min(new_hp, combatant.max_hp)
+        combatant.hp = new_hp
         if combatant.hp > 0 and "Unconscious" in combatant.conditions:
             combatant.conditions.remove("Unconscious")
 
@@ -135,18 +138,30 @@ class GameServer:
     def _next(self):
         if not self.combatants:
             return
-        self.active_index = (self.active_index + 1) % len(self.combatants)
-        if self.active_index == 0:
-            self.turn += 1
+        if all("Dead" in c.conditions for c in self.combatants):
+            return
+        n = len(self.combatants)
+        while True:
+            self.active_index = (self.active_index + 1) % n
+            if self.active_index == 0:
+                self.turn += 1
+            if "Dead" not in self.combatants[self.active_index].conditions:
+                break
 
     def _previous(self):
         if not self.combatants:
             return
-        if self.active_index == 0:
-            self.active_index = len(self.combatants) - 1
-            self.turn = max(1, self.turn - 1)
-        else:
-            self.active_index -= 1
+        if all("Dead" in c.conditions for c in self.combatants):
+            return
+        n = len(self.combatants)
+        while True:
+            if self.active_index == 0:
+                self.active_index = n - 1
+                self.turn = max(1, self.turn - 1)
+            else:
+                self.active_index -= 1
+            if "Dead" not in self.combatants[self.active_index].conditions:
+                break
 
     # ------------------------------------------------------------------
     # Persistence
@@ -228,6 +243,8 @@ class GameServer:
                 for key, value in fields.items():
                     if hasattr(c, key):
                         setattr(c, key, value)
+                if "Dead" in c.conditions:
+                    c.conditions = ["Dead"]
                 if initiative_changed:
                     self._sort()
                     return [self.get_snapshot()]

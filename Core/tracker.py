@@ -155,6 +155,7 @@ class Tracker:
                     self.window['-NAME-'].update(c.name)
                     self.window['-INITIATIVE-'].update(c.initiative)
                     self.window['-HP-'].update('' if c.hp is None else c.hp)
+                    self.window['-MAX_HP-'].update('' if c.max_hp is None else c.max_hp)
                     for cond in self.condition_list:
                         self.window[f'-COND_{cond}-'].update(cond in c.conditions)
                     self.window.refresh()
@@ -175,6 +176,7 @@ class Tracker:
         self.window['-NAME-'].update('')
         self.window['-INITIATIVE-'].update('')
         self.window['-HP-'].update('')
+        self.window['-MAX_HP-'].update('')
         for cond in self.condition_list:
             self.window[f'-COND_{cond}-'].update(False)
         self.window.refresh()
@@ -242,6 +244,7 @@ class Tracker:
             [sg.Text('Name', size=(10, 1), font=table_font), sg.Input(key='-NAME-', size=(30, 1))],
             [sg.Text('Initiative', size=(10, 1), font=table_font), sg.Input(key='-INITIATIVE-', size=(5, 1))],
             [sg.Text('HP:', size=(10, 1), font=table_font), sg.Input(key='-HP-', size=(5, 1)),
+             sg.Text('Max HP:', font=table_font), sg.Input(key='-MAX_HP-', size=(5, 1)),
              sg.Text('   Change:', font=table_font), sg.Input('0', key='-HP_CHANGE-', size=(5, 1)),
              sg.Button('Wound'), sg.Button('Heal')],
             [sg.Text('Conditions:', font=table_font)],
@@ -266,15 +269,19 @@ class Tracker:
             self.window['-TABLE-'].update(values=data, select_rows=[])
         self._squelch_table_event = False
 
-        if _PIL_OK:
-            tree = self.window['-TABLE-'].Widget
-            new_photos = {}
-            for item_id, conditions in zip(tree.get_children(), row_conditions):
+        tree = self.window['-TABLE-'].Widget
+        tree.tag_configure('dead', font=('Helvetica', 12, 'overstrike'))
+        new_photos = {}
+        for item_id, conditions in zip(tree.get_children(), row_conditions):
+            tags = ('dead',) if 'Dead' in conditions else ()
+            if _PIL_OK:
                 photo = self._make_condition_strip(conditions)
-                tree.item(item_id, text='', image=photo if photo else '')
+                tree.item(item_id, text='', image=photo if photo else '', tags=tags)
                 if photo:
                     new_photos[item_id] = photo
-            self._table_photos = new_photos  # replace; old refs released
+            else:
+                tree.item(item_id, tags=tags)
+        self._table_photos = new_photos  # replace; old refs released
 
     # ------------------------------------------------------------------
     # Event handling
@@ -310,6 +317,7 @@ class Tracker:
                         self.window['-NAME-'].update(c.name)
                         self.window['-INITIATIVE-'].update(c.initiative)
                         self.window['-HP-'].update('' if c.hp is None else c.hp)
+                        self.window['-MAX_HP-'].update('' if c.max_hp is None else c.max_hp)
                         for cond in self.condition_list:
                             self.window[f'-COND_{cond}-'].update(cond in c.conditions)
                         self._submit({"action": "select", "name": c.name})
@@ -329,6 +337,8 @@ class Tracker:
                 init = int(init_str)
                 hp_str = values['-HP-'].strip()
                 hp = int(hp_str) if hp_str else None
+                max_hp_str = values['-MAX_HP-'].strip()
+                max_hp = int(max_hp_str) if max_hp_str else None
                 conditions = [cond for cond in self.condition_list if values.get(f'-COND_{cond}-')]
                 icon_path = sg.popup_get_file(
                     f"Select icon for {name} (close to skip)",
@@ -338,7 +348,7 @@ class Tracker:
                 )
                 icon = os.path.basename(icon_path) if icon_path else None
                 self._submit({"action": "add_combatant", "combatant": {
-                    "name": name, "initiative": init, "hp": hp,
+                    "name": name, "initiative": init, "hp": hp, "max_hp": max_hp,
                     "conditions": conditions, "icon": icon,
                 }})
                 self._selected_index = None
@@ -355,6 +365,7 @@ class Tracker:
                     "name": values['-NAME-'],
                     "initiative": int(values['-INITIATIVE-']),
                     "hp": int(values['-HP-'].strip()) if values['-HP-'].strip() else None,
+                    "max_hp": int(values['-MAX_HP-'].strip()) if values['-MAX_HP-'].strip() else None,
                     "conditions": [cond for cond in self.condition_list if values.get(f'-COND_{cond}-')],
                 }
             except ValueError:

@@ -1,9 +1,10 @@
 class Combatant:
     
-    def __init__(self, name, initiative, hp=None, conditions=None, pos=None, icon=None):
+    def __init__(self, name, initiative, hp=None, max_hp=None, conditions=None, pos=None, icon=None):
         self.name = name
         self.initiative = initiative
         self.hp = hp  # int or None
+        self.max_hp = max_hp  # int or None
         self.conditions = conditions or []
         self.pos = pos  # [x, y] or None
         self.icon = icon
@@ -13,6 +14,7 @@ class Combatant:
             "name": self.name,
             "initiative": self.initiative,
             "hp": self.hp,
+            "max_hp": self.max_hp,
             "conditions": self.conditions,
             "pos": self.pos,
             "icon": self.icon
@@ -24,6 +26,7 @@ class Combatant:
             name=data.get("name"),
             initiative=data.get("initiative", 0),
             hp=data.get("hp"),
+            max_hp=data.get("max_hp"),
             conditions=data.get("conditions", []),
             pos=data.get("pos"),
             icon=data.get("icon"),

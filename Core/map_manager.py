@@ -220,10 +220,13 @@ class MapManager:
                 y = my - self.dragging_offset[1]
 
             icon_file = c.icon
+            is_dead = "Dead" in c.conditions
             if icon_file and icon_file in self.icons:
-                screen.blit(self.icons[icon_file], (x, y))
+                surf = pygame.transform.grayscale(self.icons[icon_file]) if is_dead else self.icons[icon_file]
+                screen.blit(surf, (x, y))
             else:
-                pygame.draw.circle(screen, (255, 0, 0), (x + self.tile_size // 2, y + self.tile_size // 2), self.tile_size // 3)
+                color = (160, 160, 160) if is_dead else (255, 0, 0)
+                pygame.draw.circle(screen, color, (x + self.tile_size // 2, y + self.tile_size // 2), self.tile_size // 3)
 
             # Highlight selected
             if c == selected_token:
