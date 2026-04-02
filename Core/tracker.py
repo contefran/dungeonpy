@@ -2,6 +2,7 @@ from datetime import datetime
 import io
 import os
 import sys
+import tkinter as tk
 import PySimpleGUI as sg
 from Core.combatant import Combatant
 from Core.log_utils import log
@@ -181,6 +182,43 @@ class Tracker:
             self.window[f'-COND_{cond}-'].update(False)
         self.window.refresh()
 
+    def _start_notes_edit(self, event):
+        """Open an inline Entry widget over the Notes cell on double-click."""
+        tree = self.window['-TABLE-'].Widget
+        if tree.identify_region(event.x, event.y) != 'cell':
+            return
+        if tree.identify_column(event.x) != '#4':  # Notes is the 4th data column
+            return
+        item = tree.identify_row(event.y)
+        if not item:
+            return
+        children = list(tree.get_children())
+        idx = children.index(item)
+        if idx == 0:  # blank deselection row
+            return
+        combatant = self.server.combatants[idx - 1]
+
+        bbox = tree.bbox(item, '#4')
+        if not bbox:
+            return
+        x, y, w, h = bbox
+
+        var = tk.StringVar(value=combatant.notes or '')
+        entry = tk.Entry(tree, textvariable=var)
+        entry.place(x=x, y=y, width=w, height=h)
+        entry.select_range(0, 'end')
+        entry.focus()
+
+        def commit(e=None):
+            new_val = var.get()
+            entry.destroy()
+            self._submit({"action": "update_combatant", "name": combatant.name,
+                          "fields": {"notes": new_val}})
+
+        entry.bind('<Return>', commit)
+        entry.bind('<FocusOut>', commit)
+        entry.bind('<Escape>', lambda e: entry.destroy())
+
     # ------------------------------------------------------------------
     # Table rendering
     # ------------------------------------------------------------------
@@ -234,8 +272,8 @@ class Tracker:
 
         layout = [
             [sg.Text('Initiative Tracker', font=table_font)],
-            [sg.Table(values=[], headings=['Name', 'Initiative', 'HP'],
-                      auto_size_columns=False, justification='left', col_widths=[20, 10, 10],
+            [sg.Table(values=[], headings=['Name', 'Initiative', 'HP', 'Notes'],
+                      auto_size_columns=False, justification='left', col_widths=[20, 10, 10, 40],
                       key='-TABLE-', enable_events=True, row_height=28, expand_x=True, num_rows=10,
                       background_color='white', text_color='black', font=table_font)],
             [sg.Text('Turn:', font=table_font), sg.Input(str(self.server.turn), key='-TURN-', size=(5, 1)),
@@ -255,11 +293,11 @@ class Tracker:
         return layout
 
     def refresh_table(self, selected_index=None):
-        data = [['', '', '']]  # blank row for deselection
+        data = [['', '', '', '']]  # blank row for deselection
         row_conditions = [[]]  # parallel list of condition lists per row
         for i, c in enumerate(self.server.combatants):
             name = f"→ {c.name}" if i == self.server.active_index else c.name
-            data.append([name, c.initiative, '' if c.hp is None else c.hp])
+            data.append([name, c.initiative, '' if c.hp is None else c.hp, c.notes])
             row_conditions.append(list(c.conditions))
 
         self._squelch_table_event = True
@@ -438,8 +476,9 @@ class Tracker:
         layout = self.build_gui_layout()
         self.window = sg.Window('D&D Initiative Tracker', layout, resizable=True, finalize=True)
 
+        tree = self.window['-TABLE-'].Widget
+        tree.bind('<Double-Button-1>', self._start_notes_edit)
         if _PIL_OK:
-            tree = self.window['-TABLE-'].Widget
             tree.configure(show='tree headings')
             tree.column('#0', width=150, stretch=False, anchor='w')
             tree.heading('#0', text='')

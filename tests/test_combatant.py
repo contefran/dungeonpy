@@ -22,14 +22,16 @@ def test_is_down_none_hp():
 # --- serialization roundtrip ---
 
 def test_to_dict_from_dict_roundtrip():
-    c = Combatant("Rogue", 21, hp=14, conditions=["Invis"], pos=[1, 2], icon="rogue.png")
+    c = Combatant("Rogue", 21, hp=14, max_hp=20, conditions=["Invis"], pos=[1, 2], icon="rogue.png", notes="stealthy")
     c2 = Combatant.from_dict(c.to_dict())
     assert c2.name == "Rogue"
     assert c2.initiative == 21
     assert c2.hp == 14
+    assert c2.max_hp == 20
     assert c2.conditions == ["Invis"]
     assert c2.pos == [1, 2]
     assert c2.icon == "rogue.png"
+    assert c2.notes == "stealthy"
 
 def test_from_dict_null_hp():
     c = Combatant.from_dict({"name": "Warrior", "initiative": 13, "hp": None})
@@ -38,6 +40,8 @@ def test_from_dict_null_hp():
 def test_from_dict_defaults():
     c = Combatant.from_dict({"name": "X", "initiative": 5})
     assert c.hp is None
+    assert c.max_hp is None
     assert c.conditions == []
     assert c.pos is None
     assert c.icon is None
+    assert c.notes == ''

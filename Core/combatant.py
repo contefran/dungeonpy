@@ -1,6 +1,6 @@
 class Combatant:
     
-    def __init__(self, name, initiative, hp=None, max_hp=None, conditions=None, pos=None, icon=None):
+    def __init__(self, name, initiative, hp=None, max_hp=None, conditions=None, pos=None, icon=None, notes=''):
         self.name = name
         self.initiative = initiative
         self.hp = hp  # int or None
@@ -8,6 +8,7 @@ class Combatant:
         self.conditions = conditions or []
         self.pos = pos  # [x, y] or None
         self.icon = icon
+        self.notes = notes
 
     def to_dict(self):
         return {
@@ -17,7 +18,8 @@ class Combatant:
             "max_hp": self.max_hp,
             "conditions": self.conditions,
             "pos": self.pos,
-            "icon": self.icon
+            "icon": self.icon,
+            "notes": self.notes,
         }
 
     @classmethod
@@ -30,6 +32,7 @@ class Combatant:
             conditions=data.get("conditions", []),
             pos=data.get("pos"),
             icon=data.get("icon"),
+            notes=data.get("notes", ''),
         )
 
     def is_down(self):

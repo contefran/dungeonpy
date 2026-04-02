@@ -207,6 +207,57 @@ def test_apply_heal_no_cap_without_max_hp(server):
     assert server.combatants[0].hp == 13
 
 
+# --- update_combatant ---
+
+def test_dead_condition_clears_others(server):
+    add(server, "A", 10)
+    server.process_intent({"action": "update_combatant", "name": "A",
+                           "fields": {"conditions": ["Poisoned", "Stunned"]}})
+    server.process_intent({"action": "update_combatant", "name": "A",
+                           "fields": {"conditions": ["Poisoned", "Dead"]}})
+    assert server.combatants[0].conditions == ["Dead"]
+
+def test_update_combatant_notes(server):
+    add(server, "A", 10)
+    server.process_intent({"action": "update_combatant", "name": "A",
+                           "fields": {"notes": "has the amulet"}})
+    assert server.combatants[0].notes == "has the amulet"
+
+def test_update_combatant_initiative_triggers_sort(server):
+    add(server, "A", 20)
+    add(server, "B", 10)
+    server.process_intent({"action": "update_combatant", "name": "B",
+                           "fields": {"initiative": 30}})
+    assert server.combatants[0].name == "B"
+    assert server.combatants[1].name == "A"
+
+
+# --- delete_combatant ---
+
+def test_delete_combatant_removes_it(server):
+    add(server, "A", 20)
+    add(server, "B", 10)
+    server.process_intent({"action": "delete_combatant", "name": "A"})
+    assert len(server.combatants) == 1
+    assert server.combatants[0].name == "B"
+
+def test_delete_active_combatant_clamps_index(server):
+    add(server, "A", 20)
+    add(server, "B", 10)
+    server.active_index = 1
+    server.process_intent({"action": "delete_combatant", "name": "B"})
+    assert server.active_index == 0
+
+def test_delete_combatant_before_active_shifts_index(server):
+    add(server, "A", 20)
+    add(server, "B", 10)
+    add(server, "C", 5)
+    server.active_index = 2
+    server.process_intent({"action": "delete_combatant", "name": "A"})
+    assert server.active_index == 1  # shifted down by one
+    assert server.combatants[server.active_index].name == "C"
+
+
 # --- save / load roundtrip ---
 
 def test_save_load_roundtrip(server, tmp_path):
