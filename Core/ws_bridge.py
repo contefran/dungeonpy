@@ -112,10 +112,15 @@ class WSBridge:
         """
         while True:
             intent = await self._queue.get()
-            # server.submit() is synchronous and fast (pure in-memory ops).
-            # It calls _on_server_event for each emitted event, which schedules
-            # _broadcast tasks that run on the next loop iteration.
-            self.server.submit(intent)
+            try:
+                # server.submit() is synchronous and fast (pure in-memory ops).
+                # It calls _on_server_event for each emitted event, which schedules
+                # _broadcast tasks that run on the next loop iteration.
+                self.server.submit(intent)
+            except Exception as e:
+                # A subscriber callback threw (e.g. GUI window not yet ready).
+                # Log and continue — never let a single bad intent kill the loop.
+                print(f"[WSBridge] Error processing intent {intent.get('action')!r}: {e}")
 
     # ------------------------------------------------------------------
     # Server event → WS broadcast

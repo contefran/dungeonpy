@@ -108,19 +108,19 @@ def test_apply_damage_floors_at_zero(server):
 def test_apply_damage_adds_down_at_zero(server):
     add(server, "A", 10, hp=3)
     server.process_intent({"action": "apply_damage", "name": "A", "amount": 10})
-    assert "Down" in server.combatants[0].conditions
+    assert "Unconscious" in server.combatants[0].conditions
 
 def test_apply_damage_no_duplicate_down(server):
     server.process_intent({"action": "add_combatant", "combatant": {
-        "name": "A", "initiative": 10, "hp": 3, "conditions": ["Down"]
+        "name": "A", "initiative": 10, "hp": 3, "conditions": ["Unconscious"]
     }})
     server.process_intent({"action": "apply_damage", "name": "A", "amount": 10})
-    assert server.combatants[0].conditions.count("Down") == 1
+    assert server.combatants[0].conditions.count("Unconscious") == 1
 
 def test_apply_damage_partial_does_not_add_down(server):
     add(server, "A", 10, hp=10)
     server.process_intent({"action": "apply_damage", "name": "A", "amount": 5})
-    assert "Down" not in server.combatants[0].conditions
+    assert "Unconscious" not in server.combatants[0].conditions
 
 def test_apply_damage_none_hp_treated_as_zero(server):
     server.process_intent({"action": "add_combatant", "combatant": {
@@ -128,7 +128,7 @@ def test_apply_damage_none_hp_treated_as_zero(server):
     }})
     server.process_intent({"action": "apply_damage", "name": "A", "amount": 5})
     assert server.combatants[0].hp == 0
-    assert "Down" in server.combatants[0].conditions
+    assert "Unconscious" in server.combatants[0].conditions
 
 
 # --- apply_heal ---
@@ -140,18 +140,18 @@ def test_apply_heal_increases_hp(server):
 
 def test_apply_heal_removes_down(server):
     server.process_intent({"action": "add_combatant", "combatant": {
-        "name": "A", "initiative": 10, "hp": 0, "conditions": ["Down"]
+        "name": "A", "initiative": 10, "hp": 0, "conditions": ["Unconscious"]
     }})
     server.process_intent({"action": "apply_heal", "name": "A", "amount": 5})
-    assert "Down" not in server.combatants[0].conditions
+    assert "Unconscious" not in server.combatants[0].conditions
     assert server.combatants[0].hp == 5
 
 def test_apply_heal_zero_does_not_remove_down(server):
     server.process_intent({"action": "add_combatant", "combatant": {
-        "name": "A", "initiative": 10, "hp": 0, "conditions": ["Down"]
+        "name": "A", "initiative": 10, "hp": 0, "conditions": ["Unconscious"]
     }})
     server.process_intent({"action": "apply_heal", "name": "A", "amount": 0})
-    assert "Down" in server.combatants[0].conditions
+    assert "Unconscious" in server.combatants[0].conditions
 
 def test_apply_heal_none_hp_treated_as_zero(server):
     server.process_intent({"action": "add_combatant", "combatant": {

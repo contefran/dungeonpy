@@ -20,22 +20,17 @@ class Combatant:
 
     @classmethod
     def from_dict(cls, data):
-        raw_hp = data.get("hp", None)
-        if isinstance(raw_hp, str):
-            hp = int(raw_hp) if raw_hp.strip() else None  # handle old string-format saves
-        else:
-            hp = raw_hp  # int or None
         return cls(
             name=data.get("name"),
             initiative=data.get("initiative", 0),
-            hp=hp,
+            hp=data.get("hp"),
             conditions=data.get("conditions", []),
             pos=data.get("pos"),
-            icon=data.get("icon")
+            icon=data.get("icon"),
         )
 
     def is_down(self):
-        return self.hp == 0 or "Down" in self.conditions
+        return self.hp == 0 or "Unconscious" in self.conditions
 
     def __repr__(self):
         return f"<Combatant {self.name} (init: {self.initiative})>"

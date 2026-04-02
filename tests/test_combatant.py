@@ -7,10 +7,10 @@ def test_is_down_hp_zero():
     assert Combatant("Goblin", 10, hp=0).is_down()
 
 def test_is_down_condition():
-    assert Combatant("Goblin", 10, hp=5, conditions=["Down"]).is_down()
+    assert Combatant("Goblin", 10, hp=5, conditions=["Unconscious"]).is_down()
 
 def test_is_down_both():
-    assert Combatant("Goblin", 10, hp=0, conditions=["Down"]).is_down()
+    assert Combatant("Goblin", 10, hp=0, conditions=["Unconscious"]).is_down()
 
 def test_is_down_false():
     assert not Combatant("Goblin", 10, hp=5).is_down()
@@ -30,14 +30,6 @@ def test_to_dict_from_dict_roundtrip():
     assert c2.conditions == ["Invis"]
     assert c2.pos == [1, 2]
     assert c2.icon == "rogue.png"
-
-def test_from_dict_legacy_string_hp():
-    c = Combatant.from_dict({"name": "Warrior", "initiative": 13, "hp": "19"})
-    assert c.hp == 19
-
-def test_from_dict_empty_string_hp():
-    c = Combatant.from_dict({"name": "Warrior", "initiative": 13, "hp": ""})
-    assert c.hp is None
 
 def test_from_dict_null_hp():
     c = Combatant.from_dict({"name": "Warrior", "initiative": 13, "hp": None})

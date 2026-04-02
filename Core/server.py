@@ -113,20 +113,20 @@ class GameServer:
         }
 
     # ------------------------------------------------------------------
-    # Damage / heal  (same logic as Tracker, now lives here canonically)
+    # Damage / heal
     # ------------------------------------------------------------------
 
     def _apply_damage(self, combatant: Combatant, amount: int):
         current = combatant.hp if combatant.hp is not None else 0
         combatant.hp = max(0, current - amount)
-        if combatant.hp == 0 and "Down" not in combatant.conditions:
-            combatant.conditions.append("Down")
+        if combatant.hp == 0 and "Unconscious" not in combatant.conditions:
+            combatant.conditions.append("Unconscious")
 
     def _apply_heal(self, combatant: Combatant, amount: int):
         current = combatant.hp if combatant.hp is not None else 0
         combatant.hp = current + amount
-        if combatant.hp > 0 and "Down" in combatant.conditions:
-            combatant.conditions.remove("Down")
+        if combatant.hp > 0 and "Unconscious" in combatant.conditions:
+            combatant.conditions.remove("Unconscious")
 
     # ------------------------------------------------------------------
     # Turn management

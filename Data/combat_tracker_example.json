@@ -3,9 +3,9 @@
     {
       "name": "Ranger",
       "initiative": 21,
-      "hp": "14",
+      "hp": 14,
       "conditions": [
-        "Invis"
+        "Invisible"
       ],
       "pos": [
         27,
@@ -16,7 +16,7 @@
     {
       "name": "Skeleton",
       "initiative": 14,
-      "hp": "13",
+      "hp": 13,
       "conditions": [
         "Prone"
       ],
@@ -24,14 +24,14 @@
         27,
         32
       ],
-      "icon": "skeleton.png"
+      "icon": "Skeleton.png"
     },
     {
       "name": "Warrior",
       "initiative": 13,
-      "hp": "19",
+      "hp": 19,
       "conditions": [
-        "Charm"
+        "Charmed"
       ],
       "pos": [
         27,
@@ -42,34 +42,34 @@
     {
       "name": "Wraith",
       "initiative": 11,
-      "hp": "29",
+      "hp": 29,
       "conditions": [
-        "Invis"
+        "Invisible"
       ],
       "pos": [
         24,
         29
       ],
-      "icon": "wraith.png"
+      "icon": "Wraith.png"
     },
     {
       "name": "Zombie",
       "initiative": 8,
-      "hp": "2",
+      "hp": 2,
       "conditions": [],
       "pos": [
         28,
         33
       ],
-      "icon": "zombie.png"
+      "icon": "Zombie.png"
     },
     {
       "name": "Cleric",
       "initiative": 6,
-      "hp": "9",
+      "hp": 9,
       "conditions": [
-        "Paral",
-        "See-inv"
+        "Paralyzed",
+        "See-invisible"
       ],
       "pos": [
         30,

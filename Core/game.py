@@ -3,6 +3,7 @@ from Core.ws_bridge import WSBridge
 from Core.map_manager import MapManager
 from Core.tracker import Tracker
 from Core.log_utils import log
+import os
 import threading
 
 DEFAULT_MAP_PATH     = 'Maps/sample_dungeon_matrix_with_voids.txt'
@@ -27,6 +28,7 @@ class Game:
         self.tracker = Tracker(
             server=self.server,
             submit=self.bridge.submit,
+            dir_path=dir_path,
             verbose=verbose,
             super_verbose=super_verbose,
         )
@@ -42,7 +44,7 @@ class Game:
                 verbose=verbose,
                 super_verbose=super_verbose,
             )
-            self.screen, _ = self.map_manager.init_pygame()
+            self.screen = self.map_manager.init_pygame()
 
         # Subscribe both clients to server events
         self.server.subscribe(self.tracker.handle_server_event)
@@ -71,7 +73,7 @@ class Game:
                 log("[Game] Starting map and tracker.")
 
             # Load initial state — snapshot is broadcast to all subscribers
-            self.bridge.submit({"action": "load", "path": self.dir_path + DEFAULT_SAVE_FILE})
+            self.bridge.submit({"action": "load", "path": os.path.join(self.dir_path, DEFAULT_SAVE_FILE)})
 
             tracker_thread = threading.Thread(
                 target=self.tracker.run_gui,

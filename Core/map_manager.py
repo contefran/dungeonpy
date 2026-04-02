@@ -27,10 +27,10 @@ class MapManager:
         self.selected_token = None
         self.running = True
 
-        self.floor_texture_original = pygame.image.load(dir_path + 'Textures/stonefloor3.jpg')
-        self.wall_texture_original = pygame.image.load(dir_path + 'Textures/stonefloor4.jpg')
-        self.closed_door_texture_original = pygame.image.load(dir_path + 'Textures/closed_door1.png')
-        self.open_door_texture_original = pygame.image.load(dir_path + 'Textures/open_door1.png')
+        self.floor_texture_original = pygame.image.load(os.path.join(dir_path, 'Textures/stonefloor3.jpg'))
+        self.wall_texture_original = pygame.image.load(os.path.join(dir_path, 'Textures/stonefloor4.jpg'))
+        self.closed_door_texture_original = pygame.image.load(os.path.join(dir_path, 'Textures/closed_door1.png'))
+        self.open_door_texture_original = pygame.image.load(os.path.join(dir_path, 'Textures/open_door1.png'))
         self.secret_door_texture_original = self.wall_texture_original
         self.floor_texture, self.wall_texture, self.secret_door_texture, self.closed_door_texture, self.open_door_texture = self.scale_textures(self.tile_size)
 
@@ -63,8 +63,7 @@ class MapManager:
 
         self.ui_font = pygame.font.SysFont('Arial', 18)
         self._build_minimap_surface()
-        clock = pygame.time.Clock()
-        return screen, clock
+        return screen
 
     def load_map_from_txt(self, filepath):
         with open(filepath, "r") as f:
@@ -391,34 +390,32 @@ class MapManager:
             log(f"[Map] Mouse click at pixel=({mx},{my}) tile=({col},{row})")
 
         if button == 1:
-            if 0 <= col < len(self.map_data[0]) and 0 <= row < len(self.map_data):
+            if self.super_verbose:
+                for c in self.server.combatants:
+                    if c.pos:
+                        cx, cy = c.pos
+                        x = cx * self.tile_size + self.offset_x
+                        y = cy * self.tile_size + self.offset_y
+                        rect = pygame.Rect(x, y, self.tile_size, self.tile_size)
+                        log(f"[Map] Checking token {c.name} at tile {c.pos} -> pixel ({x},{y})")
+                        log(f"rect: {rect}, tile size: {self.tile_size}, offset: ({self.offset_x}, {self.offset_y})")
+
+            # Tokens have priority: check for a token before checking the tile type.
+            # This ensures a token placed on a door can still be selected.
+            token = self.get_token_at_pixel(mx, my)
+            hit = token is not None
+            if token:
+                self._submit({"action": "select", "name": token.name})
+                if self.verbose:
+                    log(f"[Map] Selected token: {token.name}")
+
+            if not hit and 0 <= col < len(self.map_data[0]) and 0 <= row < len(self.map_data):
                 tile = self.map_data[row][col]
                 if tile == 3 or tile == 4:
                     self._submit({"action": "toggle_door", "x": col, "y": row, "tile_type": tile})
                     if self.verbose:
                         log(f"[Map] Toggled door at ({col}, {row})")
                     return
-
-            hit = False
-            for c in self.server.combatants:
-                if not c.pos:
-                    if self.verbose:
-                        log(f"[Map] Skipping token {c.name} — no position set")
-                    continue
-
-                cx, cy = c.pos
-                x = cx * self.tile_size + self.offset_x
-                y = cy * self.tile_size + self.offset_y
-                rect = pygame.Rect(x, y, self.tile_size, self.tile_size)
-                if self.super_verbose:
-                    log(f"[Map] Checking token {c.name} at tile {c.pos} -> pixel ({x},{y})")
-                    log(f"rect: {rect}, tile size: {self.tile_size}, offset: ({self.offset_x}, {self.offset_y})")
-                if rect.collidepoint(mx, my):
-                    self._submit({"action": "select", "name": c.name})
-                    if self.verbose:
-                        log(f"[Map] Selected token: {c.name}")
-                    hit = True
-                    break
 
             if not hit and self.unplaced:
                 combatant = self.unplaced[0]  # peek; handle_server_event removes it on token_placed

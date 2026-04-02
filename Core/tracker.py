@@ -13,6 +13,7 @@ except ImportError:
     _PIL_OK = False
 
 _NOTO_COLOR_EMOJI = "/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf"
+CONDITION_ICON_SIZE = 22  # pixels — adjust by eye
 
 
 def _render_emoji_png(char: str, size: int = 22) -> bytes | None:
@@ -37,9 +38,10 @@ def _render_emoji_png(char: str, size: int = 22) -> bytes | None:
 
 class Tracker:
 
-    def __init__(self, server, submit=None, verbose=False, super_verbose=False):
+    def __init__(self, server, submit=None, dir_path='', verbose=False, super_verbose=False):
         self.server = server
         self._submit = submit if submit is not None else server.submit
+        self.dir_path = dir_path
         self.verbose = verbose
         self.super_verbose = super_verbose
         self._squelch_table_event = False
@@ -48,21 +50,21 @@ class Tracker:
 
         condition_dict = {
             'Blind': '🙈',
-            'Charm': '💘',
+            'Charmed': '💘',
             'Deaf': '🙉',
-            'Fright': '😱',
-            'Grapple': '🤼',
-            'Incap': '💤',
-            'Invis': '👻',
-            'Paral': '🧊',
-            'Petr': '🗿',
-            'Poison': '🩸',
+            'Frightened': '😱',
+            'Grappled': '🤼',
+            'Incapacitated': '💤',
+            'Invisible': '👻',
+            'Paralyzed': '🧊',
+            'Petrified': '🗿',
+            'Poisoned': '🩸',
             'Prone': '🛌',
-            'Restrain': '⛓',
-            'See-inv': '👁',
-            'Stun': '😵',
-            'Uncon': '🛑',
-            'Down': '💀',
+            'Restrained': '⛓',
+            'See-invisible': '👁',
+            'Stunned': '😵',
+            'Unconscious': '🛑',
+            'Dead': '💀',
         }
         self.condition_list = list(condition_dict.keys())
 
@@ -74,15 +76,39 @@ class Tracker:
         else:
             self.condition_icons = dict(condition_dict)
 
-        # Pre-render each condition emoji as a colour PNG (None if PIL unavailable)
-        self.condition_images = {
-            cond: _render_emoji_png(icon)
-            for cond, icon in self.condition_icons.items()
-        }
+        # Load condition images: PNG files take priority, emoji rendering is the fallback.
+        self.condition_images = self._load_condition_images()
         self._table_photos = {}   # keeps ImageTk.PhotoImage refs alive (tkinter GC guard)
 
         if self.verbose:
             log("[Tracker] Tracker module loaded.")
+
+    # ------------------------------------------------------------------
+    # Condition image loading
+    # ------------------------------------------------------------------
+
+    def _load_condition_images(self) -> dict:
+        """
+        Return {condition_name: png_bytes} for each condition.
+        Prefers Icons/Conditions/<name>.png; falls back to emoji rendering.
+        """
+        images = {}
+        for cond in self.condition_list:
+            png_path = os.path.join(self.dir_path, 'Icons', 'Conditions', f'{cond}.png')
+            if os.path.isfile(png_path):
+                with open(png_path, 'rb') as f:
+                    raw = f.read()
+                if _PIL_OK:
+                    img = Image.open(io.BytesIO(raw)).convert("RGBA")
+                    img = img.resize((CONDITION_ICON_SIZE, CONDITION_ICON_SIZE), Image.LANCZOS)
+                    buf = io.BytesIO()
+                    img.save(buf, format="PNG")
+                    images[cond] = buf.getvalue()
+                else:
+                    images[cond] = raw
+            else:
+                images[cond] = _render_emoji_png(self.condition_icons[cond])
+        return images
 
     # ------------------------------------------------------------------
     # Server event handling (pub/sub)
@@ -161,12 +187,12 @@ class Tracker:
         """Return an ImageTk.PhotoImage strip of condition icons, or None."""
         if not _PIL_OK or not conditions:
             return None
-        size, gap = 22, 2
+        size, gap = CONDITION_ICON_SIZE, 2
         imgs = []
         for cond in conditions:
             raw = self.condition_images.get(cond)
             if raw:
-                imgs.append(Image.open(io.BytesIO(raw)).convert("RGBA"))
+                imgs.append(Image.open(io.BytesIO(raw)).convert("RGBA").resize((size, size), Image.LANCZOS))
         if not imgs:
             return None
         total_w = len(imgs) * size + (len(imgs) - 1) * gap
@@ -258,10 +284,9 @@ class Tracker:
         if event == sg.WIN_CLOSED:
             return
 
-        if event == '-TABLE-':
-            if self._squelch_table_event:
-                self._squelch_table_event = False
-                return
+        if event == '-TABLE-' and self._squelch_table_event:
+            self._squelch_table_event = False
+            return
 
         if self.verbose:
             log(f"[Tracker] Event: {event}")
