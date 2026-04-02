@@ -5,8 +5,9 @@ import math
 
 class MapManager:
 
-    def __init__(self, server, map_path, dir_path, verbose=False, super_verbose=False):
+    def __init__(self, server, map_path, dir_path, submit=None, verbose=False, super_verbose=False):
         self.server = server
+        self._submit = submit if submit is not None else server.submit
         self.dir_path = dir_path
         self.verbose = verbose
         self.super_verbose = super_verbose
@@ -393,7 +394,7 @@ class MapManager:
             if 0 <= col < len(self.map_data[0]) and 0 <= row < len(self.map_data):
                 tile = self.map_data[row][col]
                 if tile == 3 or tile == 4:
-                    self.server.submit({"action": "toggle_door", "x": col, "y": row, "tile_type": tile})
+                    self._submit({"action": "toggle_door", "x": col, "y": row, "tile_type": tile})
                     if self.verbose:
                         log(f"[Map] Toggled door at ({col}, {row})")
                     return
@@ -413,7 +414,7 @@ class MapManager:
                     log(f"[Map] Checking token {c.name} at tile {c.pos} -> pixel ({x},{y})")
                     log(f"rect: {rect}, tile size: {self.tile_size}, offset: ({self.offset_x}, {self.offset_y})")
                 if rect.collidepoint(mx, my):
-                    self.server.submit({"action": "select", "name": c.name})
+                    self._submit({"action": "select", "name": c.name})
                     if self.verbose:
                         log(f"[Map] Selected token: {c.name}")
                     hit = True
@@ -421,8 +422,8 @@ class MapManager:
 
             if not hit and self.unplaced:
                 combatant = self.unplaced[0]  # peek; handle_server_event removes it on token_placed
-                self.server.submit({"action": "place_token", "name": combatant.name, "pos": [col, row]})
-                self.server.submit({"action": "select", "name": combatant.name})
+                self._submit({"action": "place_token", "name": combatant.name, "pos": [col, row]})
+                self._submit({"action": "select", "name": combatant.name})
                 if self.verbose:
                     log(f"[Map] Placed new token: {combatant.name} at ({col},{row})")
                 hit = True
@@ -430,7 +431,7 @@ class MapManager:
             if not hit:
                 if self.verbose:
                     log(f"[Map] No token selected")
-                self.server.submit({"action": "clear_selection"})
+                self._submit({"action": "clear_selection"})
 
     def get_token_at_pixel(self, mx, my):
         for c in self.server.combatants:
@@ -479,11 +480,11 @@ class MapManager:
 
         if (0 <= col < len(self.map_data[0]) and 0 <= row < len(self.map_data)
                 and not self.is_tile_occupied(col, row, ignore_token=self.dragging_token)):
-            self.server.submit({"action": "move_token", "name": self.dragging_token.name, "pos": [col, row]})
+            self._submit({"action": "move_token", "name": self.dragging_token.name, "pos": [col, row]})
             if self.verbose:
                 log(f"[Map] Dropped token {self.dragging_token.name} at ({col},{row})")
         else:
-            self.server.submit({"action": "move_token", "name": self.dragging_token.name, "pos": self.initial_token_pos})
+            self._submit({"action": "move_token", "name": self.dragging_token.name, "pos": self.initial_token_pos})
             if self.verbose:
                 log(f"[Map] Invalid drop, reverted {self.dragging_token.name} to {self.initial_token_pos}")
 

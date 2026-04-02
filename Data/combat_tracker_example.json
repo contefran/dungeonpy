@@ -1,7 +1,7 @@
 {
   "initiative": [
     {
-      "name": "Rogue",
+      "name": "Ranger",
       "initiative": 21,
       "hp": "14",
       "conditions": [
@@ -11,7 +11,7 @@
         27,
         29
       ],
-      "icon": "rogue.png"
+      "icon": "RangerW_T.png"
     },
     {
       "name": "Skeleton",
@@ -37,7 +37,7 @@
         27,
         31
       ],
-      "icon": "warrior.png"
+      "icon": "WarriorM_T.png"
     },
     {
       "name": "Wraith",
@@ -64,7 +64,7 @@
       "icon": "zombie.png"
     },
     {
-      "name": "Wizard",
+      "name": "Cleric",
       "initiative": 6,
       "hp": "9",
       "conditions": [
@@ -75,9 +75,9 @@
         30,
         28
       ],
-      "icon": "wizard.png"
+      "icon": "ClericW_T.png"
     }
   ],
   "active_index": 5,
-  "turn": 5
+  "turn": 3
 }

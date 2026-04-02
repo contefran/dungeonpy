@@ -12,17 +12,20 @@ Snapshot(server → client): {"type": "snapshot", "state": {...}}
 
 import json
 from Core.combatant import Combatant
+from Core.protocol import validate_intent, make_event, make_snapshot, make_error
 
 
 class GameServer:
 
-    def __init__(self):
+    def __init__(self, snapshot_interval: int = 50):
         self.combatants: list[Combatant] = []
         self.active_index: int = 0
         self.turn: int = 1
         self.door_states: dict[tuple, str] = {}         # (row, col) → 'open'|'closed'
         self.secret_door_states: dict[tuple, str] = {}  # (row, col) → 'open'|'closed'
         self._subscribers: list = []
+        self._seq: int = 0
+        self._snapshot_interval: int = snapshot_interval
 
     # ------------------------------------------------------------------
     # Pub/sub
@@ -33,11 +36,42 @@ class GameServer:
         self._subscribers.append(callback)
 
     def submit(self, intent: dict):
-        """Submit an intent, process it, and broadcast all resulting events."""
-        events = self.process_intent(intent)
+        """
+        Submit an intent: validate → process → stamp seq → echo client_req_id
+        → broadcast → maybe append periodic snapshot.
+        """
+        client_req_id = intent.get("client_req_id")
+
+        ok, reason = validate_intent(intent)
+        if not ok:
+            self._seq += 1
+            error = make_error(reason, self._seq, client_req_id)
+            for cb in self._subscribers:
+                cb(error)
+            return
+
+        raw_events = self.process_intent(intent)
+
+        stamped: list[dict] = []
+        for raw in raw_events:
+            self._seq += 1
+            if raw.get("type") == "snapshot":
+                msg = make_snapshot(raw["state"], self._seq, client_req_id)
+            else:
+                fields = {k: v for k, v in raw.items() if k not in ("type", "action")}
+                msg = make_event(raw["action"], self._seq, client_req_id, **fields)
+            stamped.append(msg)
+
+        # Periodic full snapshot: append one after the last stamped event
+        # if _seq crossed a multiple of _snapshot_interval during this submit.
+        if stamped and self._snapshot_interval > 0:
+            if self._seq % self._snapshot_interval == 0:
+                self._seq += 1
+                stamped.append(make_snapshot(self.get_snapshot()["state"], self._seq))
+
         for cb in self._subscribers:
-            for event in events:
-                cb(event)
+            for msg in stamped:
+                cb(msg)
 
     # ------------------------------------------------------------------
     # Helpers
@@ -65,8 +99,10 @@ class GameServer:
         return None
 
     def get_snapshot(self) -> dict:
+        """Return a raw snapshot dict (no seq stamp — stamping is done in submit())."""
         return {
             "type": "snapshot",
+            "seq": self._seq,
             "state": {
                 "combatants": [c.to_dict() for c in self.combatants],
                 "active_index": self.active_index,
@@ -211,30 +247,6 @@ class GameServer:
                         self.active_index -= 1
                     return [{"type": "event", "action": "combatant_removed", "name": name}]
             return []
-
-        if action == "move_up":
-            name = intent.get("name")
-            for i, c in enumerate(self.combatants):
-                if c.name == name and i > 0:
-                    self.combatants[i], self.combatants[i - 1] = self.combatants[i - 1], self.combatants[i]
-                    if i == self.active_index:
-                        self.active_index -= 1
-                    elif i - 1 == self.active_index:
-                        self.active_index += 1
-                    break
-            return [self.get_snapshot()]
-
-        if action == "move_down":
-            name = intent.get("name")
-            for i, c in enumerate(self.combatants):
-                if c.name == name and i < len(self.combatants) - 1:
-                    self.combatants[i], self.combatants[i + 1] = self.combatants[i + 1], self.combatants[i]
-                    if i == self.active_index:
-                        self.active_index += 1
-                    elif i + 1 == self.active_index:
-                        self.active_index -= 1
-                    break
-            return [self.get_snapshot()]
 
         # --- Map: tokens ---
         if action == "place_token":

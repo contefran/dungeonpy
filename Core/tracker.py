@@ -37,8 +37,9 @@ def _render_emoji_png(char: str, size: int = 22) -> bytes | None:
 
 class Tracker:
 
-    def __init__(self, server, verbose=False, super_verbose=False):
+    def __init__(self, server, submit=None, verbose=False, super_verbose=False):
         self.server = server
+        self._submit = submit if submit is not None else server.submit
         self.verbose = verbose
         self.super_verbose = super_verbose
         self._squelch_table_event = False
@@ -220,10 +221,7 @@ class Tracker:
             [sg.Text('Conditions:', font=table_font)],
             *condition_rows,
             [
-                sg.Button('Add New'), sg.Button('Update Selected'),
-                sg.Button('Delete Selected'), sg.Button('↑ Move Up'), sg.Button('↓ Move Down')
-            ],
-            [sg.Button('💾 Export'), sg.Button('📂 Load')]
+                sg.Button('Add New'), sg.Button('Update Selected'), sg.Button('Delete Selected'), sg.Button('💾 Export'), sg.Button('📂 Load')]
         ]
         return layout
 
@@ -267,6 +265,8 @@ class Tracker:
 
         if self.verbose:
             log(f"[Tracker] Event: {event}")
+
+        if event == '-TABLE-':
             try:
                 if values['-TABLE-']:
                     row_index = values['-TABLE-'][0]
@@ -274,7 +274,7 @@ class Tracker:
                         log(f"[Tracker] Handling row selection: {row_index}")
                     if row_index == 0:
                         self._selected_index = None
-                        self.server.submit({"action": "clear_selection"})
+                        self._submit({"action": "clear_selection"})
                         self.window['-TABLE-'].update(select_rows=[])
                         self._clear_form()
                     else:
@@ -287,12 +287,12 @@ class Tracker:
                         self.window['-HP-'].update('' if c.hp is None else c.hp)
                         for cond in self.condition_list:
                             self.window[f'-COND_{cond}-'].update(cond in c.conditions)
-                        self.server.submit({"action": "select", "name": c.name})
+                        self._submit({"action": "select", "name": c.name})
                         self.window.refresh()
             except Exception as e:
                 print(f"Selection error: {e}")
                 self._selected_index = None
-                self.server.submit({"action": "clear_selection"})
+                self._submit({"action": "clear_selection"})
 
         elif event == 'Add New':
             try:
@@ -312,12 +312,12 @@ class Tracker:
                     no_window=False,
                 )
                 icon = os.path.basename(icon_path) if icon_path else None
-                self.server.submit({"action": "add_combatant", "combatant": {
+                self._submit({"action": "add_combatant", "combatant": {
                     "name": name, "initiative": init, "hp": hp,
                     "conditions": conditions, "icon": icon,
                 }})
                 self._selected_index = None
-                self.server.submit({"action": "clear_selection"})
+                self._submit({"action": "clear_selection"})
                 self._clear_form()
             except ValueError:
                 sg.popup('Initiative must be a whole number.')
@@ -335,7 +335,7 @@ class Tracker:
             except ValueError:
                 sg.popup('Initiative must be a whole number.')
                 return
-            self.server.submit({"action": "update_combatant", "name": old_name, "fields": fields})
+            self._submit({"action": "update_combatant", "name": old_name, "fields": fields})
             # server.combatants is already re-sorted; find new index by name
             new_name = fields["name"]
             for i, x in enumerate(self.server.combatants):
@@ -347,29 +347,14 @@ class Tracker:
         elif event == 'Delete Selected' and self._selected_index is not None:
             if 0 <= self._selected_index < len(self.server.combatants):
                 name = self.server.combatants[self._selected_index].name
-                self.server.submit({"action": "delete_combatant", "name": name})
+                self._submit({"action": "delete_combatant", "name": name})
             self._selected_index = None
-            self.server.submit({"action": "clear_selection"})
-
-        elif event == '↑ Move Up' and self._selected_index is not None and self._selected_index > 0:
-            name = self.server.combatants[self._selected_index].name
-            self.server.submit({"action": "move_up", "name": name})
-            self._selected_index -= 1
-            self.refresh_table(self._selected_index)
-
-        elif event == '↓ Move Down' and (
-            self._selected_index is not None
-            and self._selected_index < len(self.server.combatants) - 1
-        ):
-            name = self.server.combatants[self._selected_index].name
-            self.server.submit({"action": "move_down", "name": name})
-            self._selected_index += 1
-            self.refresh_table(self._selected_index)
+            self._submit({"action": "clear_selection"})
 
         elif event == 'Wound' and self._selected_index is not None:
             try:
                 name = self.server.combatants[self._selected_index].name
-                self.server.submit({"action": "apply_damage", "name": name,
+                self._submit({"action": "apply_damage", "name": name,
                                     "amount": int(values['-HP_CHANGE-'])})
                 self.refresh_table(self._selected_index)
             except ValueError:
@@ -378,21 +363,21 @@ class Tracker:
         elif event == 'Heal' and self._selected_index is not None:
             try:
                 name = self.server.combatants[self._selected_index].name
-                self.server.submit({"action": "apply_heal", "name": name,
+                self._submit({"action": "apply_heal", "name": name,
                                     "amount": int(values['-HP_CHANGE-'])})
                 self.refresh_table(self._selected_index)
             except ValueError:
                 sg.popup("Invalid heal value")
 
         elif event == '⏭ Next Char':
-            self.server.submit({"action": "advance_turn"})
+            self._submit({"action": "advance_turn"})
             self._selected_index = None
             self._clear_form()
             self.window['-TURN-'].update(str(self.server.turn))
             self.refresh_table()
 
         elif event == '⏮ Prev Char':
-            self.server.submit({"action": "retreat_turn"})
+            self._submit({"action": "retreat_turn"})
             self._selected_index = None
             self._clear_form()
             self.window['-TURN-'].update(str(self.server.turn))
@@ -400,7 +385,7 @@ class Tracker:
 
         elif event == '💾 Export':
             path = os.path.join(dir_path, f'Data/combat_tracker_{datetime.now().strftime("%Y%m%d_%H%M%S")}.json')
-            self.server.submit({"action": "save", "path": path})
+            self._submit({"action": "save", "path": path})
             sg.popup(f"Saved to {path}")
 
         elif event == '📂 Load':
@@ -409,7 +394,7 @@ class Tracker:
             if file_path:
                 self._selected_index = None
                 self._clear_form()
-                self.server.submit({"action": "load", "path": file_path})
+                self._submit({"action": "load", "path": file_path})
 
     def run_gui(self, dir_path):
         layout = self.build_gui_layout()

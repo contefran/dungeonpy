@@ -1,4 +1,5 @@
 from Core.server import GameServer
+from Core.ws_bridge import WSBridge
 from Core.map_manager import MapManager
 from Core.tracker import Tracker
 from Core.log_utils import log
@@ -17,7 +18,18 @@ class Game:
         self.super_verbose = super_verbose
 
         self.server = GameServer()
-        self.tracker = Tracker(server=self.server, verbose=verbose, super_verbose=super_verbose)
+        self.bridge = WSBridge(self.server)
+        self.bridge.start()
+
+        if self.verbose:
+            log(f"[Game] WebSocket bridge listening on ws://{self.bridge.host}:{self.bridge.port}")
+
+        self.tracker = Tracker(
+            server=self.server,
+            submit=self.bridge.submit,
+            verbose=verbose,
+            super_verbose=super_verbose,
+        )
         self.map_manager = None
         self.screen = None
 
@@ -26,6 +38,7 @@ class Game:
                 server=self.server,
                 map_path=DEFAULT_MAP_PATH,
                 dir_path=dir_path,
+                submit=self.bridge.submit,
                 verbose=verbose,
                 super_verbose=super_verbose,
             )
@@ -58,7 +71,7 @@ class Game:
                 log("[Game] Starting map and tracker.")
 
             # Load initial state — snapshot is broadcast to all subscribers
-            self.server.submit({"action": "load", "path": self.dir_path + DEFAULT_SAVE_FILE})
+            self.bridge.submit({"action": "load", "path": self.dir_path + DEFAULT_SAVE_FILE})
 
             tracker_thread = threading.Thread(
                 target=self.tracker.run_gui,
@@ -74,3 +87,4 @@ class Game:
     def shutdown(self):
         if self.verbose:
             log("[Game] Shutting down.")
+        self.bridge.stop()
