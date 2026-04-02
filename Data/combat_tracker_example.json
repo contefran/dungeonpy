@@ -4,6 +4,7 @@
       "name": "Ranger",
       "initiative": 21,
       "hp": 14,
+      "max_hp": 21,
       "conditions": [
         "Invisible"
       ],
@@ -17,6 +18,7 @@
       "name": "Skeleton",
       "initiative": 14,
       "hp": 13,
+      "max_hp": 13,
       "conditions": [
         "Prone"
       ],
@@ -30,6 +32,7 @@
       "name": "Warrior",
       "initiative": 13,
       "hp": 19,
+      "max_hp": 28,
       "conditions": [
         "Charmed"
       ],
@@ -43,6 +46,7 @@
       "name": "Mage",
       "initiative": 12,
       "hp": 11,
+      "max_hp": 11,
       "conditions": [
         "Frightened"
       ],
@@ -56,6 +60,7 @@
       "name": "Wraith",
       "initiative": 11,
       "hp": 29,
+      "max_hp": 29,
       "conditions": [
         "Invisible"
       ],
@@ -69,6 +74,7 @@
       "name": "Zombie",
       "initiative": 8,
       "hp": 2,
+      "max_hp": 8,
       "conditions": [],
       "pos": [
         28,
@@ -80,6 +86,7 @@
       "name": "Cleric",
       "initiative": 6,
       "hp": 9,
+      "max_hp": 18,
       "conditions": [
         "Paralyzed",
         "See-invisible"

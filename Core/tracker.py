@@ -13,7 +13,7 @@ except ImportError:
     _PIL_OK = False
 
 _NOTO_COLOR_EMOJI = "/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf"
-CONDITION_ICON_SIZE = 22  # pixels — adjust by eye
+CONDITION_ICON_SIZE = 22 # pixels
 
 
 def _render_emoji_png(char: str, size: int = 22) -> bytes | None:
@@ -395,6 +395,7 @@ class Tracker:
                 self.refresh_table(self._selected_index)
             except ValueError:
                 sg.popup("Invalid damage value")
+            self.window['-HP_CHANGE-'].update('0')
 
         elif event == 'Heal' and self._selected_index is not None:
             try:
@@ -404,6 +405,7 @@ class Tracker:
                 self.refresh_table(self._selected_index)
             except ValueError:
                 sg.popup("Invalid heal value")
+            self.window['-HP_CHANGE-'].update('0')
 
         elif event == '⏭ Next Char':
             self._submit({"action": "advance_turn"})
