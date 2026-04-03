@@ -1,5 +1,7 @@
 import pygame
 import os
+import tkinter as tk
+from tkinter import messagebox
 from Core.log_utils import log
 import math
 
@@ -304,16 +306,25 @@ class MapManager:
     # Input handling
     # ------------------------------------------------------------------
 
+    def _confirm_quit(self):
+        root = tk.Tk()
+        root.withdraw()
+        result = messagebox.askyesno('Quit', 'Are you sure you want to quit DungeonPy?')
+        root.destroy()
+        return result
+
     def run_loop(self, screen):
         clock = pygame.time.Clock()
         while self.running:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
-                    self.running = False
+                    if self._confirm_quit():
+                        self.running = False
 
                 elif event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_ESCAPE:
-                        self.running = False
+                        if self._confirm_quit():
+                            self.running = False
 
                 elif event.type == pygame.MOUSEBUTTONDOWN:
                     if event.button == 1:

@@ -14,7 +14,7 @@ except ImportError:
     _PIL_OK = False
 
 _NOTO_COLOR_EMOJI = "/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf"
-CONDITION_ICON_SIZE = 30 # pixels
+CONDITION_ICON_SIZE = 36 # pixels
 
 
 def _render_emoji_png(char: str, size: int = 22) -> bytes | None:
@@ -276,8 +276,8 @@ class Tracker:
         layout = [
             [sg.Text('Initiative Tracker', font=table_font)],
             [sg.Table(values=[], headings=['Name', 'Initiative', 'HP', 'Notes'],
-                      auto_size_columns=False, justification='left', col_widths=[20, 10, 10, 40],
-                      key='-TABLE-', enable_events=True, row_height=28, expand_x=True, num_rows=10,
+                      auto_size_columns=False, justification='left', col_widths=[10, 10, 10, 40],
+                      key='-TABLE-', enable_events=True, row_height=36, expand_x=True, num_rows=10,
                       background_color='white', text_color='black', font=table_font)],
             [sg.Text('Turn:', font=table_font), sg.Input(str(self.server.turn), key='-TURN-', size=(5, 1)),
              sg.Button('⏮ Prev Char'), sg.Button('⏭ Next Char')],
@@ -481,7 +481,8 @@ class Tracker:
 
     def run_gui(self, dir_path):
         layout = self.build_gui_layout()
-        self.window = sg.Window('D&D Initiative Tracker', layout, resizable=True, finalize=True)
+        self.window = sg.Window('D&D Initiative Tracker', layout, resizable=True, finalize=True,
+                                enable_close_attempted_event=True)
 
         tree = self.window['-TABLE-'].Widget
         tree.bind('<Double-Button-1>', self._start_notes_edit)
@@ -493,11 +494,16 @@ class Tracker:
         self.refresh_table()
         while True:
             event, values = self.window.read()
-            if event == sg.WIN_CLOSED:
-                break
+            if event == sg.WINDOW_CLOSE_ATTEMPTED_EVENT:
+                if sg.popup_yes_no('Are you sure you want to quit DungeonPy?',
+                                   title='Quit', keep_on_top=True) == 'Yes':
+                    break
+                else:
+                    continue
             if event == 'SERVER_EVENT':
                 self._apply_server_event(values[event])
                 continue
             self.handle_event(event, values, dir_path)
 
         self.window.close()
+        os._exit(0)
