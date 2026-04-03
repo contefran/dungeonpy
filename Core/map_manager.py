@@ -431,7 +431,7 @@ class MapManager:
                         log(f"[Map] Toggled door at ({col}, {row})")
                     return
 
-            if not hit and self.unplaced:
+            if not hit and self.unplaced and self._is_placeable(col, row):
                 combatant = self.unplaced[0]  # peek; handle_server_event removes it on token_placed
                 self._submit({"action": "place_token", "name": combatant.name, "pos": [col, row]})
                 self._submit({"action": "select", "name": combatant.name})
@@ -489,7 +489,7 @@ class MapManager:
         col = (mx - self.offset_x) // self.tile_size
         row = (my - self.offset_y) // self.tile_size
 
-        if (0 <= col < len(self.map_data[0]) and 0 <= row < len(self.map_data)
+        if (self._is_placeable(col, row)
                 and not self.is_tile_occupied(col, row, ignore_token=self.dragging_token)):
             self._submit({"action": "move_token", "name": self.dragging_token.name, "pos": [col, row]})
             if self.verbose:
@@ -502,6 +502,17 @@ class MapManager:
         self.dragging_token = None
         self.drag_candidate = None
         self.initial_token_pos = None
+
+    def _is_placeable(self, col, row):
+        """Return True for floor and door tiles; secret doors only if already revealed."""
+        if not (0 <= col < len(self.map_data[0]) and 0 <= row < len(self.map_data)):
+            return False
+        tile = self.map_data[row][col]
+        if tile in (1, 2):  # wall, void
+            return False
+        if tile == 4:  # secret door — only placeable once revealed
+            return self.server.secret_door_states.get((row, col)) == "open"
+        return True
 
     def get_pixel_coords(self, grid_pos):
         cx, cy = grid_pos
