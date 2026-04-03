@@ -52,7 +52,7 @@ class Tracker:
         self.dir_path = dir_path
         self.verbose = verbose
         self.super_verbose = super_verbose
-        self._squelch_table_event = False
+        self._squelch_table_event = 0   # counter: suppress this many upcoming TABLE events
         self._selected_index = None
         self._pending_timers = {}   # condition → expiry turn, set during the current edit session
         self.window = None
@@ -159,7 +159,7 @@ class Tracker:
                     # Only highlight the row if selection actually moved (avoids echo from our own click)
                     if i != self._selected_index:
                         self._selected_index = i
-                        self._squelch_table_event = True
+                        self._squelch_table_event = 1
                         self.window['-TABLE-'].update(select_rows=[i + 1])
                     self.window['-NAME-'].update(c.name)
                     self.window['-INITIATIVE-'].update(c.initiative)
@@ -173,7 +173,7 @@ class Tracker:
         elif action == "selection_cleared":
             if self._selected_index is not None:
                 self._selected_index = None
-                self._squelch_table_event = True
+                self._squelch_table_event = 1
                 self.window['-TABLE-'].update(select_rows=[])
             self._clear_form()
 
@@ -317,12 +317,12 @@ class Tracker:
             data.append([name, c.initiative, '' if c.hp is None else c.hp, notes_display])
             row_conditions.append(list(c.conditions))
 
-        self._squelch_table_event = True
         if selected_index is not None and 0 <= selected_index < len(self.server.combatants):
+            self._squelch_table_event = 2  # update clears then reselects — two TABLE events expected
             self.window['-TABLE-'].update(values=data, select_rows=[selected_index + 1])
         else:
+            self._squelch_table_event = 1  # deselect fires one TABLE event
             self.window['-TABLE-'].update(values=data, select_rows=[])
-        self._squelch_table_event = False
 
         tree = self.window['-TABLE-'].Widget
         tree.tag_configure('dead', font=('Helvetica', 12, 'overstrike'))
@@ -346,8 +346,8 @@ class Tracker:
         if event == sg.WIN_CLOSED:
             return
 
-        if event == '-TABLE-' and self._squelch_table_event:
-            self._squelch_table_event = False
+        if event == '-TABLE-' and self._squelch_table_event > 0:
+            self._squelch_table_event -= 1
             return
 
         if self.verbose:
