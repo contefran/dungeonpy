@@ -282,6 +282,23 @@ class GameServer:
                     return [{"type": "event", "action": "combatant_removed", "name": name}]
             return []
 
+        if action in ("move_up", "move_down"):
+            name = intent.get("name")
+            i = next((idx for idx, c in enumerate(self.combatants) if c.name == name), None)
+            if i is None:
+                return []
+            j = i - 1 if action == "move_up" else i + 1
+            if j < 0 or j >= len(self.combatants):
+                return []
+            if self.combatants[i].initiative != self.combatants[j].initiative:
+                return []
+            self.combatants[i], self.combatants[j] = self.combatants[j], self.combatants[i]
+            if self.active_index == i:
+                self.active_index = j
+            elif self.active_index == j:
+                self.active_index = i
+            return [self.get_snapshot()]
+
         # --- Map: tokens ---
         if action == "place_token":
             name, pos = intent.get("name"), intent.get("pos")

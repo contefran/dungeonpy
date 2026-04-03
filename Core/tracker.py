@@ -300,7 +300,9 @@ class Tracker:
             [sg.Text('Conditions:', font=table_font)],
             *condition_rows,
             [
-                sg.Button('Add New'), sg.Button('Apply Stats'), sg.Button('Delete Selected'), sg.Button('💾 Export'), sg.Button('📂 Load')]
+                sg.Button('Add New'), sg.Button('Apply Stats'), sg.Button('Delete Selected'),
+                sg.Button('▲ Move Up'), sg.Button('▼ Move Down'),
+                sg.Button('💾 Export'), sg.Button('📂 Load')]
         ]
         return layout
 
@@ -479,6 +481,20 @@ class Tracker:
                 self._submit({"action": "delete_combatant", "name": name})
             self._selected_index = None
             self._submit({"action": "clear_selection"})
+
+        elif event in ('▲ Move Up', '▼ Move Down') and self._selected_index is not None:
+            i = self._selected_index
+            combatants = self.server.combatants
+            if event == '▲ Move Up':
+                j = i - 1
+            else:
+                j = i + 1
+            if (0 <= j < len(combatants)
+                    and combatants[i].initiative == combatants[j].initiative):
+                name = combatants[i].name
+                action_name = "move_up" if event == '▲ Move Up' else "move_down"
+                self._submit({"action": action_name, "name": name})
+                self._selected_index = j
 
         elif event == 'Wound' and self._selected_index is not None:
             try:

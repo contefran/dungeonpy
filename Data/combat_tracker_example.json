@@ -8,11 +8,18 @@
       "conditions": [
         "Invisible"
       ],
+      "condition_timers": {
+        "Invisible": [
+          13,
+          21
+        ]
+      },
       "pos": [
         27,
         29
       ],
-      "icon": "Ranger.png"
+      "icon": "Ranger.png",
+      "notes": ""
     },
     {
       "name": "Skeleton",
@@ -22,11 +29,13 @@
       "conditions": [
         "Prone"
       ],
+      "condition_timers": {},
       "pos": [
         27,
         32
       ],
-      "icon": "Skeleton.png"
+      "icon": "Skeleton.png",
+      "notes": ""
     },
     {
       "name": "Warrior",
@@ -36,11 +45,18 @@
       "conditions": [
         "Charmed"
       ],
+      "condition_timers": {
+        "Charmed": [
+          9,
+          11
+        ]
+      },
       "pos": [
         27,
         31
       ],
-      "icon": "Warrior.png"
+      "icon": "Warrior.png",
+      "notes": ""
     },
     {
       "name": "Mage",
@@ -50,25 +66,34 @@
       "conditions": [
         "Frightened"
       ],
+      "condition_timers": {
+        "Frightened": [
+          6,
+          12
+        ]
+      },
       "pos": [
         29,
         30
       ],
-      "icon": "Mage.png"
+      "icon": "Mage.png",
+      "notes": ""
     },
     {
       "name": "Wraith",
-      "initiative": 11,
+      "initiative": 12,
       "hp": 29,
       "max_hp": 29,
       "conditions": [
         "Invisible"
       ],
+      "condition_timers": {},
       "pos": [
         24,
         29
       ],
-      "icon": "Wraith.png"
+      "icon": "Wraith.png",
+      "notes": ""
     },
     {
       "name": "Zombie",
@@ -76,11 +101,13 @@
       "hp": 2,
       "max_hp": 8,
       "conditions": [],
+      "condition_timers": {},
       "pos": [
         28,
         33
       ],
-      "icon": "Zombie.png"
+      "icon": "Zombie.png",
+      "notes": ""
     },
     {
       "name": "Cleric",
@@ -91,11 +118,22 @@
         "Paralyzed",
         "See-invisible"
       ],
+      "condition_timers": {
+        "Paralyzed": [
+          4,
+          5
+        ],
+        "See-invisible": [
+          13,
+          6
+        ]
+      },
       "pos": [
         30,
         28
       ],
-      "icon": "Cleric.png"
+      "icon": "Cleric.png",
+      "notes": ""
     }
   ],
   "active_index": 6,

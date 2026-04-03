@@ -325,6 +325,48 @@ def test_delete_combatant_before_active_shifts_index(server):
     assert server.combatants[server.active_index].name == "C"
 
 
+# --- move_up / move_down ---
+
+def test_move_up_same_initiative(server):
+    add(server, "A", 10)
+    add(server, "B", 10)
+    server.process_intent({"action": "move_up", "name": "B"})
+    assert server.combatants[0].name == "B"
+    assert server.combatants[1].name == "A"
+
+def test_move_down_same_initiative(server):
+    add(server, "A", 10)
+    add(server, "B", 10)
+    server.process_intent({"action": "move_down", "name": "A"})
+    assert server.combatants[0].name == "B"
+    assert server.combatants[1].name == "A"
+
+def test_move_up_blocked_by_different_initiative(server):
+    add(server, "A", 20)
+    add(server, "B", 10)
+    server.process_intent({"action": "move_up", "name": "B"})
+    assert server.combatants[0].name == "A"  # unchanged
+    assert server.combatants[1].name == "B"
+
+def test_move_down_blocked_by_different_initiative(server):
+    add(server, "A", 20)
+    add(server, "B", 10)
+    server.process_intent({"action": "move_down", "name": "A"})
+    assert server.combatants[0].name == "A"  # unchanged
+
+def test_move_up_at_top_no_crash(server):
+    add(server, "A", 10)
+    server.process_intent({"action": "move_up", "name": "A"})  # no-op
+
+def test_move_active_combatant_updates_index(server):
+    add(server, "A", 10)
+    add(server, "B", 10)
+    server.active_index = 0  # A is active
+    server.process_intent({"action": "move_down", "name": "A"})
+    assert server.active_index == 1  # followed A to its new position
+    assert server.combatants[server.active_index].name == "A"
+
+
 # --- save / load roundtrip ---
 
 def test_save_load_roundtrip(server, tmp_path):

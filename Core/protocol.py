@@ -16,6 +16,8 @@ INTENTS: dict[str, list[str]] = {
     "add_combatant":    ["combatant"],
     "update_combatant": ["name", "fields"],
     "delete_combatant": ["name"],
+    "move_up":          ["name"],
+    "move_down":        ["name"],
     "apply_damage":     ["name", "amount"],
     "apply_heal":       ["name", "amount"],
     "advance_turn":     [],
