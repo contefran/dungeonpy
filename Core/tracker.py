@@ -300,7 +300,7 @@ class Tracker:
             [sg.Text('Conditions:', font=table_font)],
             *condition_rows,
             [
-                sg.Button('Add New'), sg.Button('Update Selected'), sg.Button('Delete Selected'), sg.Button('💾 Export'), sg.Button('📂 Load')]
+                sg.Button('Add New'), sg.Button('Apply Stats'), sg.Button('Delete Selected'), sg.Button('💾 Export'), sg.Button('📂 Load')]
         ]
         return layout
 
@@ -408,6 +408,15 @@ class Tracker:
             else:  # condition turned OFF
                 self._pending_timers.pop(cond, None)
 
+            # Apply condition change immediately
+            c = self.server.combatants[self._selected_index]
+            new_conditions = [cd for cd in self.condition_list if values.get(f'-COND_{cd}-')]
+            new_timers = {cd: t for cd, t in c.condition_timers.items() if cd in new_conditions}
+            new_timers.update(self._pending_timers)
+            self._pending_timers = {}
+            self._submit({"action": "update_combatant", "name": c.name,
+                          "fields": {"conditions": new_conditions, "condition_timers": new_timers}})
+
         elif event == 'Add New':
             if self._selected_index is not None:
                 sg.popup('Cannot add a new combatant while another is selected.')
@@ -442,24 +451,15 @@ class Tracker:
                 except ValueError:
                     sg.popup('Initiative must be a whole number.')
 
-        elif event == 'Update Selected' and self._selected_index is not None:
+        elif event == 'Apply Stats' and self._selected_index is not None:
             c = self.server.combatants[self._selected_index]
             old_name = c.name
             try:
-                new_conditions = [cond for cond in self.condition_list if values.get(f'-COND_{cond}-')]
-                # Keep existing timers only for conditions that are still active
-                new_timers = {cond: t for cond, t in c.condition_timers.items()
-                              if cond in new_conditions}
-                # Pending timers (set this session) override existing ones
-                new_timers.update(self._pending_timers)
-                self._pending_timers = {}
                 fields = {
                     "name": values['-NAME-'],
                     "initiative": int(values['-INITIATIVE-']),
                     "hp": int(values['-HP-'].strip()) if values['-HP-'].strip() else None,
                     "max_hp": int(values['-MAX_HP-'].strip()) if values['-MAX_HP-'].strip() else None,
-                    "conditions": new_conditions,
-                    "condition_timers": new_timers,
                 }
             except ValueError:
                 sg.popup('Initiative must be a whole number.')
