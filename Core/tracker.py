@@ -16,6 +16,13 @@ except ImportError:
 _NOTO_COLOR_EMOJI = "/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf"
 CONDITION_ICON_SIZE = 36 # pixels
 
+_COND_ABBREV = {
+    'Blind': 'Bln', 'Charmed': 'Chr', 'Deaf': 'Def', 'Frightened': 'Frt',
+    'Grappled': 'Grp', 'Incapacitated': 'Inc', 'Invisible': 'Inv', 'Paralyzed': 'Par',
+    'Petrified': 'Pet', 'Poisoned': 'Poi', 'Prone': 'Prn', 'Restrained': 'Rst',
+    'See-invisible': 'SeI', 'Stunned': 'Stn', 'Unconscious': 'Unc', 'Dead': 'Ded',
+}
+
 
 def _render_emoji_png(char: str, size: int = 22) -> bytes | None:
     """Render a single emoji as a colour PNG via NotoColorEmoji. Returns None on failure."""
@@ -47,6 +54,7 @@ class Tracker:
         self.super_verbose = super_verbose
         self._squelch_table_event = False
         self._selected_index = None
+        self._pending_timers = {}   # condition → expiry turn, set during the current edit session
         self.window = None
 
         condition_dict = {
@@ -180,6 +188,7 @@ class Tracker:
         self.window['-MAX_HP-'].update('')
         for cond in self.condition_list:
             self.window[f'-COND_{cond}-'].update(False)
+        self._pending_timers = {}
         self.window.refresh()
 
     def _start_notes_edit(self, event):
@@ -265,11 +274,11 @@ class Tracker:
                 if img_data:
                     row_elements.append(sg.Image(data=img_data))
                     row_elements.append(sg.Checkbox(cond, key=f'-COND_{cond}-', font=table_font,
-                                                    size=(COND_COL_WIDTH, 1)))
+                                                    size=(COND_COL_WIDTH, 1), enable_events=True))
                 else:
                     row_elements.append(sg.Checkbox(
                         f"{self.condition_icons[cond]} {cond}", key=f'-COND_{cond}-', font=emoji_font,
-                        size=(COND_COL_WIDTH, 1)
+                        size=(COND_COL_WIDTH, 1), enable_events=True
                     ))
             condition_rows.append(row_elements)
 
@@ -300,7 +309,10 @@ class Tracker:
         row_conditions = [[]]  # parallel list of condition lists per row
         for i, c in enumerate(self.server.combatants):
             name = f"→ {c.name}" if i == self.server.active_index else c.name
-            data.append([name, c.initiative, '' if c.hp is None else c.hp, c.notes])
+            timer_parts = [f"{_COND_ABBREV.get(cond, cond[:3])}:{exp[0]}@{exp[1]}"
+                           for cond, exp in sorted(c.condition_timers.items())]
+            notes_display = c.notes + (" [" + ", ".join(timer_parts) + "]" if timer_parts else "")
+            data.append([name, c.initiative, '' if c.hp is None else c.hp, notes_display])
             row_conditions.append(list(c.conditions))
 
         self._squelch_table_event = True
@@ -368,6 +380,34 @@ class Tracker:
                 self._selected_index = None
                 self._submit({"action": "clear_selection"})
 
+        elif event.startswith('-COND_') and event.endswith('-') and self._selected_index is not None:
+            cond = event[6:-1]
+            if values.get(event):  # condition turned ON
+                sel = self.server.combatants[self._selected_index]
+                popup_layout = [
+                    [sg.Text(f'Duration for {cond}:')],
+                    [sg.Text('Rounds:', size=(18, 1)),
+                     sg.Input('', key='-ROUNDS-', size=(5, 1))],
+                    [sg.Text('Initiative at expiry:', size=(18, 1)),
+                     sg.Input(str(sel.initiative), key='-INIT-', size=(5, 1))],
+                    [sg.Text('(leave Rounds blank for permanent)', font=('Helvetica', 10))],
+                    [sg.Button('OK'), sg.Button('Cancel')],
+                ]
+                popup = sg.Window('Condition Duration', popup_layout,
+                                  keep_on_top=True, modal=True, finalize=True)
+                pev, pvals = popup.read()
+                popup.close()
+                if pev == 'OK' and pvals['-ROUNDS-'].strip():
+                    try:
+                        n = int(pvals['-ROUNDS-'].strip())
+                        init_exp = int(pvals['-INIT-'].strip())
+                        if n > 0:
+                            self._pending_timers[cond] = [self.server.turn + n, init_exp]
+                    except ValueError:
+                        pass
+            else:  # condition turned OFF
+                self._pending_timers.pop(cond, None)
+
         elif event == 'Add New':
             if self._selected_index is not None:
                 sg.popup('Cannot add a new combatant while another is selected.')
@@ -406,12 +446,20 @@ class Tracker:
             c = self.server.combatants[self._selected_index]
             old_name = c.name
             try:
+                new_conditions = [cond for cond in self.condition_list if values.get(f'-COND_{cond}-')]
+                # Keep existing timers only for conditions that are still active
+                new_timers = {cond: t for cond, t in c.condition_timers.items()
+                              if cond in new_conditions}
+                # Pending timers (set this session) override existing ones
+                new_timers.update(self._pending_timers)
+                self._pending_timers = {}
                 fields = {
                     "name": values['-NAME-'],
                     "initiative": int(values['-INITIATIVE-']),
                     "hp": int(values['-HP-'].strip()) if values['-HP-'].strip() else None,
                     "max_hp": int(values['-MAX_HP-'].strip()) if values['-MAX_HP-'].strip() else None,
-                    "conditions": [cond for cond in self.condition_list if values.get(f'-COND_{cond}-')],
+                    "conditions": new_conditions,
+                    "condition_timers": new_timers,
                 }
             except ValueError:
                 sg.popup('Initiative must be a whole number.')

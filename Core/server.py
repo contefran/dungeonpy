@@ -204,8 +204,24 @@ class GameServer:
         if action == "advance_turn":
             self._next()
             active = self.get_active()
-            return [{"type": "event", "action": "turn_advanced",
-                     "active": active.name if active else None, "turn": self.turn}]
+            events = [{"type": "event", "action": "turn_advanced",
+                       "active": active.name if active else None, "turn": self.turn}]
+            current_init = active.initiative if active else 0
+            for c in self.combatants:
+                if not c.condition_timers:
+                    continue
+                expired = []
+                for cond, timing in list(c.condition_timers.items()):
+                    exp_round, exp_init = timing
+                    if self.turn > exp_round or (self.turn == exp_round and current_init <= exp_init):
+                        expired.append(cond)
+                if expired:
+                    for cond in expired:
+                        c.conditions = [x for x in c.conditions if x != cond]
+                        del c.condition_timers[cond]
+                    events.append({"type": "event", "action": "combatant_updated",
+                                   "combatant": c.to_dict()})
+            return events
 
         if action == "retreat_turn":
             self._previous()
@@ -245,6 +261,7 @@ class GameServer:
                         setattr(c, key, value)
                 if "Dead" in c.conditions:
                     c.conditions = ["Dead"]
+                    c.condition_timers = {}
                 if initiative_changed:
                     self._sort()
                     return [self.get_snapshot()]

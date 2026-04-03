@@ -51,6 +51,73 @@ def test_advance_turn_wraps_and_increments_turn(server):
 def test_advance_turn_empty_no_crash(server):
     server.process_intent({"action": "advance_turn"})  # should not raise
 
+def test_condition_timer_expires_on_advance(server):
+    # A (init 20) has Invisible expiring round 3 @ init 20.
+    # After advancing into round 3 with A active (init 20), condition should be gone.
+    add(server, "A", 20)
+    server.turn = 1
+    server.process_intent({"action": "update_combatant", "name": "A",
+                           "fields": {"conditions": ["Invisible"],
+                                      "condition_timers": {"Invisible": [3, 20]}}})
+    server.turn = 2
+    server.process_intent({"action": "advance_turn"})  # turn becomes 3, active = A (init 20)
+    assert "Invisible" not in server.combatants[0].conditions
+    assert "Invisible" not in server.combatants[0].condition_timers
+
+def test_condition_timer_not_expired_before_turn(server):
+    add(server, "A", 20)
+    server.turn = 1
+    server.process_intent({"action": "update_combatant", "name": "A",
+                           "fields": {"conditions": ["Blind"],
+                                      "condition_timers": {"Blind": [5, 20]}}})
+    server.process_intent({"action": "advance_turn"})  # turn becomes 2
+    assert "Blind" in server.combatants[0].conditions
+
+def test_condition_timer_not_expired_same_round_higher_init(server):
+    # Two combatants: A (init 20), B (init 10). Blind expires round 2 @ init 10.
+    # When we advance into round 2 with A active (init 20 > 10), not yet expired.
+    add(server, "A", 20)
+    add(server, "B", 10)
+    server.turn = 1
+    server.active_index = 1  # B is active
+    server.process_intent({"action": "update_combatant", "name": "A",
+                           "fields": {"conditions": ["Blind"],
+                                      "condition_timers": {"Blind": [2, 10]}}})
+    server.process_intent({"action": "advance_turn"})  # wraps to round 2, A active (init 20)
+    assert "Blind" in server.combatants[0].conditions
+
+def test_condition_timer_expires_at_matching_initiative(server):
+    # Advance one more step: now B is active (init 10), should expire.
+    add(server, "A", 20)
+    add(server, "B", 10)
+    server.turn = 1
+    server.active_index = 1  # B is active
+    server.process_intent({"action": "update_combatant", "name": "A",
+                           "fields": {"conditions": ["Blind"],
+                                      "condition_timers": {"Blind": [2, 10]}}})
+    server.process_intent({"action": "advance_turn"})  # round 2, A active (init 20) — not expired
+    server.process_intent({"action": "advance_turn"})  # round 2, B active (init 10) — expires
+    assert "Blind" not in server.combatants[0].conditions
+
+def test_condition_timer_partial_expiry(server):
+    add(server, "A", 20)
+    server.turn = 1
+    server.process_intent({"action": "update_combatant", "name": "A",
+                           "fields": {"conditions": ["Blind", "Invisible"],
+                                      "condition_timers": {"Blind": [2, 20], "Invisible": [5, 20]}}})
+    server.process_intent({"action": "advance_turn"})  # turn becomes 2, A active (init 20)
+    assert "Blind" not in server.combatants[0].conditions
+    assert "Invisible" in server.combatants[0].conditions
+
+def test_dead_clears_condition_timers(server):
+    add(server, "A", 20)
+    server.process_intent({"action": "update_combatant", "name": "A",
+                           "fields": {"conditions": ["Blind"],
+                                      "condition_timers": {"Blind": [5, 20]}}})
+    server.process_intent({"action": "update_combatant", "name": "A",
+                           "fields": {"conditions": ["Dead"]}})
+    assert server.combatants[0].condition_timers == {}
+
 def test_advance_turn_skips_dead(server):
     add(server, "A", 20)
     add(server, "B", 10)

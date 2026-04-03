@@ -72,8 +72,10 @@ class Game:
             if self.verbose:
                 log("[Game] Starting map and tracker.")
 
-            # Load initial state — snapshot is broadcast to all subscribers
-            self.bridge.submit({"action": "load", "path": os.path.join(self.dir_path, DEFAULT_SAVE_FILE)})
+            # Load initial state synchronously so the tracker reads the correct turn
+            # when build_gui_layout() runs. bridge.submit() is async (queued), so it
+            # would lose the race against the tracker thread starting.
+            self.server.submit({"action": "load", "path": os.path.join(self.dir_path, DEFAULT_SAVE_FILE)})
 
             tracker_thread = threading.Thread(
                 target=self.tracker.run_gui,
