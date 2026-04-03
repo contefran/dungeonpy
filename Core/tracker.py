@@ -14,7 +14,7 @@ except ImportError:
     _PIL_OK = False
 
 _NOTO_COLOR_EMOJI = "/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf"
-CONDITION_ICON_SIZE = 22 # pixels
+CONDITION_ICON_SIZE = 30 # pixels
 
 
 def _render_emoji_png(char: str, size: int = 22) -> bytes | None:
@@ -254,8 +254,9 @@ class Tracker:
             emoji_font = ("Apple Color Emoji", 12)
         else:
             emoji_font = ("Noto Emoji", 12)
-        table_font = ("Helvetica", 12)
+        table_font = ("Helvetica", 16)
 
+        COND_COL_WIDTH = 15  # fixed chars — wide enough for "See-invisible"
         condition_rows = []
         for row_conds in chunk(self.condition_list, 5):
             row_elements = []
@@ -263,10 +264,12 @@ class Tracker:
                 img_data = self.condition_images.get(cond)
                 if img_data:
                     row_elements.append(sg.Image(data=img_data))
-                    row_elements.append(sg.Checkbox(cond, key=f'-COND_{cond}-', font=table_font))
+                    row_elements.append(sg.Checkbox(cond, key=f'-COND_{cond}-', font=table_font,
+                                                    size=(COND_COL_WIDTH, 1)))
                 else:
                     row_elements.append(sg.Checkbox(
-                        f"{self.condition_icons[cond]} {cond}", key=f'-COND_{cond}-', font=emoji_font
+                        f"{self.condition_icons[cond]} {cond}", key=f'-COND_{cond}-', font=emoji_font,
+                        size=(COND_COL_WIDTH, 1)
                     ))
             condition_rows.append(row_elements)
 
@@ -366,34 +369,38 @@ class Tracker:
                 self._submit({"action": "clear_selection"})
 
         elif event == 'Add New':
-            try:
-                name = values['-NAME-'].strip()
-                init_str = values['-INITIATIVE-'].strip()
-                if not name or not init_str:
-                    sg.popup('Please enter a name and initiative value.')
-                    return
-                init = int(init_str)
-                hp_str = values['-HP-'].strip()
-                hp = int(hp_str) if hp_str else None
-                max_hp_str = values['-MAX_HP-'].strip()
-                max_hp = int(max_hp_str) if max_hp_str else None
-                conditions = [cond for cond in self.condition_list if values.get(f'-COND_{cond}-')]
-                icon_path = sg.popup_get_file(
-                    f"Select icon for {name} (close to skip)",
-                    initial_folder=os.path.join(dir_path, 'Icons'),
-                    file_types=(("Image Files", "*.png *.jpg *.jpeg"),),
-                    no_window=False,
-                )
-                icon = os.path.basename(icon_path) if icon_path else None
-                self._submit({"action": "add_combatant", "combatant": {
-                    "name": name, "initiative": init, "hp": hp, "max_hp": max_hp,
-                    "conditions": conditions, "icon": icon,
-                }})
-                self._selected_index = None
-                self._submit({"action": "clear_selection"})
-                self._clear_form()
-            except ValueError:
-                sg.popup('Initiative must be a whole number.')
+            if self._selected_index is not None:
+                sg.popup('Cannot add a new combatant while another is selected.')
+                return
+            else:
+                try:
+                    name = values['-NAME-'].strip()
+                    init_str = values['-INITIATIVE-'].strip()
+                    if not name or not init_str:
+                        sg.popup('Please enter a name and initiative value.')
+                        return
+                    init = int(init_str)
+                    hp_str = values['-HP-'].strip()
+                    hp = int(hp_str) if hp_str else None
+                    max_hp_str = values['-MAX_HP-'].strip()
+                    max_hp = int(max_hp_str) if max_hp_str else None
+                    conditions = [cond for cond in self.condition_list if values.get(f'-COND_{cond}-')]
+                    icon_path = sg.popup_get_file(
+                        f"Select icon for {name} (close to skip)",
+                        initial_folder=os.path.join(dir_path, 'Icons'),
+                        file_types=(("Image Files", "*.png *.jpg *.jpeg"),),
+                        no_window=False,
+                    )
+                    icon = os.path.basename(icon_path) if icon_path else None
+                    self._submit({"action": "add_combatant", "combatant": {
+                        "name": name, "initiative": init, "hp": hp, "max_hp": max_hp,
+                        "conditions": conditions, "icon": icon,
+                    }})
+                    self._selected_index = None
+                    self._submit({"action": "clear_selection"})
+                    self._clear_form()
+                except ValueError:
+                    sg.popup('Initiative must be a whole number.')
 
         elif event == 'Update Selected' and self._selected_index is not None:
             c = self.server.combatants[self._selected_index]
