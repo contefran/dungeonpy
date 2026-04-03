@@ -31,11 +31,16 @@ class MapManager:
 
         self.floor_texture_original = pygame.image.load(os.path.join(dir_path, 'Textures/stonefloor3.jpg'))
         self.wall_texture_original = pygame.image.load(os.path.join(dir_path, 'Textures/stonefloor4.jpg'))
-        self.closed_door_texture_original = pygame.image.load(os.path.join(dir_path, 'Textures/closed_door1.png'))
-        self.open_door_texture_original = pygame.image.load(os.path.join(dir_path, 'Textures/open_door1.png'))
+        self.wooden_door_closed_texture_original = pygame.image.load(os.path.join(dir_path, 'Textures/Wooden_door_closed.png'))
+        self.wooden_door_open_texture_original = pygame.image.load(os.path.join(dir_path, 'Textures/Wooden_door_open.png'))
+        self.iron_door_closed_texture_original = pygame.image.load(os.path.join(dir_path, 'Textures/Iron_door_closed.png'))
+        self.iron_door_open_texture_original = pygame.image.load(os.path.join(dir_path, 'Textures/Iron_door_open.png'))
         self.secret_door_texture_original = self.wall_texture_original
-        self.trap_texture_original = pygame.image.load(os.path.join(dir_path, 'Textures/trap_pit.png'))
-        self.floor_texture, self.wall_texture, self.secret_door_texture, self.closed_door_texture, self.open_door_texture, self.trap_texture = self.scale_textures(self.tile_size)
+        self.trap_texture_original = pygame.image.load(os.path.join(dir_path, 'Textures/trap_pit.jpg'))
+        (self.floor_texture, self.wall_texture, self.wooden_door_closed_texture,
+         self.wooden_door_open_texture, self.iron_door_closed_texture,
+         self.iron_door_open_texture, self.secret_door_texture,
+         self.trap_texture) = self.scale_textures(self.tile_size)
 
         self.dragging_token = None
         self.drag_candidate = None
@@ -61,8 +66,10 @@ class MapManager:
 
         self.floor_texture_original = self.floor_texture_original.convert()
         self.wall_texture_original = self.wall_texture_original.convert()
-        self.closed_door_texture_original = self.closed_door_texture_original.convert_alpha()
-        self.open_door_texture_original = self.open_door_texture_original.convert_alpha()
+        self.wooden_door_closed_texture_original = self.wooden_door_closed_texture_original.convert_alpha()
+        self.wooden_door_open_texture_original = self.wooden_door_open_texture_original.convert_alpha()
+        self.iron_door_closed_texture_original = self.iron_door_closed_texture_original.convert_alpha()
+        self.iron_door_open_texture_original = self.iron_door_open_texture_original.convert_alpha()
         self.trap_texture_original = self.trap_texture_original.convert_alpha()
 
         self.ui_font = pygame.font.SysFont('Arial', 18)
@@ -70,9 +77,15 @@ class MapManager:
         return screen
 
     def load_map_from_txt(self, filepath):
+        def _parse(ch):
+            if ch.isdigit():
+                return int(ch)
+            if ch.isalpha():
+                return ord(ch.lower()) - ord('a') + 10
+            return 0
         with open(filepath, "r") as f:
             lines = f.readlines()
-        return [[int(ch) for ch in line.strip()] for line in lines]
+        return [[_parse(ch) for ch in line.strip()] for line in lines if line.strip()]
 
     def render(self, screen):
         screen.fill((0, 0, 0))
@@ -92,9 +105,11 @@ class MapManager:
         return (
             pygame.transform.scale(self.floor_texture_original, (tile_size, tile_size)),
             pygame.transform.scale(self.wall_texture_original, (tile_size, tile_size)),
+            pygame.transform.scale(self.wooden_door_closed_texture_original, (tile_size, tile_size)),
+            pygame.transform.scale(self.wooden_door_open_texture_original, (tile_size, tile_size)),
+            pygame.transform.scale(self.iron_door_closed_texture_original, (tile_size, tile_size)),
+            pygame.transform.scale(self.iron_door_open_texture_original, (tile_size, tile_size)),
             pygame.transform.scale(self.secret_door_texture_original, (tile_size, tile_size)),
-            pygame.transform.scale(self.closed_door_texture_original, (tile_size, tile_size)),
-            pygame.transform.scale(self.open_door_texture_original, (tile_size, tile_size)),
             pygame.transform.scale(self.trap_texture_original, (tile_size, tile_size)),
         )
 
@@ -181,26 +196,32 @@ class MapManager:
                 tile = self.map_data[row][col]
                 key = (row, col)
 
-                if tile == 4:
+                if tile == 0:   # nothing / void
+                    pygame.draw.rect(screen, (0, 0, 0), (x, y, self.tile_size, self.tile_size))
+                elif tile == 1:  # floor
+                    screen.blit(self.floor_texture, (x, y))
+                elif tile == 2:  # wall
                     screen.blit(self.wall_texture, (x, y))
-                    if self.server.secret_door_states.get(key) == "open":
-                        screen.blit(self.open_door_texture, (x, y))
-                elif tile == 3:
+                elif tile == 3:  # wooden door
                     screen.blit(self.floor_texture, (x, y))
                     if self.server.door_states.get(key) == "open":
-                        screen.blit(self.open_door_texture, (x, y))
+                        screen.blit(self.wooden_door_open_texture, (x, y))
                     else:
-                        screen.blit(self.closed_door_texture, (x, y))
-                elif tile == 5:
+                        screen.blit(self.wooden_door_closed_texture, (x, y))
+                elif tile == 4:  # iron door
+                    screen.blit(self.floor_texture, (x, y))
+                    if self.server.iron_door_states.get(key) == "open":
+                        screen.blit(self.iron_door_open_texture, (x, y))
+                    else:
+                        screen.blit(self.iron_door_closed_texture, (x, y))
+                elif tile == 5:  # secret door — looks like wall until revealed
+                    screen.blit(self.wall_texture, (x, y))
+                    if self.server.secret_door_states.get(key) == "open":
+                        screen.blit(self.iron_door_open_texture, (x, y))
+                elif tile == 6:  # trap — looks like floor until revealed
                     screen.blit(self.floor_texture, (x, y))
                     if self.server.trap_states.get(key) == "open":
                         screen.blit(self.trap_texture, (x, y))
-                elif tile == 2:
-                    pygame.draw.rect(screen, (0, 0, 0), (x, y, self.tile_size, self.tile_size))
-                elif tile == 1:
-                    screen.blit(self.wall_texture, (x, y))
-                else:
-                    screen.blit(self.floor_texture, (x, y))
 
     def draw_grid(self, screen):
         grid_color = (180, 180, 180)
@@ -263,7 +284,13 @@ class MapManager:
         pixel_surf = pygame.Surface((cols, rows))
         for row in range(rows):
             for col in range(cols):
-                color = (100, 60, 40) if self.map_data[row][col] == 1 else (210, 210, 200)
+                tile = self.map_data[row][col]
+                if tile == 0:
+                    color = (0, 0, 0)
+                elif tile == 2:
+                    color = (100, 60, 40)
+                else:
+                    color = (210, 210, 200)
                 pixel_surf.set_at((col, row), color)
         self._minimap_surface = pygame.transform.scale(pixel_surf, (mini_w, mini_h))
 
@@ -373,7 +400,10 @@ class MapManager:
             center_y //= 2
             self.offset_x = center_x - ((center_x - self.offset_x) * self.tile_size) // prev_size
             self.offset_y = center_y - ((center_y - self.offset_y) * self.tile_size) // prev_size
-            self.floor_texture, self.wall_texture, self.secret_door_texture, self.closed_door_texture, self.open_door_texture, self.trap_texture = self.scale_textures(self.tile_size)
+            (self.floor_texture, self.wall_texture, self.wooden_door_closed_texture,
+             self.wooden_door_open_texture, self.iron_door_closed_texture,
+             self.iron_door_open_texture, self.secret_door_texture,
+             self.trap_texture) = self.scale_textures(self.tile_size)
             self.rescale_icons()
         if self.verbose:
             log(f"[Map] Zoom level changed to tile_size = {self.tile_size}")
@@ -432,7 +462,7 @@ class MapManager:
 
             if not hit and 0 <= col < len(self.map_data[0]) and 0 <= row < len(self.map_data):
                 tile = self.map_data[row][col]
-                if tile in (3, 4, 5):
+                if tile in (3, 4, 5, 6):
                     self._submit({"action": "toggle_door", "x": col, "y": row, "tile_type": tile})
                     if self.verbose:
                         log(f"[Map] Toggled door at ({col}, {row})")
@@ -511,13 +541,13 @@ class MapManager:
         self.initial_token_pos = None
 
     def _is_placeable(self, col, row):
-        """Return True for floor and door tiles; secret doors only if already revealed."""
+        """Return True for passable tiles; secret doors only if already revealed."""
         if not (0 <= col < len(self.map_data[0]) and 0 <= row < len(self.map_data)):
             return False
         tile = self.map_data[row][col]
-        if tile in (1, 2):  # wall, void
+        if tile in (0, 2):  # nothing, wall
             return False
-        if tile == 4:  # secret door — only placeable once revealed
+        if tile == 5:  # secret door — only placeable once revealed
             return self.server.secret_door_states.get((row, col)) == "open"
         return True
 
