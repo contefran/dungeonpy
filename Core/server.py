@@ -23,6 +23,7 @@ class GameServer:
         self.turn: int = 1
         self.door_states: dict[tuple, str] = {}         # (row, col) → 'open'|'closed'
         self.secret_door_states: dict[tuple, str] = {}  # (row, col) → 'open'|'closed'
+        self.trap_states: dict[tuple, str] = {}          # (row, col) → 'open'|'closed'
         self._subscribers: list = []
         self._seq: int = 0
         self._snapshot_interval: int = snapshot_interval
@@ -109,6 +110,7 @@ class GameServer:
                 "turn": self.turn,
                 "door_states": {f"{r},{c}": v for (r, c), v in self.door_states.items()},
                 "secret_door_states": {f"{r},{c}": v for (r, c), v in self.secret_door_states.items()},
+                "trap_states": {f"{r},{c}": v for (r, c), v in self.trap_states.items()},
             },
         }
 
@@ -320,7 +322,12 @@ class GameServer:
         if action == "toggle_door":
             x, y, tile_type = intent.get("x"), intent.get("y"), intent.get("tile_type", 3)
             key = (y, x)
-            states = self.secret_door_states if tile_type == 4 else self.door_states
+            if tile_type == 4:
+                states = self.secret_door_states
+            elif tile_type == 5:
+                states = self.trap_states
+            else:
+                states = self.door_states
             new = "open" if states.get(key, "closed") == "closed" else "closed"
             states[key] = new
             return [{"type": "event", "action": "door_toggled",

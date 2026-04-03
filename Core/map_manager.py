@@ -34,7 +34,8 @@ class MapManager:
         self.closed_door_texture_original = pygame.image.load(os.path.join(dir_path, 'Textures/closed_door1.png'))
         self.open_door_texture_original = pygame.image.load(os.path.join(dir_path, 'Textures/open_door1.png'))
         self.secret_door_texture_original = self.wall_texture_original
-        self.floor_texture, self.wall_texture, self.secret_door_texture, self.closed_door_texture, self.open_door_texture = self.scale_textures(self.tile_size)
+        self.trap_texture_original = pygame.image.load(os.path.join(dir_path, 'Textures/trap_pit.png'))
+        self.floor_texture, self.wall_texture, self.secret_door_texture, self.closed_door_texture, self.open_door_texture, self.trap_texture = self.scale_textures(self.tile_size)
 
         self.dragging_token = None
         self.drag_candidate = None
@@ -62,6 +63,7 @@ class MapManager:
         self.wall_texture_original = self.wall_texture_original.convert()
         self.closed_door_texture_original = self.closed_door_texture_original.convert_alpha()
         self.open_door_texture_original = self.open_door_texture_original.convert_alpha()
+        self.trap_texture_original = self.trap_texture_original.convert_alpha()
 
         self.ui_font = pygame.font.SysFont('Arial', 18)
         self._build_minimap_surface()
@@ -92,7 +94,8 @@ class MapManager:
             pygame.transform.scale(self.wall_texture_original, (tile_size, tile_size)),
             pygame.transform.scale(self.secret_door_texture_original, (tile_size, tile_size)),
             pygame.transform.scale(self.closed_door_texture_original, (tile_size, tile_size)),
-            pygame.transform.scale(self.open_door_texture_original, (tile_size, tile_size))
+            pygame.transform.scale(self.open_door_texture_original, (tile_size, tile_size)),
+            pygame.transform.scale(self.trap_texture_original, (tile_size, tile_size)),
         )
 
     def rescale_icons(self):
@@ -188,6 +191,10 @@ class MapManager:
                         screen.blit(self.open_door_texture, (x, y))
                     else:
                         screen.blit(self.closed_door_texture, (x, y))
+                elif tile == 5:
+                    screen.blit(self.floor_texture, (x, y))
+                    if self.server.trap_states.get(key) == "open":
+                        screen.blit(self.trap_texture, (x, y))
                 elif tile == 2:
                     pygame.draw.rect(screen, (0, 0, 0), (x, y, self.tile_size, self.tile_size))
                 elif tile == 1:
@@ -366,7 +373,7 @@ class MapManager:
             center_y //= 2
             self.offset_x = center_x - ((center_x - self.offset_x) * self.tile_size) // prev_size
             self.offset_y = center_y - ((center_y - self.offset_y) * self.tile_size) // prev_size
-            self.floor_texture, self.wall_texture, self.secret_door_texture, self.closed_door_texture, self.open_door_texture = self.scale_textures(self.tile_size)
+            self.floor_texture, self.wall_texture, self.secret_door_texture, self.closed_door_texture, self.open_door_texture, self.trap_texture = self.scale_textures(self.tile_size)
             self.rescale_icons()
         if self.verbose:
             log(f"[Map] Zoom level changed to tile_size = {self.tile_size}")
@@ -425,7 +432,7 @@ class MapManager:
 
             if not hit and 0 <= col < len(self.map_data[0]) and 0 <= row < len(self.map_data):
                 tile = self.map_data[row][col]
-                if tile == 3 or tile == 4:
+                if tile in (3, 4, 5):
                     self._submit({"action": "toggle_door", "x": col, "y": row, "tile_type": tile})
                     if self.verbose:
                         log(f"[Map] Toggled door at ({col}, {row})")
