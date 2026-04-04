@@ -313,6 +313,56 @@ def write_output(grid, path):
 
 
 # ---------------------------------------------------------------------------
+# PNG export
+# ---------------------------------------------------------------------------
+
+def save_png(grid, txt_path, dir_path="./", tile_size=20):
+    """Render the generated map to a PNG using MapManager's drawing code."""
+    import pygame
+    from Core.server import GameServer
+    from Core.map_manager import MapManager
+
+    rows = len(grid)
+    cols = len(grid[0]) if rows else 0
+    width  = cols * tile_size
+    height = rows * tile_size
+
+    pygame.init()
+    screen = pygame.display.set_mode((width, height))
+    pygame.display.set_caption("Generating preview...")
+
+    server = GameServer()
+    mm = MapManager(server=server, dir_path=dir_path, map_data=[row[:] for row in grid])
+    mm.tile_size = tile_size
+    mm.offset_x  = 0
+    mm.offset_y  = 0
+
+    # Replicate the convert() calls from init_pygame (requires display to exist)
+    mm.floor_texture_original                  = mm.floor_texture_original.convert()
+    mm.wall_texture_original                   = mm.wall_texture_original.convert()
+    mm.wooden_door_closed_texture_original     = mm.wooden_door_closed_texture_original.convert_alpha()
+    mm.wooden_door_open_texture_original       = mm.wooden_door_open_texture_original.convert_alpha()
+    mm.iron_door_closed_texture_original       = mm.iron_door_closed_texture_original.convert_alpha()
+    mm.iron_door_open_texture_original         = mm.iron_door_open_texture_original.convert_alpha()
+    mm.trap_texture_original                   = mm.trap_texture_original.convert_alpha()
+    mm.secret_door_texture_original            = mm.wall_texture_original  # same as wall
+
+    (mm.floor_texture, mm.wall_texture, mm.wooden_door_closed_texture,
+     mm.wooden_door_open_texture, mm.iron_door_closed_texture,
+     mm.iron_door_open_texture, mm.secret_door_texture,
+     mm.trap_texture) = mm.scale_textures(tile_size)
+
+    screen.fill((0, 0, 0))
+    mm.draw_map(screen)
+    mm.draw_grid(screen)
+
+    png_path = os.path.splitext(txt_path)[0] + ".png"
+    pygame.image.save(screen, png_path)
+    pygame.quit()
+    print(f"  PNG preview  : {png_path}")
+
+
+# ---------------------------------------------------------------------------
 # Step 10 — Stats
 # ---------------------------------------------------------------------------
 
@@ -351,6 +401,10 @@ def parse_args():
     parser = argparse.ArgumentParser(description="DungeonPy random map generator")
     parser.add_argument('--seed', type=int, default=None,
                         help="Random seed for reproducible output")
+    parser.add_argument('--dir', type=str, default='./',
+                        help="Base directory for textures (default: ./)")
+    parser.add_argument('--no-png', action='store_true',
+                        help="Skip PNG preview generation")
     return parser.parse_args()
 
 
@@ -398,6 +452,9 @@ def main():
 
     write_output(grid, output_path)
     print_stats(rooms, room_cells, corridor_cells, grid, width, height, output_path)
+
+    if not args.no_png:
+        save_png(grid, output_path, dir_path=args.dir)
 
 
 if __name__ == '__main__':
