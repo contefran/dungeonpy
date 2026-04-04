@@ -48,6 +48,7 @@ class MapManager:
         self.selected_token = None
         self._remote_selections: dict = {}  # selector_name → (token_name, color_name)
         self._center_on_player: str | None = None  # set by Game for player mode
+        self._window_title = "D&D Map Grid"
         self.running = True
 
         self.floor_texture_original = pygame.image.load(os.path.join(dir_path, 'Textures/stonefloor3.jpg'))
@@ -86,7 +87,7 @@ class MapManager:
             self.offset_y = 0
 
         screen = pygame.display.set_mode((screen_width, screen_height), pygame.RESIZABLE)
-        pygame.display.set_caption("D&D Map Grid")
+        pygame.display.set_caption(self._window_title)
 
         self.floor_texture_original = self.floor_texture_original.convert()
         self.wall_texture_original = self.wall_texture_original.convert()

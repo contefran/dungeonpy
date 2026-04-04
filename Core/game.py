@@ -66,7 +66,7 @@ class Game:
                 verbose=self.verbose,
                 super_verbose=self.super_verbose,
             )
-            self.screen = self.map_manager.init_pygame()
+            self.screen = self.map_manager.init_pygame()  # uses default "D&D Map Grid"
 
         self.server.subscribe(self.tracker.handle_server_event)
         if self.map_manager:
@@ -116,6 +116,7 @@ class Game:
             verbose=self.verbose,
             super_verbose=self.super_verbose,
         )
+        self.map_manager._window_title = "D&D Map Grid — DM"
         self.screen = self.map_manager.init_pygame()
 
         self.server.subscribe(self.tracker.handle_server_event)
@@ -153,6 +154,7 @@ class Game:
         )
         self.map_manager._submit = self.player_client.submit
         self.map_manager._center_on_player = player_name
+        self.map_manager._window_title = f"D&D Map Grid — {player_name}"
 
         self.server.subscribe(self.map_manager.handle_server_event)
         self.screen = self.map_manager.init_pygame()
