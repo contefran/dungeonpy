@@ -171,7 +171,7 @@ class Tracker:
                     self.window.refresh()
                     break
 
-        elif action == "selection_cleared":
+        elif action == "selection_cleared" and "selector" not in event:
             if self._selected_index is not None:
                 self._selected_index = None
                 self._squelch_table_event = 1
@@ -447,6 +447,10 @@ class Tracker:
                             self._pending_timers[cond] = [self.server.turn + n, init_exp]
                     except ValueError:
                         pass
+                elif pev != 'OK':
+                    # User cancelled — revert the checkbox and skip applying anything
+                    self.window[f'-COND_{cond}-'].update(False)
+                    return
             else:  # condition turned OFF
                 self._pending_timers.pop(cond, None)
 
@@ -618,6 +622,7 @@ class Tracker:
             tree.heading('#0', text='')
 
         self.refresh_table()
+        self._squelch_table_event = 0  # initial populate doesn't fire a TABLE event; reset to avoid eating first click
         while True:
             event, values = self.window.read()
             if event == sg.WINDOW_CLOSE_ATTEMPTED_EVENT:
