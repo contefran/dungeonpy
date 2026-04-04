@@ -5,15 +5,34 @@ from tkinter import messagebox
 from Core.log_utils import log
 import math
 
+PLAYER_COLORS = {
+    "red":    (220,  50,  50),
+    "blue":   ( 50, 100, 220),
+    "green":  ( 50, 200,  50),
+    "orange": (220, 140,  30),
+    "purple": (150,  50, 200),
+    "cyan":   ( 30, 200, 220),
+    "yellow": (220, 220,  30),
+    "pink":   (220,  80, 180),
+    "white":  (230, 230, 230),
+    "lime":   (120, 220,  30),
+}
+
 class MapManager:
 
-    def __init__(self, server, map_path, dir_path, submit=None, verbose=False, super_verbose=False):
+    def __init__(self, server, dir_path, submit=None,
+                 map_path=None, map_data=None, verbose=False, super_verbose=False):
         self.server = server
         self._submit = submit if submit is not None else server.submit
         self.dir_path = dir_path
         self.verbose = verbose
         self.super_verbose = super_verbose
-        self.map_data = self.load_map_from_txt(os.path.join(dir_path, map_path))
+        if map_data is not None:
+            self.map_data = map_data
+        elif map_path is not None:
+            self.map_data = self.load_map_from_txt(os.path.join(dir_path, map_path))
+        else:
+            self.map_data = []  # will be populated from the first snapshot
 
         self.tile_size = 60
         self.min_tile_size = 20
@@ -27,6 +46,7 @@ class MapManager:
         self.icons = {}
         self.unplaced = []
         self.selected_token = None
+        self._remote_selections: dict = {}  # selector_name → (token_name, color_name)
         self.running = True
 
         self.floor_texture_original = pygame.image.load(os.path.join(dir_path, 'Textures/stonefloor3.jpg'))
@@ -55,11 +75,14 @@ class MapManager:
         screen_width = int(info.current_w * 0.5)
         screen_height = int(info.current_h * 0.5)
 
-        map_pixel_width = len(self.map_data[0]) * self.tile_size
-        map_pixel_height = len(self.map_data) * self.tile_size
-        # Center the map
-        self.offset_x = (screen_width // 2) - (map_pixel_width // 2)
-        self.offset_y = (screen_height // 2) - (map_pixel_height // 2)
+        if self.map_data:
+            map_pixel_width = len(self.map_data[0]) * self.tile_size
+            map_pixel_height = len(self.map_data) * self.tile_size
+            self.offset_x = (screen_width // 2) - (map_pixel_width // 2)
+            self.offset_y = (screen_height // 2) - (map_pixel_height // 2)
+        else:
+            self.offset_x = 0
+            self.offset_y = 0
 
         screen = pygame.display.set_mode((screen_width, screen_height), pygame.RESIZABLE)
         pygame.display.set_caption("D&D Map Grid")
@@ -151,12 +174,20 @@ class MapManager:
 
         if action == "selection_changed":
             name = event["name"]
-            self.selected_token = next(
-                (c for c in self.server.combatants if c.name == name), None
-            )
+            selector = event.get("selector")
+            if selector:
+                self._remote_selections[selector] = (name, event.get("color", "white"))
+            else:
+                self.selected_token = next(
+                    (c for c in self.server.combatants if c.name == name), None
+                )
 
         elif action == "selection_cleared":
-            self.selected_token = None
+            selector = event.get("selector")
+            if selector:
+                self._remote_selections.pop(selector, None)
+            else:
+                self.selected_token = None
 
         elif action == "turn_advanced":
             # Advancing turn naturally deselects the map token
@@ -177,12 +208,19 @@ class MapManager:
             self.unplaced = [c for c in self.unplaced if c.name != name]
 
     def _sync_from_snapshot(self, state):
-        """Rebuild local view state from a server snapshot (e.g. after load)."""
+        """Rebuild local view state from a server snapshot (e.g. after load or initial connect)."""
+        # Player clients receive the map grid in the snapshot; DM already has it from file.
+        if state.get("map_grid") and not self.map_data:
+            self.map_data = state["map_grid"]
+            import pygame as _pg
+            if _pg.get_init():
+                self._build_minimap_surface()
         self.unplaced = [c for c in self.server.combatants if c.pos is None]
         for c in self.server.combatants:
             if c.icon and c.icon not in self.icons:
                 self.load_icon(c.icon)
         self.selected_token = None
+        self._remote_selections.clear()
 
     # ------------------------------------------------------------------
     # Map rendering
@@ -224,6 +262,8 @@ class MapManager:
                         screen.blit(self.trap_texture, (x, y))
 
     def draw_grid(self, screen):
+        if not self.map_data:
+            return
         grid_color = (180, 180, 180)
         rows = len(self.map_data)
         cols = len(self.map_data[0])
@@ -258,9 +298,20 @@ class MapManager:
                 color = (160, 160, 160) if is_dead else (255, 0, 0)
                 pygame.draw.circle(screen, color, (x + self.tile_size // 2, y + self.tile_size // 2), self.tile_size // 3)
 
-            # Highlight selected
+            # Highlight selected (DM local selection — yellow)
             if c == selected_token:
                 pygame.draw.rect(screen, (255, 255, 0), pygame.Rect(x, y, self.tile_size, self.tile_size), 3)
+
+            # Highlight remote player selections (each with their own color)
+            offset = 0
+            for selector, (token_name, color_name) in self._remote_selections.items():
+                if c.name == token_name:
+                    rgb = PLAYER_COLORS.get(color_name, (255, 255, 255))
+                    pygame.draw.rect(screen, rgb,
+                                     pygame.Rect(x - offset, y - offset,
+                                                 self.tile_size + offset * 2,
+                                                 self.tile_size + offset * 2), 3)
+                    offset += 4  # stack multiple selections outward
 
             # Highlight active
             if active_combatant and c == active_combatant:
@@ -274,6 +325,8 @@ class MapManager:
     # ------------------------------------------------------------------
 
     def _build_minimap_surface(self):
+        if not self.map_data:
+            return
         rows = len(self.map_data)
         cols = len(self.map_data[0])
         # Fixed 2.4 px per tile (= 60 * 0.04) — independent of zoom level

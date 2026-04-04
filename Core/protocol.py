@@ -29,6 +29,9 @@ INTENTS: dict[str, list[str]] = {
     "toggle_door":      ["x", "y"],
     "save":             ["path"],
     "load":             ["path"],
+    "set_player_lock":      ["name", "locked"],
+    "player_connected":     ["name"],
+    "player_disconnected":  ["name"],
 }
 
 

@@ -55,6 +55,7 @@ class Tracker:
         self._squelch_table_event = 0   # counter: suppress this many upcoming TABLE events
         self._selected_index = None
         self._pending_timers = {}   # condition → expiry turn, set during the current edit session
+        self._connected_players: dict[str, bool] = {}  # name → movement allowed
         self.window = None
 
         condition_dict = {
@@ -177,9 +178,28 @@ class Tracker:
                 self.window['-TABLE-'].update(select_rows=[])
             self._clear_form()
 
+        elif action == "player_connected":
+            self._connected_players[event["name"]] = False
+            self._refresh_players_table()
+
+        elif action == "player_disconnected":
+            self._connected_players.pop(event["name"], None)
+            self._refresh_players_table()
+
+        elif action == "player_lock_changed":
+            self._connected_players[event["name"]] = event["locked"]
+            self._refresh_players_table()
+
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
+
+    def _refresh_players_table(self):
+        rows = [
+            [name, "✓ Allowed" if locked else "✗ Locked"]
+            for name, locked in self._connected_players.items()
+        ]
+        self.window['-PLAYERS-'].update(values=rows)
 
     def _clear_form(self):
         self.window['-NAME-'].update('')
@@ -302,7 +322,21 @@ class Tracker:
             [
                 sg.Button('Add New'), sg.Button('Apply Stats'), sg.Button('Delete Selected'),
                 sg.Button('▲ Move Up'), sg.Button('▼ Move Down'),
-                sg.Button('💾 Export'), sg.Button('📂 Load')]
+                sg.Button('💾 Export'), sg.Button('📂 Load')],
+            [sg.HorizontalSeparator()],
+            [sg.Text('Connected Players', font=('Helvetica', 12, 'bold'))],
+            [sg.Table(
+                values=[],
+                headings=['Player', 'Interaction'],
+                key='-PLAYERS-',
+                enable_events=True,
+                select_mode=sg.TABLE_SELECT_MODE_BROWSE,
+                col_widths=[16, 12],
+                auto_size_columns=False,
+                num_rows=4,
+                font=('Helvetica', 12),
+            )],
+            [sg.Button('Toggle Interaction', key='Toggle Interaction')],
         ]
         return layout
 
@@ -529,6 +563,16 @@ class Tracker:
             self._clear_form()
             self.window['-TURN-'].update(str(self.server.turn))
             self.refresh_table()
+
+        elif event == 'Toggle Interaction':
+            sel = values.get('-PLAYERS-')
+            if sel:
+                player_names = list(self._connected_players.keys())
+                idx = sel[0]
+                if 0 <= idx < len(player_names):
+                    name = player_names[idx]
+                    locked = self._connected_players[name]
+                    self._submit({"action": "set_player_lock", "name": name, "locked": not locked})
 
         elif event == '💾 Export':
             path = os.path.join(dir_path, f'Data/combat_tracker_{datetime.now().strftime("%Y%m%d_%H%M%S")}.json')
