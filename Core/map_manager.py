@@ -47,6 +47,7 @@ class MapManager:
         self.unplaced = []
         self.selected_token = None
         self._remote_selections: dict = {}  # selector_name → (token_name, color_name)
+        self._center_on_player: str | None = None  # set by Game for player mode
         self.running = True
 
         self.floor_texture_original = pygame.image.load(os.path.join(dir_path, 'Textures/stonefloor3.jpg'))
@@ -207,6 +208,27 @@ class MapManager:
             name = event["name"]
             self.unplaced = [c for c in self.unplaced if c.name != name]
 
+    def _init_player_view(self, player_name: str):
+        """Set mid-zoom and center the view on the player's token (called once on first snapshot)."""
+        mid_zoom = (self.min_tile_size + self.max_tile_size) // 2
+        self.tile_size = mid_zoom
+        (self.floor_texture, self.wall_texture, self.wooden_door_closed_texture,
+         self.wooden_door_open_texture, self.iron_door_closed_texture,
+         self.iron_door_open_texture, self.secret_door_texture,
+         self.trap_texture) = self.scale_textures(self.tile_size)
+        self.rescale_icons()
+
+        token = next((c for c in self.server.combatants if c.name == player_name and c.pos), None)
+        screen_w, screen_h = pygame.display.get_surface().get_size()
+        if token:
+            col, row = token.pos
+        else:
+            # Fall back to map centre if token isn't placed yet
+            col = len(self.map_data[0]) // 2
+            row = len(self.map_data) // 2
+        self.offset_x = screen_w // 2 - col * self.tile_size - self.tile_size // 2
+        self.offset_y = screen_h // 2 - row * self.tile_size - self.tile_size // 2
+
     def _sync_from_snapshot(self, state):
         """Rebuild local view state from a server snapshot (e.g. after load or initial connect)."""
         # Player clients receive the map grid in the snapshot; DM already has it from file.
@@ -215,6 +237,8 @@ class MapManager:
             import pygame as _pg
             if _pg.get_init():
                 self._build_minimap_surface()
+                if self._center_on_player:
+                    self._init_player_view(self._center_on_player)
         self.unplaced = [c for c in self.server.combatants if c.pos is None]
         for c in self.server.combatants:
             if c.icon and c.icon not in self.icons:

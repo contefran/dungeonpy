@@ -152,6 +152,7 @@ class Game:
             ssl_context=ssl_ctx,
         )
         self.map_manager._submit = self.player_client.submit
+        self.map_manager._center_on_player = player_name
 
         self.server.subscribe(self.map_manager.handle_server_event)
         self.screen = self.map_manager.init_pygame()
