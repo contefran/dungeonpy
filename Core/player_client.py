@@ -130,7 +130,8 @@ class PlayerClient:
         self.server.iron_door_states = self._parse_key_dict(state.get("iron_door_states", {}))
         self.server.secret_door_states = self._parse_key_dict(state.get("secret_door_states", {}))
         self.server.trap_states = self._parse_key_dict(state.get("trap_states", {}))
-        self.server.player_locks = dict(state.get("player_locks", {}))
+        self.server.player_selection_locks = dict(state.get("player_selection_locks", {}))
+        self.server.player_move_locks = dict(state.get("player_move_locks", {}))
         if state.get("map_grid"):
             self.server.map_grid = state["map_grid"]
 
@@ -195,7 +196,11 @@ class PlayerClient:
                 self.server.door_states[key] = state
 
         elif action == "player_lock_changed":
-            self.server.player_locks[event["name"]] = event["locked"]
+            lock_type = event.get("lock_type", "move")
+            if lock_type == "select":
+                self.server.player_selection_locks[event["name"]] = event["locked"]
+            else:
+                self.server.player_move_locks[event["name"]] = event["locked"]
 
         # selection_changed, selection_cleared, player_connected,
         # player_disconnected, error — no mirror state change needed;

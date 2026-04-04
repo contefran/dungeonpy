@@ -416,8 +416,7 @@ class MapManager:
                 elif event.type == pygame.MOUSEBUTTONDOWN:
                     if event.button == 1:
                         self.handle_click(event.pos, 1)
-                        if self.selected_token:
-                            self.start_drag(*event.pos)
+                        self.start_drag(*event.pos)
                     elif event.button == 3:
                         self.start_panning(event.pos)
 

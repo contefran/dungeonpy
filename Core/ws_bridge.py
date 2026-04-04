@@ -129,6 +129,8 @@ class WSBridge:
 
         # Step 4: notify DM tracker of player arrival
         if role == "player":
+            ip = ws.remote_address[0] if ws.remote_address else "unknown"
+            print(f"[DungeonPy] Player '{name}' connected from {ip}.")
             await self._queue.put((None, {"action": "player_connected", "name": name}))
 
         # Step 5: normal intent loop
@@ -139,6 +141,9 @@ class WSBridge:
                     await self._queue.put((ws, intent))
                 except (json.JSONDecodeError, TypeError):
                     pass
+        except websockets.exceptions.ConnectionClosed:
+            if role == "player":
+                print(f"[DungeonPy] Player '{name}' lost connection.")
         finally:
             self._connections.discard(ws)
             self._clients.pop(ws, None)
@@ -164,15 +169,14 @@ class WSBridge:
         _PLAYER_ALLOWED = {"select", "clear_selection", "move_token"}
         if action not in _PLAYER_ALLOWED:
             return False, f"action '{action}' not permitted for players"
-        locked = not self.server.player_locks.get(client["name"])
         if action == "select":
-            if locked:
-                return False, "map interaction not currently allowed — wait for the DM to enable you"
+            if not self.server.player_selection_locks.get(client["name"]):
+                return False, "selection not currently allowed — wait for the DM to enable you"
         if action == "move_token":
             if intent.get("name") != client["name"]:
                 return False, "players may only move their own token"
-            if locked:
-                return False, "map interaction not currently allowed — wait for the DM to enable you"
+            if not self.server.player_move_locks.get(client["name"]):
+                return False, "movement not currently allowed — wait for the DM to enable you"
         return True, None
 
     # ------------------------------------------------------------------

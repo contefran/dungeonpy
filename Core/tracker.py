@@ -153,7 +153,7 @@ class Tracker:
             self.window['-TURN-'].update(str(event["turn"]))
             self.refresh_table()
 
-        elif action == "selection_changed":
+        elif action == "selection_changed" and "selector" not in event:
             name = event["name"]
             for i, c in enumerate(self.server.combatants):
                 if c.name == name:
@@ -179,7 +179,7 @@ class Tracker:
             self._clear_form()
 
         elif action == "player_connected":
-            self._connected_players[event["name"]] = False
+            self._connected_players[event["name"]] = {"select": False, "move": False}
             self._refresh_players_table()
 
         elif action == "player_disconnected":
@@ -187,8 +187,11 @@ class Tracker:
             self._refresh_players_table()
 
         elif action == "player_lock_changed":
-            self._connected_players[event["name"]] = event["locked"]
-            self._refresh_players_table()
+            name = event["name"]
+            if name in self._connected_players:
+                lock_type = event.get("lock_type", "move")
+                self._connected_players[name][lock_type] = event["locked"]
+                self._refresh_players_table()
 
     # ------------------------------------------------------------------
     # Helpers
@@ -196,8 +199,10 @@ class Tracker:
 
     def _refresh_players_table(self):
         rows = [
-            [name, "✓ Allowed" if locked else "✗ Locked"]
-            for name, locked in self._connected_players.items()
+            [name,
+             "✓" if state["select"] else "✗",
+             "✓" if state["move"] else "✗"]
+            for name, state in self._connected_players.items()
         ]
         self.window['-PLAYERS-'].update(values=rows)
 
@@ -327,16 +332,17 @@ class Tracker:
             [sg.Text('Connected Players', font=('Helvetica', 12, 'bold'))],
             [sg.Table(
                 values=[],
-                headings=['Player', 'Interaction'],
+                headings=['Player', 'Select', 'Move'],
                 key='-PLAYERS-',
                 enable_events=True,
                 select_mode=sg.TABLE_SELECT_MODE_BROWSE,
-                col_widths=[16, 12],
+                col_widths=[14, 7, 7],
                 auto_size_columns=False,
                 num_rows=4,
                 font=('Helvetica', 12),
             )],
-            [sg.Button('Toggle Interaction', key='Toggle Interaction')],
+            [sg.Button('Toggle Selection', key='Toggle Selection'),
+             sg.Button('Toggle Movement', key='Toggle Movement')],
         ]
         return layout
 
@@ -564,15 +570,27 @@ class Tracker:
             self.window['-TURN-'].update(str(self.server.turn))
             self.refresh_table()
 
-        elif event == 'Toggle Interaction':
+        elif event == 'Toggle Selection':
             sel = values.get('-PLAYERS-')
             if sel:
                 player_names = list(self._connected_players.keys())
                 idx = sel[0]
                 if 0 <= idx < len(player_names):
                     name = player_names[idx]
-                    locked = self._connected_players[name]
-                    self._submit({"action": "set_player_lock", "name": name, "locked": not locked})
+                    current = self._connected_players[name]["select"]
+                    self._submit({"action": "set_player_lock", "name": name,
+                                  "lock_type": "select", "locked": not current})
+
+        elif event == 'Toggle Movement':
+            sel = values.get('-PLAYERS-')
+            if sel:
+                player_names = list(self._connected_players.keys())
+                idx = sel[0]
+                if 0 <= idx < len(player_names):
+                    name = player_names[idx]
+                    current = self._connected_players[name]["move"]
+                    self._submit({"action": "set_player_lock", "name": name,
+                                  "lock_type": "move", "locked": not current})
 
         elif event == '💾 Export':
             path = os.path.join(dir_path, f'Data/combat_tracker_{datetime.now().strftime("%Y%m%d_%H%M%S")}.json')

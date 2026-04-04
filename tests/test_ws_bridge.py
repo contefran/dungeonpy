@@ -136,7 +136,8 @@ def test_snapshot_contains_full_state_fields(bridge):
     assert "combatants" in state
     assert "active_index" in state
     assert "turn" in state
-    assert "player_locks" in state
+    assert "player_selection_locks" in state
+    assert "player_move_locks" in state
     assert "map_grid" in state
 
 
@@ -227,7 +228,7 @@ def test_player_move_blocked_when_locked(bridge, ws_server):
     """Player movement is blocked by default (locked)."""
     from Core.combatant import Combatant
     ws_server.combatants = [Combatant("Thorin", 15, pos=[0, 0])]
-    ws_server.player_locks["Thorin"] = False
+    ws_server.player_move_locks["Thorin"] = False
     async def _test():
         async with websockets.connect(ws_url(bridge)) as ws:
             await player_hello(ws, "Thorin")
@@ -243,7 +244,7 @@ def test_player_move_blocked_when_locked(bridge, ws_server):
 def test_player_move_allowed_when_unlocked(bridge, ws_server):
     from Core.combatant import Combatant
     ws_server.combatants = [Combatant("Thorin", 15, pos=[0, 0])]
-    ws_server.player_locks["Thorin"] = True
+    ws_server.player_move_locks["Thorin"] = True
     async def _test():
         async with websockets.connect(ws_url(bridge)) as ws:
             await player_hello(ws, "Thorin")
@@ -261,7 +262,8 @@ def test_set_player_lock_only_for_dm(bridge):
         async with websockets.connect(ws_url(bridge)) as ws:
             await player_hello(ws, "Thorin")
             await ws.send(json.dumps({
-                "action": "set_player_lock", "name": "Thorin", "locked": True
+                "action": "set_player_lock", "name": "Thorin",
+                "lock_type": "move", "locked": True
             }))
             return json.loads(await ws.recv())
     msg = run(_test())

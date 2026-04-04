@@ -25,7 +25,8 @@ class GameServer:
         self.iron_door_states: dict[tuple, str] = {}    # (row, col) → 'open'|'closed'  tile 4 iron
         self.secret_door_states: dict[tuple, str] = {}  # (row, col) → 'open'|'closed'  tile 5 secret
         self.trap_states: dict[tuple, str] = {}          # (row, col) → 'open'|'closed'  tile 6 trap
-        self.player_locks: dict[str, bool] = {}          # player name → allowed to move token
+        self.player_selection_locks: dict[str, bool] = {}  # player name → allowed to select
+        self.player_move_locks: dict[str, bool] = {}       # player name → allowed to move token
         self.map_grid: list | None = None                # set by Game after map loads; sent in snapshot
         self._subscribers: list = []
         self._seq: int = 0
@@ -115,7 +116,8 @@ class GameServer:
                 "iron_door_states": {f"{r},{c}": v for (r, c), v in self.iron_door_states.items()},
                 "secret_door_states": {f"{r},{c}": v for (r, c), v in self.secret_door_states.items()},
                 "trap_states": {f"{r},{c}": v for (r, c), v in self.trap_states.items()},
-                "player_locks": dict(self.player_locks),
+                "player_selection_locks": dict(self.player_selection_locks),
+                "player_move_locks": dict(self.player_move_locks),
                 "map_grid": self.map_grid,
             },
         }
@@ -350,24 +352,32 @@ class GameServer:
 
         # --- Player management ---
         if action == "set_player_lock":
-            name, locked = intent.get("name"), bool(intent.get("locked", False))
-            self.player_locks[name] = locked
-            events = [{"type": "event", "action": "player_lock_changed",
-                       "name": name, "locked": locked}]
-            if not locked:
-                # Clear any active selection this player had on everyone's map
-                events.append({"type": "event", "action": "selection_cleared",
-                                "selector": name})
-            return events
+            name = intent.get("name")
+            lock_type = intent.get("lock_type", "move")  # "select" or "move"
+            locked = bool(intent.get("locked", False))
+            if lock_type == "select":
+                self.player_selection_locks[name] = locked
+                events = [{"type": "event", "action": "player_lock_changed",
+                           "name": name, "lock_type": "select", "locked": locked}]
+                if not locked:
+                    events.append({"type": "event", "action": "selection_cleared",
+                                   "selector": name})
+                return events
+            else:
+                self.player_move_locks[name] = locked
+                return [{"type": "event", "action": "player_lock_changed",
+                         "name": name, "lock_type": "move", "locked": locked}]
 
         if action == "player_connected":
             name = intent.get("name")
-            self.player_locks.setdefault(name, False)  # locked by default
+            self.player_selection_locks.setdefault(name, False)
+            self.player_move_locks.setdefault(name, False)
             return [{"type": "event", "action": "player_connected", "name": name}]
 
         if action == "player_disconnected":
             name = intent.get("name")
-            self.player_locks.pop(name, None)
+            self.player_selection_locks.pop(name, None)
+            self.player_move_locks.pop(name, None)
             return [{"type": "event", "action": "player_disconnected", "name": name}]
 
         # --- Persistence ---
