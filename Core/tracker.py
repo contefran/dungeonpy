@@ -675,9 +675,19 @@ class Tracker:
                 self.window['Toggle Chat'].update(text='Close Chat')
 
         elif event == '💾 Export':
-            path = os.path.join(dir_path, f'Data/combat_tracker_{datetime.now().strftime("%Y%m%d_%H%M%S")}.json')
-            self._submit({"action": "save", "path": path})
-            sg.popup(f"Saved to {path}")
+            default_name = f'combat_tracker_{datetime.now().strftime("%Y%m%d_%H%M%S")}.json'
+            path = sg.popup_get_file(
+                "Save tracker as",
+                save_as=True,
+                initial_folder=os.path.join(dir_path, 'Data'),
+                default_path=default_name,
+                file_types=(("JSON Files", "*.json"),),
+            )
+            if path:
+                if not path.endswith('.json'):
+                    path += '.json'
+                self._submit({"action": "save", "path": path})
+                sg.popup(f"Saved to {path}")
 
         elif event == '📂 Load':
             file_path = sg.popup_get_file("Select tracker file", initial_folder=dir_path + "Data",
