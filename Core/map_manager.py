@@ -278,6 +278,13 @@ class MapManager:
             new_tiles = {tuple(t) for t in event.get("new_tiles", [])}
             self._explored_tiles.update(new_tiles)
 
+        elif action == "map_loaded":
+            # Map coords are now meaningless for old fog state — full reset
+            if self._player_name:
+                self._explored_tiles = set()
+                self._player_door_states = {}
+                self._player_iron_door_states = {}
+
         elif action == "secret_door_revealed":
             # Refresh map_data from server so the tile now renders as a door
             if self.server.map_grid:
@@ -336,12 +343,10 @@ class MapManager:
                     self.load_icon(c.icon)
         self.selected_token = None
         self._remote_selections.clear()
-        # Restore fog state for player mode
+        # Restore fog state for player mode — union so periodic snapshots never shrink memory
         if self._player_name:
             player_explored = self.server.explored_tiles.get(self._player_name, set())
-            self._explored_tiles = set(player_explored)
-            self._player_door_states = {}
-            self._player_iron_door_states = {}
+            self._explored_tiles |= set(player_explored)
 
     # ------------------------------------------------------------------
     # Toolbar helpers
@@ -604,7 +609,7 @@ class MapManager:
         fog = pygame.Surface((map_w, map_h), pygame.SRCALPHA)
 
         BLACK      = (0,   0,   0, 255)
-        MEMORY     = (0,   0,   0, 110)
+        MEMORY     = (0,   0,   0, 50)
 
         for row in range(rows):
             for col in range(cols):
