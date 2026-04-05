@@ -389,6 +389,9 @@ class GameServer:
                 if not locked:
                     events.append({"type": "event", "action": "selection_cleared",
                                    "selector": name})
+                    self.tile_highlights = [h for h in self.tile_highlights if h["owner"] != name]
+                    events.append({"type": "event", "action": "highlights_changed",
+                                   "highlights": list(self.tile_highlights)})
                 return events
             else:
                 self.player_move_locks[name] = locked

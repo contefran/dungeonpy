@@ -9,12 +9,10 @@ PLAYER_COLORS = {
     "red":    (220,  50,  50),
     "blue":   ( 50, 100, 220),
     "green":  ( 50, 200,  50),
-    "orange": (220, 140,  30),
     "purple": (150,  50, 200),
     "cyan":   ( 30, 200, 220),
     "pink":   (220,  80, 180),
     "white":  (230, 230, 230),
-    "lime":   (120, 220,  30),
 }
 
 # Gold is reserved for the DM (active-turn glow, selection, highlights).

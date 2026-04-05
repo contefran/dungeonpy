@@ -4,8 +4,8 @@ import random
 from Core.game import Game
 
 _PLAYER_COLORS = [
-    "red", "blue", "green", "orange", "purple",
-    "cyan", "yellow", "pink", "white", "lime",
+    "red", "blue", "green", "purple",
+    "cyan", "pink", "white",
 ]
 
 
