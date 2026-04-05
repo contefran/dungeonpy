@@ -34,6 +34,7 @@ INTENTS: dict[str, list[str]] = {
     "player_disconnected":  ["name"],
     "load_map":             ["path"],
     "set_map_visible":      ["visible"],
+    "chat_message":         ["text"],
 }
 
 

@@ -434,6 +434,16 @@ class GameServer:
             self.map_visible = visible
             return [{"type": "event", "action": "map_visibility_changed", "visible": visible}]
 
+        # --- Chat ---
+        if action == "chat_message":
+            text = intent.get("text", "").strip()
+            if not text:
+                return []
+            return [{"type": "event", "action": "chat_message",
+                     "from": intent.get("from", "DM"),
+                     "to":   intent.get("to"),
+                     "text": text}]
+
         # --- Persistence ---
         if action == "save":
             path = intent.get("path")

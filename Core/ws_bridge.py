@@ -166,7 +166,7 @@ class WSBridge:
 
         # Player rules
         action = intent.get("action")
-        _PLAYER_ALLOWED = {"select", "clear_selection", "move_token"}
+        _PLAYER_ALLOWED = {"select", "clear_selection", "move_token", "chat_message"}
         if action not in _PLAYER_ALLOWED:
             return False, f"action '{action}' not permitted for players"
         if action == "select":
@@ -196,13 +196,17 @@ class WSBridge:
                     except Exception:
                         pass
                     continue
-            # Inject selector identity into selection intents from WS clients
+            # Inject identity fields into WS-sourced intents
             if ws is not None:
                 client = self._clients.get(ws)
-                if client and intent.get("action") in ("select", "clear_selection"):
-                    intent = dict(intent)
-                    intent["selector"] = client["name"]
-                    intent["color"] = client.get("color", "white")
+                if client:
+                    if intent.get("action") in ("select", "clear_selection"):
+                        intent = dict(intent)
+                        intent["selector"] = client["name"]
+                        intent["color"] = client.get("color", "white")
+                    elif intent.get("action") == "chat_message":
+                        intent = dict(intent)
+                        intent["from"] = client["name"]
             try:
                 self.server.submit(intent)
             except Exception as e:
@@ -215,10 +219,15 @@ class WSBridge:
     def _on_server_event(self, event: dict):
         """Sync callback registered with server.subscribe(). Runs on the asyncio thread."""
         action = event.get("action")
-        # Player join/leave notifications are DM-only — players don't need them and
-        # receiving them mid-stream would confuse the response ordering in player clients.
         if action in ("player_connected", "player_disconnected"):
+            # DM-only notifications
             self._loop.create_task(self._broadcast_dm_only(json.dumps(event)))
+        elif action == "chat_message":
+            to_name = event.get("to")
+            if to_name:
+                # DM → specific player: send only to that player's WS connection
+                self._loop.create_task(self._send_to_player(json.dumps(event), to_name))
+            # player → DM (to=None): DM is an in-process subscriber — no WS send needed
         else:
             self._loop.create_task(self._broadcast(json.dumps(event)))
 
@@ -232,6 +241,19 @@ class WSBridge:
         for ws, result in zip(list(self._connections), results):
             if isinstance(result, Exception):
                 self._connections.discard(ws)
+
+    async def _send_to_player(self, message: str, player_name: str):
+        """Send a message to a single named player connection."""
+        target = next(
+            (ws for ws, info in self._clients.items()
+             if info.get("name") == player_name and info.get("role") == "player"),
+            None,
+        )
+        if target:
+            try:
+                await target.send(message)
+            except Exception:
+                self._connections.discard(target)
 
     async def _broadcast_dm_only(self, message: str):
         dm_connections = [ws for ws, info in self._clients.items()

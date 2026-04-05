@@ -6,6 +6,7 @@ import tkinter as tk
 import PySimpleGUI as sg
 from Core.combatant import Combatant
 from Core.log_utils import log
+from Core.chat_window import ChatWindow
 
 try:
     from PIL import Image, ImageDraw, ImageFont as PILFont, ImageTk
@@ -58,6 +59,7 @@ class Tracker:
         self._connected_players: dict[str, dict] = {}  # name → {"select": bool, "move": bool}
         self._map_path: str | None = None
         self._map_visible: bool = False
+        self._chat: ChatWindow | None = None
         self.window = None
 
         condition_dict = {
@@ -142,6 +144,7 @@ class Tracker:
             self.refresh_table(self._selected_index)
             state = event.get("state", {})
             self._sync_map_ui(state.get("map_path"), state.get("map_visible", False))
+            self._rebuild_chat_tabs()
             return
 
         action = event.get("action")
@@ -207,6 +210,18 @@ class Tracker:
         elif action == "map_visibility_changed":
             self._sync_map_ui(self._map_path, event.get("visible", False))
 
+        elif action in ("combatant_added", "combatant_removed", "combatant_updated"):
+            self._rebuild_chat_tabs()
+
+        elif action == "chat_message":
+            sender  = event.get("from", "DM")
+            to_name = event.get("to")
+            text    = event.get("text", "")
+            # Determine which PC tab to post to
+            pc_name = to_name if to_name else sender
+            if self._chat:
+                self._chat.receive(pc_name, sender, text)
+
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
@@ -228,6 +243,15 @@ class Tracker:
         self.window['Toggle Map'].update(disabled=not has_map)
         if has_map:
             self.window['Toggle Map'].update(text='Hide Map' if map_visible else 'Show Map')
+
+    def _pc_names(self) -> list[str]:
+        return [c.name for c in self.server.combatants if c.is_pc]
+
+    def _rebuild_chat_tabs(self):
+        """Rebuild chat tabs if the PC roster has changed."""
+        if self._chat and self._chat.is_open():
+            if self._pc_names() != self._chat._pc_names:
+                self._chat.rebuild(self._pc_names())
 
     def _clear_form(self):
         self.window['-NAME-'].update('')
@@ -356,7 +380,9 @@ class Tracker:
             [sg.HorizontalSeparator()],
             [sg.Text('Map:', font=table_font),
              sg.Button('Load Map', key='Load Map'),
-             sg.Button('Show Map', key='Toggle Map', disabled=True)],
+             sg.Button('Show Map', key='Toggle Map', disabled=True),
+             sg.Text('  Chat:', font=table_font),
+             sg.Button('Close Chat', key='Toggle Chat')],
             [sg.HorizontalSeparator()],
             [sg.Text('Connected Players', font=('Helvetica', 12, 'bold'))],
             [sg.Table(
@@ -640,6 +666,14 @@ class Tracker:
         elif event == 'Toggle Map':
             self._submit({"action": "set_map_visible", "visible": not self._map_visible})
 
+        elif event == 'Toggle Chat':
+            if self._chat and self._chat.is_open():
+                self._chat.close()
+                self.window['Toggle Chat'].update(text='Open Chat')
+            else:
+                self._chat.open(self._pc_names())
+                self.window['Toggle Chat'].update(text='Close Chat')
+
         elif event == '💾 Export':
             path = os.path.join(dir_path, f'Data/combat_tracker_{datetime.now().strftime("%Y%m%d_%H%M%S")}.json')
             self._submit({"action": "save", "path": path})
@@ -655,8 +689,16 @@ class Tracker:
 
     def run_gui(self, dir_path):
         layout = self.build_gui_layout()
-        self.window = sg.Window('D&D Initiative Tracker', layout, resizable=True, finalize=True,
-                                enable_close_attempted_event=True)
+        self.window = sg.Window('D&D Initiative Tracker', layout, resizable=True, finalize=True)
+
+        # Intercept window close at Tk level — read_all_windows destroys the window
+        # before we see WIN_CLOSED, so we replace WM_DELETE_WINDOW entirely.
+        # We must NOT call popup from here (nested mainloop → unstable).
+        # Just post an event; the read_all_windows loop shows the popup safely.
+        self.window.TKroot.protocol(
+            "WM_DELETE_WINDOW",
+            lambda: self.window.write_event_value('-CLOSE_REQUESTED-', None),
+        )
 
         tree = self.window['-TABLE-'].Widget
         tree.bind('<Double-Button-1>', self._start_notes_edit)
@@ -669,18 +711,36 @@ class Tracker:
         self._squelch_table_event = 0  # initial populate doesn't fire a TABLE event; reset to avoid eating first click
         # Restore map UI state from server (save may have been loaded before window opened)
         self._sync_map_ui(self.server.map_path, self.server.map_visible)
-        while True:
-            event, values = self.window.read()
-            if event == sg.WINDOW_CLOSE_ATTEMPTED_EVENT:
-                if sg.popup_yes_no('Are you sure you want to quit DungeonPy?',
-                                   title='Quit', keep_on_top=True) == 'Yes':
-                    break
-                else:
-                    continue
-            if event == 'SERVER_EVENT':
-                self._apply_server_event(values[event])
-                continue
-            self.handle_event(event, values, dir_path)
 
+        # Open chat window at startup
+        self._chat = ChatWindow(submit_fn=self._submit)
+        self._chat.open(self._pc_names())
+
+        while True:
+            win, event, values = sg.read_all_windows(timeout=100)
+
+            if win is None:
+                continue  # timeout with no event
+
+            if win == self.window:
+                if event == '-CLOSE_REQUESTED-':
+                    if sg.popup_yes_no('Are you sure you want to quit DungeonPy?',
+                                       title='Quit', keep_on_top=True) == 'Yes':
+                        break
+                    continue
+                if event == sg.WIN_CLOSED:
+                    break  # fallback if window destroyed externally
+                if event == 'SERVER_EVENT':
+                    self._apply_server_event(values[event])
+                    continue
+                self.handle_event(event, values, dir_path)
+
+            elif win == (self._chat.window if self._chat else None):
+                keep = self._chat.handle_event(event, values)
+                if not keep:
+                    self.window['Toggle Chat'].update(text='Open Chat')
+
+        if self._chat:
+            self._chat.close()
         self.window.close()
         os._exit(0)

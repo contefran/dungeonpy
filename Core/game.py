@@ -135,6 +135,7 @@ class Game:
     def _init_player(self, host, port, player_name, player_color, insecure):
         """--mode player — remote map-only client; no local files needed."""
         from Core.player_client import PlayerClient
+        from Core.player_chat_window import PlayerChatWindow
 
         if not player_name:
             raise ValueError("--name is required for --mode player")
@@ -166,8 +167,14 @@ class Game:
         self.map_manager._center_on_player = player_name
         self.map_manager._window_title = f"D&D Map Grid — {player_name}"
 
+        self._player_chat = PlayerChatWindow(
+            player_name=player_name,
+            submit_fn=self.player_client.submit,
+        )
+
         self.server.subscribe(self.map_manager.handle_server_event)
         self.server.subscribe(self._handle_player_map_events)
+        self.server.subscribe(self._player_chat.handle_server_event)
         self.player_client.start()   # blocks until first handshake (15 s timeout)
 
         if self.verbose:
@@ -200,7 +207,7 @@ class Game:
         if not self._programmatic_map_close:
             # User closed the pygame window manually
             if self.mode == 'player':
-                self._quit_event.set()
+                self._quit_event.set()   # causes chat window loop to exit too
             elif self.mode in ('dm', 'both'):
                 # Treat window close as toggling the map off for everyone
                 self.bridge.submit({"action": "set_map_visible", "visible": False})
@@ -279,7 +286,7 @@ class Game:
             log(f"[Game] Launching in {self.mode} mode...")
 
         if self.mode == 'player':
-            self._quit_event.wait()
+            self._player_chat.run(self._quit_event)  # blocks until chat window closes
 
         elif self.mode == 'map':
             screen = self.map_manager.init_pygame()
