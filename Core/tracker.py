@@ -691,6 +691,17 @@ class Tracker:
         layout = self.build_gui_layout()
         self.window = sg.Window('D&D Initiative Tracker', layout, resizable=True, finalize=True)
 
+        # On Windows, tkinter scales fonts/images based on screen DPI even when the
+        # process is DPI-aware.  Forcing tk scaling to the standard 96 DPI (factor
+        # 96/72 = 1.333...) normalises sizes so condition icons and fonts match the
+        # intended pixel values.
+        import sys as _sys
+        if _sys.platform == 'win32':
+            try:
+                self.window.TKroot.tk.call('tk', 'scaling', 96 / 72)
+            except Exception:
+                pass
+
         # Intercept window close at Tk level — read_all_windows destroys the window
         # before we see WIN_CLOSED, so we replace WM_DELETE_WINDOW entirely.
         # We must NOT call popup from here (nested mainloop → unstable).
