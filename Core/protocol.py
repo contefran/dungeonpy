@@ -35,6 +35,8 @@ INTENTS: dict[str, list[str]] = {
     "load_map":             ["path"],
     "set_map_visible":      ["visible"],
     "chat_message":         ["text"],
+    "highlight_tile":       ["pos"],   # color/owner injected by bridge for players
+    "clear_highlights":     ["owner"],
 }
 
 

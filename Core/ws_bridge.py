@@ -166,10 +166,11 @@ class WSBridge:
 
         # Player rules
         action = intent.get("action")
-        _PLAYER_ALLOWED = {"select", "clear_selection", "move_token", "chat_message"}
+        _PLAYER_ALLOWED = {"select", "clear_selection", "move_token", "chat_message",
+                           "highlight_tile", "clear_highlights"}
         if action not in _PLAYER_ALLOWED:
             return False, f"action '{action}' not permitted for players"
-        if action == "select":
+        if action in ("select", "highlight_tile"):
             if not self.server.player_selection_locks.get(client["name"]):
                 return False, "selection not currently allowed — wait for the DM to enable you"
         if action == "move_token":
@@ -203,6 +204,10 @@ class WSBridge:
                     if intent.get("action") in ("select", "clear_selection"):
                         intent = dict(intent)
                         intent["selector"] = client["name"]
+                        intent["color"] = client.get("color", "white")
+                    elif intent.get("action") in ("highlight_tile", "clear_highlights"):
+                        intent = dict(intent)
+                        intent["owner"] = client["name"]
                         intent["color"] = client.get("color", "white")
                     elif intent.get("action") == "chat_message":
                         intent = dict(intent)

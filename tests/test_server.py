@@ -492,3 +492,36 @@ def test_set_map_visible_false(server):
     events = server.process_intent({"action": "set_map_visible", "visible": False})
     assert server.map_visible is False
     assert events[0]["visible"] is False
+
+
+# --- tile highlights ---
+
+def test_highlight_tile_add(server):
+    events = server.process_intent({"action": "highlight_tile", "pos": [3, 2], "owner": "DM", "color": "gold"})
+    assert events[0]["action"] == "highlights_changed"
+    assert {"pos": [3, 2], "color": "gold", "owner": "DM"} in server.tile_highlights
+
+def test_highlight_tile_toggle_off(server):
+    server.process_intent({"action": "highlight_tile", "pos": [3, 2], "owner": "DM", "color": "gold"})
+    server.process_intent({"action": "highlight_tile", "pos": [3, 2], "owner": "DM", "color": "gold"})
+    assert server.tile_highlights == []
+
+def test_clear_highlights(server):
+    server.process_intent({"action": "highlight_tile", "pos": [1, 1], "owner": "DM", "color": "gold"})
+    server.process_intent({"action": "highlight_tile", "pos": [2, 2], "owner": "Thorin", "color": "red"})
+    server.process_intent({"action": "clear_highlights", "owner": "DM"})
+    assert all(h["owner"] != "DM" for h in server.tile_highlights)
+    assert any(h["owner"] == "Thorin" for h in server.tile_highlights)
+
+def test_highlight_in_snapshot(server):
+    server.process_intent({"action": "highlight_tile", "pos": [5, 3], "owner": "DM", "color": "gold"})
+    state = server.get_snapshot()["state"]
+    assert "tile_highlights" in state
+    assert {"pos": [5, 3], "color": "gold", "owner": "DM"} in state["tile_highlights"]
+
+def test_load_map_clears_highlights(server, tmp_path):
+    server.tile_highlights = [{"pos": [1, 1], "color": "gold", "owner": "DM"}]
+    map_file = tmp_path / "map.txt"
+    map_file.write_text("111\n101\n111\n")
+    server.process_intent({"action": "load_map", "path": str(map_file)})
+    assert server.tile_highlights == []

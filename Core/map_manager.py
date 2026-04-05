@@ -17,6 +17,16 @@ PLAYER_COLORS = {
     "lime":   (120, 220,  30),
 }
 
+# Gold is reserved for the DM (active-turn glow, selection, highlights).
+# It is intentionally absent from PLAYER_COLORS so players cannot claim it.
+DM_COLOR      = (255, 200, 0)
+DM_COLOR_NAME = "gold"
+
+# Combined lookup used by rendering code (highlights, remote selections).
+_ALL_COLORS = {**PLAYER_COLORS, DM_COLOR_NAME: DM_COLOR}
+
+TOOLBAR_WIDTH = 60   # pixel width of the right-side tool panel
+
 class MapManager:
 
     def __init__(self, server, dir_path, submit=None,
@@ -74,6 +84,11 @@ class MapManager:
         self.initial_token_pos = None
         self.ui_font = None
         self._minimap_surface = None
+        self.active_tool: str = "select"          # "select" | "highlight"
+        self._player_name: str | None = None      # set by Game in player mode; None = DM
+        self._chat_toggle_fn = None               # set by Game in player mode; None = DM
+        self._chat_visible: bool = True           # tracks chat window state for toolbar icon
+        self._toolbar_font = None
 
     def init_pygame(self):
         pygame.init()
@@ -96,6 +111,7 @@ class MapManager:
         self._load_textures()
 
         self.ui_font = pygame.font.SysFont('Arial', 18)
+        self._toolbar_font = pygame.font.SysFont('Arial', 11)
         # Re-cache icons (needed if map is reopened after close)
         self.icons = {}
         for c in self.server.combatants:
@@ -138,15 +154,18 @@ class MapManager:
         screen.fill((0, 0, 0))
         self.draw_map(screen)
         self.draw_grid(screen)
+        self._draw_highlights(screen)
         mx, my = pygame.mouse.get_pos()
         self.draw_tokens(screen, self.selected_token, self.server.get_active(), (mx, my))
         self.draw_minimap(screen)
         if self.unplaced and self.ui_font:
             label = f"Click to place: {self.unplaced[0].name}"
             text = self.ui_font.render(label, True, (255, 220, 50))
-            x = screen.get_width() // 2 - text.get_width() // 2
+            map_w = screen.get_width() - TOOLBAR_WIDTH
+            x = map_w // 2 - text.get_width() // 2
             y = screen.get_height() - text.get_height() - 10
             screen.blit(text, (x, y))
+        self._draw_toolbar(screen)
 
     def scale_textures(self, tile_size):
         return (
@@ -231,6 +250,12 @@ class MapManager:
             name = event["name"]
             self.unplaced = [c for c in self.unplaced if c.name != name]
 
+        elif action == "player_lock_changed":
+            # If select lock removed while highlight tool is active, revert to select
+            if (event.get("lock_type") == "select" and not event.get("locked")
+                    and self.active_tool == "highlight"):
+                self.active_tool = "select"
+
     def _init_player_view(self, player_name: str):
         """Set mid-zoom and center the view on the player's token (called once on first snapshot)."""
         mid_zoom = (self.min_tile_size + self.max_tile_size) // 2
@@ -267,6 +292,170 @@ class MapManager:
                     self.load_icon(c.icon)
         self.selected_token = None
         self._remote_selections.clear()
+
+    # ------------------------------------------------------------------
+    # Toolbar helpers
+    # ------------------------------------------------------------------
+
+    def _can_highlight(self) -> bool:
+        """DM can always highlight; players only when their select lock is on."""
+        if self._player_name is None:
+            return True
+        return bool(self.server.player_selection_locks.get(self._player_name))
+
+    def _toolbar_button_rects(self, screen_w: int) -> dict:
+        """Compute toolbar button rects from current screen width."""
+        x0 = screen_w - TOOLBAR_WIDTH + 8
+        rects = {
+            "select":    pygame.Rect(x0, 12, 44, 44),
+            "highlight": pygame.Rect(x0, 64, 44, 44),
+            "clear":     pygame.Rect(x0, 116, 44, 36),
+        }
+        if self._chat_toggle_fn is not None:
+            rects["chat"] = pygame.Rect(x0, 168, 44, 44)
+        return rects
+
+    def _handle_toolbar_click(self, mx, my):
+        screen_w = pygame.display.get_surface().get_width()
+        rects = self._toolbar_button_rects(screen_w)
+        if rects["select"].collidepoint(mx, my):
+            self.active_tool = "select"
+        elif rects["highlight"].collidepoint(mx, my):
+            if self._can_highlight():
+                self.active_tool = "highlight"
+        elif rects["clear"].collidepoint(mx, my):
+            if self._player_name:
+                self._submit({"action": "clear_highlights"})   # bridge injects owner/color
+            else:
+                self._submit({"action": "clear_highlights", "owner": "DM", "color": "gold"})
+        elif rects.get("chat") and rects["chat"].collidepoint(mx, my):
+            if self._chat_toggle_fn:
+                self._chat_toggle_fn()
+                self._chat_visible = not self._chat_visible
+
+    def _draw_toolbar(self, screen):
+        sw, sh = screen.get_size()
+        x0 = sw - TOOLBAR_WIDTH
+
+        # Background strip + left divider
+        pygame.draw.rect(screen, (25, 25, 35), (x0, 0, TOOLBAR_WIDTH, sh))
+        pygame.draw.line(screen, (70, 70, 90), (x0, 0), (x0, sh), 1)
+
+        rects = self._toolbar_button_rects(sw)
+        can_hl = self._can_highlight()
+        is_sel = self.active_tool == "select"
+        is_hl  = self.active_tool == "highlight"
+
+        _BG_ACTIVE   = (55, 85, 55)
+        _BG_INACTIVE = (45, 45, 60)
+        _BG_DISABLED = (35, 35, 42)
+        _BG_CLEAR    = (80, 42, 42)
+        _BORDER      = (90, 90, 110)
+        _ICON        = (220, 220, 230)
+        _ICON_ACTIVE = (200, 240, 200)
+        _ICON_DIM    = (90,  90, 105)
+
+        # --- Select button ---
+        bg = _BG_ACTIVE if is_sel else _BG_INACTIVE
+        pygame.draw.rect(screen, bg, rects["select"], border_radius=4)
+        pygame.draw.rect(screen, _BORDER, rects["select"], 1, border_radius=4)
+        cx, cy = rects["select"].centerx, rects["select"].centery - 6
+        ic = _ICON_ACTIVE if is_sel else _ICON
+        # Cursor: filled triangle (arrow-like)
+        pts = [(cx - 7, cy - 8), (cx - 7, cy + 7), (cx - 1, cy + 3),
+               (cx + 1, cy + 8), (cx + 4, cy + 6), (cx + 2, cy + 1), (cx + 7, cy + 1)]
+        pygame.draw.polygon(screen, ic, pts)
+
+        # --- Highlight button ---
+        bg = _BG_ACTIVE if is_hl else (_BG_INACTIVE if can_hl else _BG_DISABLED)
+        pygame.draw.rect(screen, bg, rects["highlight"], border_radius=4)
+        pygame.draw.rect(screen, _BORDER, rects["highlight"], 1, border_radius=4)
+        cx, cy = rects["highlight"].centerx, rects["highlight"].centery - 6
+        ic = _ICON_ACTIVE if is_hl else (_ICON if can_hl else _ICON_DIM)
+        # Star: 5-pointed
+        r_out, r_in = 10, 4
+        star_pts = []
+        for i in range(10):
+            angle = -math.pi / 2 + i * math.pi / 5
+            r = r_out if i % 2 == 0 else r_in
+            star_pts.append((cx + r * math.cos(angle), cy + r * math.sin(angle)))
+        pygame.draw.polygon(screen, ic, star_pts)
+
+        # --- Separator ---
+        pygame.draw.line(screen, (55, 55, 70), (x0 + 8, 110), (sw - 8, 110), 1)
+
+        # --- Clear button ---
+        pygame.draw.rect(screen, _BG_CLEAR, rects["clear"], border_radius=4)
+        pygame.draw.rect(screen, _BORDER, rects["clear"], 1, border_radius=4)
+        cx, cy = rects["clear"].centerx, rects["clear"].centery
+        pygame.draw.line(screen, _ICON, (cx - 7, cy - 7), (cx + 7, cy + 7), 2)
+        pygame.draw.line(screen, _ICON, (cx + 7, cy - 7), (cx - 7, cy + 7), 2)
+
+        # --- Chat button (player mode only) ---
+        if self._chat_toggle_fn is not None:
+            pygame.draw.line(screen, (55, 55, 70), (x0 + 8, 162), (sw - 8, 162), 1)
+            is_chat = self._chat_visible
+            bg = _BG_ACTIVE if is_chat else _BG_INACTIVE
+            pygame.draw.rect(screen, bg, rects["chat"], border_radius=4)
+            pygame.draw.rect(screen, _BORDER, rects["chat"], 1, border_radius=4)
+            cx, cy = rects["chat"].centerx, rects["chat"].centery - 6
+            ic = _ICON_ACTIVE if is_chat else _ICON
+            # Chat bubble icon: rounded rect + small tail triangle
+            bubble = pygame.Rect(cx - 10, cy - 8, 20, 14)
+            pygame.draw.rect(screen, ic, bubble, 2, border_radius=3)
+            tail = [(cx - 4, cy + 6), (cx - 9, cy + 11), (cx + 1, cy + 6)]
+            pygame.draw.polygon(screen, ic, tail)
+
+        # Labels beneath icons
+        if self._toolbar_font:
+            for key, label, active in [
+                ("select",    "SEL", is_sel),
+                ("highlight", "HL",  is_hl),
+            ]:
+                r = rects[key]
+                ic = _ICON_ACTIVE if active else (_ICON if (key != "highlight" or can_hl) else _ICON_DIM)
+                surf = self._toolbar_font.render(label, True, ic)
+                screen.blit(surf, (r.x + (r.width - surf.get_width()) // 2, r.bottom - 13))
+            clr_surf = self._toolbar_font.render("CLR", True, _ICON)
+            r = rects["clear"]
+            screen.blit(clr_surf, (r.x + (r.width - clr_surf.get_width()) // 2,
+                                   r.y + (r.height - clr_surf.get_height()) // 2))
+            if self._chat_toggle_fn is not None:
+                ic = _ICON_ACTIVE if self._chat_visible else _ICON
+                chat_surf = self._toolbar_font.render("CHAT", True, ic)
+                r = rects["chat"]
+                screen.blit(chat_surf, (r.x + (r.width - chat_surf.get_width()) // 2, r.bottom - 13))
+
+    # ------------------------------------------------------------------
+    # Highlight rendering
+    # ------------------------------------------------------------------
+
+    def _draw_highlights(self, screen):
+        """Draw flickering square border glows for all active tile highlights."""
+        if not self.server.tile_highlights:
+            return
+        t = pygame.time.get_ticks()
+        # ~1 Hz flicker: sin period = 2π / 0.00628 ≈ 1000 ms
+        flicker = 0.5 + 0.5 * math.sin(t * 0.00628)
+        alpha = int(80 + 160 * flicker)   # 80 … 240
+        inset = 2
+        border = 3
+        for h in self.server.tile_highlights:
+            col, row = h["pos"]
+            x = col * self.tile_size + self.offset_x
+            y = row * self.tile_size + self.offset_y
+            if x + self.tile_size < 0 or y + self.tile_size < 0:
+                continue
+            if x > screen.get_width() or y > screen.get_height():
+                continue
+            rgb = _ALL_COLORS.get(h["color"], (255, 200, 0))
+            surf = pygame.Surface((self.tile_size, self.tile_size), pygame.SRCALPHA)
+            pygame.draw.rect(surf, (*rgb, alpha),
+                             (inset, inset,
+                              self.tile_size - 2 * inset,
+                              self.tile_size - 2 * inset),
+                             border)
+            screen.blit(surf, (x, y))
 
     # ------------------------------------------------------------------
     # Map rendering
@@ -344,26 +533,26 @@ class MapManager:
                 color = (160, 160, 160) if is_dead else (255, 0, 0)
                 pygame.draw.circle(screen, color, (x + self.tile_size // 2, y + self.tile_size // 2), self.tile_size // 3)
 
-            # Highlight selected (DM local selection — yellow)
+            # Highlight selected (DM local selection — gold)
             if c == selected_token:
-                pygame.draw.rect(screen, (255, 255, 0), pygame.Rect(x, y, self.tile_size, self.tile_size), 3)
+                pygame.draw.rect(screen, (255, 200, 0), pygame.Rect(x, y, self.tile_size, self.tile_size), 3)
 
             # Highlight remote player selections (each with their own color)
             offset = 0
             for selector, (token_name, color_name) in self._remote_selections.items():
                 if c.name == token_name:
-                    rgb = PLAYER_COLORS.get(color_name, (255, 255, 255))
+                    rgb = _ALL_COLORS.get(color_name, (255, 255, 255))
                     pygame.draw.rect(screen, rgb,
                                      pygame.Rect(x - offset, y - offset,
                                                  self.tile_size + offset * 2,
                                                  self.tile_size + offset * 2), 3)
                     offset += 4  # stack multiple selections outward
 
-            # Highlight active
+            # Highlight active — gold pulsing glow
             if active_combatant and c == active_combatant:
                 glow_radius = self.tile_size // 4 + int((self.tile_size//8) * (1 + math.sin(pygame.time.get_ticks() * 0.005)))
                 glow_surface = pygame.Surface((glow_radius * 2, glow_radius * 2), pygame.SRCALPHA)
-                pygame.draw.circle(glow_surface, (135, 206, 250, 100), (glow_radius, glow_radius), glow_radius)
+                pygame.draw.circle(glow_surface, (255, 200, 0, 120), (glow_radius, glow_radius), glow_radius)
                 screen.blit(glow_surface, (x + self.tile_size // 2 - glow_radius, y + self.tile_size // 2 - glow_radius))
 
     # ------------------------------------------------------------------
@@ -526,6 +715,13 @@ class MapManager:
     def handle_click(self, pos, button):
         mx, my = pos
 
+        # Toolbar takes priority — all buttons live in the right strip
+        if button == 1:
+            screen_w = pygame.display.get_surface().get_width()
+            if mx >= screen_w - TOOLBAR_WIDTH:
+                self._handle_toolbar_click(mx, my)
+                return
+
         if button == 1:
             minimap = self._minimap_rect()
             if minimap and minimap.collidepoint(mx, my):
@@ -534,6 +730,16 @@ class MapManager:
 
         col = (mx - self.offset_x) // self.tile_size
         row = (my - self.offset_y) // self.tile_size
+
+        # Highlight tool — toggle tile and skip all selection/placement logic
+        if button == 1 and self.active_tool == "highlight":
+            if 0 <= row < len(self.map_data) and 0 <= col < len(self.map_data[0]):
+                if self._player_name:
+                    self._submit({"action": "highlight_tile", "pos": [col, row]})
+                else:
+                    self._submit({"action": "highlight_tile", "pos": [col, row],
+                                  "owner": "DM", "color": "gold"})
+            return
 
         if self.verbose:
             log(f"[Map] Mouse click at pixel=({mx},{my}) tile=({col},{row})")
@@ -591,6 +797,11 @@ class MapManager:
         return None
 
     def start_drag(self, mx, my):
+        if self.active_tool != "select":
+            return None
+        screen_w = pygame.display.get_surface().get_width()
+        if mx >= screen_w - TOOLBAR_WIDTH:
+            return None
         token = self.get_token_at_pixel(mx, my)
         if token:
             cx, cy = token.pos

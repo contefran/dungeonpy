@@ -46,6 +46,7 @@ class PlayerChatWindow:
             resizable=True,
             finalize=True,
             size=(350, 400),
+            enable_close_attempted_event=True,  # intercept X so we hide instead of quit
         )
         win['-INPUT-'].bind('<Return>', '_RETURN')
         return win
@@ -56,17 +57,34 @@ class PlayerChatWindow:
 
     def run(self, quit_event: threading.Event):
         """
-        Block until the window is closed or quit_event is set (e.g. map closed).
-        Uses a timeout so it stays responsive to quit_event.
+        Block until quit_event is set (e.g. map closed).
+        Pressing the window X hides the chat; it can be re-shown from the map toolbar.
         """
         self.window = self._build_window()
+        self._is_hidden = False
 
         while not quit_event.is_set():
             event, values = self.window.read(timeout=200)
 
             if event == sg.WIN_CLOSED:
-                quit_event.set()   # chat close = app quit
+                # External close signal (from close() method) — quit the app
+                quit_event.set()
                 break
+
+            if event == sg.WINDOW_CLOSE_ATTEMPTED_EVENT:
+                # User pressed X on the chat window — hide it, don't quit
+                self.window.hide()
+                self._is_hidden = True
+                continue
+
+            if event == '_TOGGLE_CHAT_':
+                if self._is_hidden:
+                    self.window.un_hide()
+                    self._is_hidden = False
+                else:
+                    self.window.hide()
+                    self._is_hidden = True
+                continue
 
             if event in ('Send', '-INPUT-_RETURN'):
                 text = (values.get('-INPUT-') or '').strip()
@@ -95,6 +113,11 @@ class PlayerChatWindow:
             current = self.window['-LOG-'].get()
             updated = (current.rstrip('\n') + '\n' + line).lstrip('\n')
             self.window['-LOG-'].update(updated)
+
+    def toggle(self):
+        """Called from another thread (map toolbar) to show/hide the window."""
+        if self.window:
+            self.window.write_event_value('_TOGGLE_CHAT_', None)
 
     def handle_server_event(self, event: dict):
         """Called from the player_client subscriber thread — posts to GUI queue."""

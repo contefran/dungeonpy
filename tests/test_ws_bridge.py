@@ -141,6 +141,7 @@ def test_snapshot_contains_full_state_fields(bridge):
     assert "map_grid" in state
     assert "map_path" in state
     assert "map_visible" in state
+    assert "tile_highlights" in state
 
 
 # ---------------------------------------------------------------------------
@@ -370,3 +371,45 @@ def test_client_req_id_echoed_on_ws_event(bridge):
             }))
             return json.loads(await ws.recv())
     assert run(_test()).get("client_req_id") == "my-req-42"
+
+
+# ---------------------------------------------------------------------------
+# Tile highlight permissions
+# ---------------------------------------------------------------------------
+
+def test_player_can_highlight_when_selection_locked(bridge, ws_server):
+    ws_server.player_selection_locks["Alice"] = True
+    async def _test():
+        async with websockets.connect(ws_url(bridge)) as ws:
+            await player_hello(ws, "Alice")
+            await ws.send(json.dumps({"action": "highlight_tile", "pos": [2, 3]}))
+            return json.loads(await asyncio.wait_for(ws.recv(), timeout=2.0))
+    msg = run(_test())
+    assert msg["type"] == "event"
+    assert msg["action"] == "highlights_changed"
+
+
+def test_player_cannot_highlight_when_not_locked(bridge, ws_server):
+    ws_server.player_selection_locks["Alice"] = False
+    async def _test():
+        async with websockets.connect(ws_url(bridge)) as ws:
+            await player_hello(ws, "Alice")
+            await ws.send(json.dumps({"action": "highlight_tile", "pos": [2, 3]}))
+            return json.loads(await asyncio.wait_for(ws.recv(), timeout=2.0))
+    msg = run(_test())
+    assert msg["type"] == "error"
+    assert "not currently allowed" in msg["reason"]
+
+
+def test_bridge_injects_owner_into_highlight(bridge, ws_server):
+    """Player cannot spoof another owner — bridge overwrites owner field."""
+    ws_server.player_selection_locks["Alice"] = True
+    async def _test():
+        async with websockets.connect(ws_url(bridge)) as ws:
+            await player_hello(ws, "Alice")
+            # Attempt to claim DM as owner
+            await ws.send(json.dumps({"action": "highlight_tile", "pos": [1, 1], "owner": "DM"}))
+            return json.loads(await asyncio.wait_for(ws.recv(), timeout=2.0))
+    run(_test())
+    # Server should have Alice's highlight, not DM's
+    assert all(h["owner"] == "Alice" for h in ws_server.tile_highlights)

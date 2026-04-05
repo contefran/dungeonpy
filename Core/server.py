@@ -41,6 +41,7 @@ class GameServer:
         self.trap_states: dict[tuple, str] = {}          # (row, col) → 'open'|'closed'  tile 6 trap
         self.player_selection_locks: dict[str, bool] = {}  # player name → allowed to select
         self.player_move_locks: dict[str, bool] = {}       # player name → allowed to move token
+        self.tile_highlights: list[dict] = []              # [{"pos":[c,r],"color":"gold","owner":"DM"}, ...]
         self.map_grid: list | None = None                # 2-D tile grid; included in snapshots
         self.map_path: str | None = None                 # absolute path to the loaded .txt map file
         self.map_visible: bool = False                   # whether the map window is shown to everyone
@@ -137,6 +138,7 @@ class GameServer:
                 "map_grid": self.map_grid,
                 "map_path": self.map_path,
                 "map_visible": self.map_visible,
+                "tile_highlights": list(self.tile_highlights),
             },
         }
 
@@ -423,6 +425,7 @@ class GameServer:
             self.iron_door_states = {}
             self.secret_door_states = {}
             self.trap_states = {}
+            self.tile_highlights = []
             self.map_visible = True  # auto-open so DM can place tokens
             return [
                 {"type": "event", "action": "map_loaded", "path": path},
@@ -433,6 +436,26 @@ class GameServer:
             visible = bool(intent.get("visible", False))
             self.map_visible = visible
             return [{"type": "event", "action": "map_visibility_changed", "visible": visible}]
+
+        # --- Tile highlights ---
+        if action == "highlight_tile":
+            pos   = intent.get("pos")
+            color = intent.get("color", "gold")
+            owner = intent.get("owner", "DM")
+            existing = next((h for h in self.tile_highlights
+                             if h["pos"] == pos and h["owner"] == owner), None)
+            if existing:
+                self.tile_highlights.remove(existing)
+            else:
+                self.tile_highlights.append({"pos": pos, "color": color, "owner": owner})
+            return [{"type": "event", "action": "highlights_changed",
+                     "highlights": list(self.tile_highlights)}]
+
+        if action == "clear_highlights":
+            owner = intent.get("owner", "DM")
+            self.tile_highlights = [h for h in self.tile_highlights if h["owner"] != owner]
+            return [{"type": "event", "action": "highlights_changed",
+                     "highlights": list(self.tile_highlights)}]
 
         # --- Chat ---
         if action == "chat_message":

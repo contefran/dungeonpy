@@ -163,14 +163,16 @@ class Game:
             color=player_color,
             ssl_context=ssl_ctx,
         )
-        self.map_manager._submit = self.player_client.submit
-        self.map_manager._center_on_player = player_name
-        self.map_manager._window_title = f"D&D Map Grid — {player_name}"
-
         self._player_chat = PlayerChatWindow(
             player_name=player_name,
             submit_fn=self.player_client.submit,
         )
+
+        self.map_manager._submit = self.player_client.submit
+        self.map_manager._center_on_player = player_name
+        self.map_manager._player_name = player_name
+        self.map_manager._chat_toggle_fn = self._player_chat.toggle
+        self.map_manager._window_title = f"D&D Map Grid — {player_name}"
 
         self.server.subscribe(self.map_manager.handle_server_event)
         self.server.subscribe(self._handle_player_map_events)

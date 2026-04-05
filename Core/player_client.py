@@ -134,6 +134,7 @@ class PlayerClient:
         self.server.player_move_locks = dict(state.get("player_move_locks", {}))
         self.server.map_path = state.get("map_path")
         self.server.map_visible = state.get("map_visible", False)
+        self.server.tile_highlights = list(state.get("tile_highlights", []))
         if state.get("map_grid"):
             self.server.map_grid = state["map_grid"]
 
@@ -206,6 +207,9 @@ class PlayerClient:
 
         elif action == "map_visibility_changed":
             self.server.map_visible = event.get("visible", False)
+
+        elif action == "highlights_changed":
+            self.server.tile_highlights = list(event.get("highlights", []))
 
         # selection_changed, selection_cleared, map_loaded, player_connected,
         # player_disconnected, error — no mirror state change needed;
