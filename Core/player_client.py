@@ -151,6 +151,13 @@ class PlayerClient:
         self.server.map_path = state.get("map_path")
         self.server.map_visible = state.get("map_visible", False)
         self.server.tile_highlights = list(state.get("tile_highlights", []))
+        self.server.visibility_radius = state.get("visibility_radius", 10)
+        self.server.explored_tiles = {
+            self.name: {tuple(t) for t in state.get("explored_tiles", [])}
+        }
+        self.server.revealed_secret_doors = {
+            self.name: {tuple(t) for t in state.get("revealed_secret_doors", [])}
+        }
         if state.get("map_grid"):
             self.server.map_grid = state["map_grid"]
 
@@ -226,6 +233,25 @@ class PlayerClient:
 
         elif action == "highlights_changed":
             self.server.tile_highlights = list(event.get("highlights", []))
+
+        elif action == "explored_updated":
+            new_tiles = {tuple(t) for t in event.get("new_tiles", [])}
+            self.server.explored_tiles.setdefault(self.name, set()).update(new_tiles)
+
+        elif action == "secret_door_revealed":
+            pos = event.get("pos")
+            if pos:
+                self.server.revealed_secret_doors.setdefault(self.name, set()).add(tuple(pos))
+                # Update the local map grid: replace the wall (was tile 5→1) back to 5
+                # so the player now sees it as a door tile
+                if self.server.map_grid:
+                    col, row = pos
+                    if (0 <= row < len(self.server.map_grid)
+                            and 0 <= col < len(self.server.map_grid[0])):
+                        self.server.map_grid[row][col] = 5
+
+        elif action == "visibility_radius_changed":
+            self.server.visibility_radius = event.get("radius", 10)
 
         # selection_changed, selection_cleared, map_loaded, player_connected,
         # player_disconnected, error — no mirror state change needed;

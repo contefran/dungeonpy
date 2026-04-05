@@ -383,6 +383,11 @@ class Tracker:
              sg.Button('Show Map', key='Toggle Map', disabled=True),
              sg.Text('  Chat:', font=table_font),
              sg.Button('Close Chat', key='Toggle Chat')],
+            [sg.Text('Sight radius:', font=table_font),
+             sg.Slider(range=(1, 30), default_value=10, orientation='h',
+                       size=(20, 15), key='-SIGHT_RADIUS-', enable_events=True,
+                       font=table_font),
+             sg.Text('tiles', font=table_font)],
             [sg.HorizontalSeparator()],
             [sg.Text('Connected Players', font=('Helvetica', 12, 'bold'))],
             [sg.Table(
@@ -666,6 +671,10 @@ class Tracker:
         elif event == 'Toggle Map':
             self._submit({"action": "set_map_visible", "visible": not self._map_visible})
 
+        elif event == '-SIGHT_RADIUS-':
+            self._submit({"action": "set_visibility_radius",
+                          "radius": int(values['-SIGHT_RADIUS-'])})
+
         elif event == 'Toggle Chat':
             if self._chat and self._chat.is_open():
                 self._chat.close()
@@ -721,6 +730,7 @@ class Tracker:
         self._squelch_table_event = 0  # initial populate doesn't fire a TABLE event; reset to avoid eating first click
         # Restore map UI state from server (save may have been loaded before window opened)
         self._sync_map_ui(self.server.map_path, self.server.map_visible)
+        self.window['-SIGHT_RADIUS-'].update(value=self.server.visibility_radius)
 
         # Open chat window at startup
         self._chat = ChatWindow(submit_fn=self._submit)

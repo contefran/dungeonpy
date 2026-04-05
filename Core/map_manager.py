@@ -1,6 +1,7 @@
 import pygame
 import os
 from Core.log_utils import log
+from Core.los import compute_los
 import math
 
 PLAYER_COLORS = {
@@ -80,11 +81,18 @@ class MapManager:
         self.initial_token_pos = None
         self.ui_font = None
         self._minimap_surface = None
-        self.active_tool: str = "select"          # "select" | "highlight"
+        self.active_tool: str = "select"          # "select" | "highlight" | "recenter_pick" | "reveal"
         self._player_name: str | None = None      # set by Game in player mode; None = DM
         self._chat_toggle_fn = None               # set by Game in player mode; None = DM
         self._chat_visible: bool = True           # tracks chat window state for toolbar icon
         self._toolbar_font = None
+        # Fog of war — player mode only
+        self._explored_tiles: set = set()         # (col, row) tiles this player has ever seen
+        self._current_los: set = set()            # (col, row) tiles visible this frame
+        self._fog_surface: pygame.Surface | None = None  # cached per-frame fog overlay
+        # Last-seen door states (fog-gated): only updated when tile is in LOS
+        self._player_door_states: dict = {}       # (row, col) → state
+        self._player_iron_door_states: dict = {}  # (row, col) → state
 
     def init_pygame(self):
         pygame.init()
@@ -149,6 +157,9 @@ class MapManager:
     def render(self, screen):
         screen.fill((0, 0, 0))
         self.draw_map(screen)
+        if self._player_name:
+            self._update_los()
+            self._draw_fog(screen)
         self.draw_grid(screen)
         self._draw_highlights(screen)
         mx, my = pygame.mouse.get_pos()
@@ -262,6 +273,19 @@ class MapManager:
                     self.offset_x = sw // 2 - col * self.tile_size - self.tile_size // 2
                     self.offset_y = sh // 2 - row * self.tile_size - self.tile_size // 2
 
+        elif action == "explored_updated":
+            # Only relevant in player mode; accumulate into local explored set
+            new_tiles = {tuple(t) for t in event.get("new_tiles", [])}
+            self._explored_tiles.update(new_tiles)
+
+        elif action == "secret_door_revealed":
+            # Refresh map_data from server so the tile now renders as a door
+            if self.server.map_grid:
+                self.map_data = self.server.map_grid
+
+        elif action == "visibility_radius_changed":
+            pass  # server.visibility_radius already updated by player_client; LOS recomputed next frame
+
     def _init_player_view(self, player_name: str):
         """Set mid-zoom and center the view on the player's token (called once on first snapshot).
         For a no-zoom recenter use _recenter_on_player() instead."""
@@ -312,6 +336,12 @@ class MapManager:
                     self.load_icon(c.icon)
         self.selected_token = None
         self._remote_selections.clear()
+        # Restore fog state for player mode
+        if self._player_name:
+            player_explored = self.server.explored_tiles.get(self._player_name, set())
+            self._explored_tiles = set(player_explored)
+            self._player_door_states = {}
+            self._player_iron_door_states = {}
 
     # ------------------------------------------------------------------
     # Toolbar helpers
@@ -338,6 +368,7 @@ class MapManager:
             rects["recenter"] = pygame.Rect(x0, chat_bottom + 8, 44, 44)
         if self._player_name is None:
             rects["recenter_all"] = pygame.Rect(x0, rects["clear"].bottom + 16, 44, 44)
+            rects["reveal"] = pygame.Rect(x0, rects["recenter_all"].bottom + 8, 44, 44)
         return rects
 
     def _handle_toolbar_click(self, mx, my):
@@ -361,6 +392,8 @@ class MapManager:
             self._recenter_on_player()
         elif rects.get("recenter_all") and rects["recenter_all"].collidepoint(mx, my):
             self.active_tool = "recenter_pick"
+        elif rects.get("reveal") and rects["reveal"].collidepoint(mx, my):
+            self.active_tool = "reveal"
 
     def _draw_toolbar(self, screen):
         sw, sh = screen.get_size()
@@ -450,6 +483,22 @@ class MapManager:
             pygame.draw.ellipse(screen, ic, (cx - 10, cy - 5, 20, 10), 2)
             pygame.draw.circle(screen, ic, (cx, cy), 3)
 
+        # --- Reveal button (DM only) ---
+        if rects.get("reveal"):
+            pygame.draw.line(screen, (55, 55, 70),
+                             (x0 + 8, rects["reveal"].top - 4),
+                             (sw - 8, rects["reveal"].top - 4), 1)
+            is_reveal = self.active_tool == "reveal"
+            bg = (70, 60, 30) if is_reveal else _BG_INACTIVE
+            pygame.draw.rect(screen, bg, rects["reveal"], border_radius=4)
+            pygame.draw.rect(screen, _BORDER, rects["reveal"], 1, border_radius=4)
+            cx, cy = rects["reveal"].centerx, rects["reveal"].centery - 6
+            ic = (240, 210, 100) if is_reveal else _ICON
+            # Key icon: circle head + rectanglar shaft
+            pygame.draw.circle(screen, ic, (cx - 3, cy - 4), 5, 2)
+            pygame.draw.line(screen, ic, (cx + 2, cy - 2), (cx + 9, cy + 5), 2)
+            pygame.draw.line(screen, ic, (cx + 6, cy + 2), (cx + 8, cy + 4), 2)
+
         # --- Recenter button (player mode only) ---
         if rects.get("recenter"):
             pygame.draw.line(screen, (55, 55, 70),
@@ -494,10 +543,82 @@ class MapManager:
                 eye_surf = self._toolbar_font.render("VIEW", True, ic)
                 r = rects["recenter_all"]
                 screen.blit(eye_surf, (r.x + (r.width - eye_surf.get_width()) // 2, r.bottom - 13))
+            if rects.get("reveal"):
+                is_reveal = self.active_tool == "reveal"
+                ic = (240, 210, 100) if is_reveal else _ICON
+                rev_surf = self._toolbar_font.render("RVEAL", True, ic)
+                r = rects["reveal"]
+                screen.blit(rev_surf, (r.x + (r.width - rev_surf.get_width()) // 2, r.bottom - 13))
 
     # ------------------------------------------------------------------
     # Highlight rendering
     # ------------------------------------------------------------------
+
+    # ------------------------------------------------------------------
+    # Fog of war
+    # ------------------------------------------------------------------
+
+    def _update_los(self):
+        """Recompute the current LOS set from the player's token position."""
+        if not self.map_data or not self._player_name:
+            self._current_los = set()
+            return
+        token = next((c for c in self.server.combatants
+                      if c.name == self._player_name and c.pos), None)
+        if not token:
+            self._current_los = set()
+            return
+        self._current_los = compute_los(
+            self.map_data, token.pos, self.server.visibility_radius,
+            self._player_door_states,       # use last-seen states so fog gates LOS too
+            self._player_iron_door_states,
+            self.server.secret_door_states,
+        )
+        # For each newly visible tile, learn its current door state
+        for (c, r) in self._current_los:
+            k = (r, c)
+            if k in self.server.door_states:
+                self._player_door_states[k] = self.server.door_states[k]
+            if k in self.server.iron_door_states:
+                self._player_iron_door_states[k] = self.server.iron_door_states[k]
+        # Accumulate into local explored set (server is authoritative but this keeps
+        # rendering smooth without waiting for the server round-trip)
+        self._explored_tiles.update(self._current_los)
+
+    def _draw_fog(self, screen):
+        """
+        Overlay fog of war on the map.
+        Unexplored tiles → solid black.
+        Explored but not currently visible → dark semi-transparent overlay.
+        Currently visible → no overlay (clear).
+        """
+        if not self.map_data:
+            return
+        rows = len(self.map_data)
+        cols = len(self.map_data[0]) if rows else 0
+        ts = self.tile_size
+
+        # Build a surface that covers the entire map area
+        map_w = cols * ts
+        map_h = rows * ts
+        fog = pygame.Surface((map_w, map_h), pygame.SRCALPHA)
+
+        BLACK      = (0,   0,   0, 255)
+        MEMORY     = (0,   0,   0, 110)
+
+        for row in range(rows):
+            for col in range(cols):
+                x = col * ts
+                y = row * ts
+                tile = (col, row)
+                if tile in self._current_los:
+                    pass  # fully visible — no overlay
+                elif tile in self._explored_tiles:
+                    pygame.draw.rect(fog, MEMORY, (x, y, ts, ts))
+                else:
+                    pygame.draw.rect(fog, BLACK, (x, y, ts, ts))
+
+        screen.blit(fog, (self.offset_x, self.offset_y))
 
     def _draw_highlights(self, screen):
         """Draw flickering square border glows for all active tile highlights."""
@@ -531,6 +652,10 @@ class MapManager:
     # ------------------------------------------------------------------
 
     def draw_map(self, screen):
+        # In player mode use fog-gated door states so doors only visually change
+        # when the player has LOS on them.
+        door_st = self._player_door_states if self._player_name else self.server.door_states
+        iron_st = self._player_iron_door_states if self._player_name else self.server.iron_door_states
         for row in range(len(self.map_data)):
             for col in range(len(self.map_data[0])):
                 x = col * self.tile_size + self.offset_x
@@ -546,13 +671,13 @@ class MapManager:
                     screen.blit(self.wall_texture, (x, y))
                 elif tile == 3:  # wooden door
                     screen.blit(self.floor_texture, (x, y))
-                    if self.server.door_states.get(key) == "open":
+                    if door_st.get(key) == "open":
                         screen.blit(self.wooden_door_open_texture, (x, y))
                     else:
                         screen.blit(self.wooden_door_closed_texture, (x, y))
                 elif tile == 4:  # iron door
                     screen.blit(self.floor_texture, (x, y))
-                    if self.server.iron_door_states.get(key) == "open":
+                    if iron_st.get(key) == "open":
                         screen.blit(self.iron_door_open_texture, (x, y))
                     else:
                         screen.blit(self.iron_door_closed_texture, (x, y))
@@ -846,6 +971,13 @@ class MapManager:
         if button == 1 and self.active_tool == "recenter_pick":
             if 0 <= row < len(self.map_data) and 0 <= col < len(self.map_data[0]):
                 self._submit({"action": "recenter_all", "pos": [col, row]})
+            self.active_tool = "select"
+            return
+
+        # Reveal mode — DM clicks a secret door tile to reveal it to nearby players
+        if button == 1 and self.active_tool == "reveal":
+            if 0 <= row < len(self.map_data) and 0 <= col < len(self.map_data[0]):
+                self._submit({"action": "reveal_secret_door", "pos": [col, row]})
             self.active_tool = "select"
             return
 

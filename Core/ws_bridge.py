@@ -125,7 +125,9 @@ class WSBridge:
         self._clients[ws] = {"role": role, "name": name, "color": color}
         self._connections.add(ws)
         await ws.send(json.dumps({"type": "hello_ack", "ok": True, "role": role}))
-        await ws.send(json.dumps(self.server.get_snapshot()))
+        # Players get a personalised snapshot (fog-of-war filtered)
+        snap = self.server.get_snapshot(player_name=name if role == "player" else None)
+        await ws.send(json.dumps(snap))
 
         # Step 4: notify DM tracker of player arrival
         if role == "player":
@@ -233,6 +235,16 @@ class WSBridge:
                 # DM → specific player: send only to that player's WS connection
                 self._loop.create_task(self._send_to_player(json.dumps(event), to_name))
             # player → DM (to=None): DM is an in-process subscriber — no WS send needed
+        elif action == "explored_updated":
+            # Only the named player needs their own explored-tile delta
+            target = event.get("target")
+            if target:
+                self._loop.create_task(self._send_to_player(json.dumps(event), target))
+        elif action == "secret_door_revealed":
+            # Send to each player in the revealed list individually
+            for pname in event.get("player_names", []):
+                self._loop.create_task(self._send_to_player(json.dumps(event), pname))
+            # DM is in-process subscriber — no WS send needed for them
         else:
             self._loop.create_task(self._broadcast(json.dumps(event)))
 
