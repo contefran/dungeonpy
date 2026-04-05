@@ -1,0 +1,127 @@
+{
+  "initiative": [
+    {
+      "name": "Ranger",
+      "initiative": 22,
+      "hp": 21,
+      "max_hp": 21,
+      "conditions": [],
+      "condition_timers": {},
+      "pos": [
+        25,
+        29
+      ],
+      "icon": "Ranger.png",
+      "notes": "",
+      "is_pc": true
+    },
+    {
+      "name": "Warrior",
+      "initiative": 21,
+      "hp": 24,
+      "max_hp": 28,
+      "conditions": [],
+      "condition_timers": {},
+      "pos": [
+        28,
+        30
+      ],
+      "icon": "Warrior.png",
+      "notes": "",
+      "is_pc": true
+    },
+    {
+      "name": "Wraith",
+      "initiative": 16,
+      "hp": 29,
+      "max_hp": 29,
+      "conditions": [],
+      "condition_timers": {},
+      "pos": [
+        31,
+        30
+      ],
+      "icon": "Wraith.png",
+      "notes": "",
+      "is_pc": false
+    },
+    {
+      "name": "Skeleton2",
+      "initiative": 14,
+      "hp": 7,
+      "max_hp": 12,
+      "conditions": [],
+      "condition_timers": {},
+      "pos": [
+        28,
+        31
+      ],
+      "icon": "Skeleton.png",
+      "notes": "",
+      "is_pc": false
+    },
+    {
+      "name": "Skeleton1",
+      "initiative": 11,
+      "hp": 10,
+      "max_hp": 10,
+      "conditions": [],
+      "condition_timers": {},
+      "pos": [
+        35,
+        33
+      ],
+      "icon": "Skeleton.png",
+      "notes": "",
+      "is_pc": false
+    },
+    {
+      "name": "Mage",
+      "initiative": 8,
+      "hp": 16,
+      "max_hp": 16,
+      "conditions": [],
+      "condition_timers": {},
+      "pos": [
+        30,
+        28
+      ],
+      "icon": "Mage.png",
+      "notes": "",
+      "is_pc": true
+    },
+    {
+      "name": "Cleric",
+      "initiative": 8,
+      "hp": 16,
+      "max_hp": 21,
+      "conditions": [],
+      "condition_timers": {},
+      "pos": [
+        35,
+        34
+      ],
+      "icon": "Cleric.png",
+      "notes": "",
+      "is_pc": true
+    },
+    {
+      "name": "Zombie",
+      "initiative": 4,
+      "hp": 8,
+      "max_hp": 13,
+      "conditions": [],
+      "condition_timers": {},
+      "pos": [
+        27,
+        31
+      ],
+      "icon": "Zombie.png",
+      "notes": "",
+      "is_pc": false
+    }
+  ],
+  "active_index": 1,
+  "turn": 1,
+  "map_path": "/home/zoia/Desktop/Fra/Projects/Dnd_py/Maps/sample_dungeon_matrix_with_voids.txt"
+}

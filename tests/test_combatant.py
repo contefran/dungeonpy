@@ -45,3 +45,14 @@ def test_from_dict_defaults():
     assert c.pos is None
     assert c.icon is None
     assert c.notes == ''
+    assert c.is_pc is False
+
+def test_is_pc_roundtrip():
+    c = Combatant("Aragorn", 18, is_pc=True)
+    c2 = Combatant.from_dict(c.to_dict())
+    assert c2.is_pc is True
+
+def test_is_pc_default_false():
+    c = Combatant("Goblin", 8)
+    assert c.is_pc is False
+    assert Combatant.from_dict({"name": "G", "initiative": 8}).is_pc is False

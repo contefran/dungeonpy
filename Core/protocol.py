@@ -32,6 +32,8 @@ INTENTS: dict[str, list[str]] = {
     "set_player_lock":      ["name", "lock_type", "locked"],
     "player_connected":     ["name"],
     "player_disconnected":  ["name"],
+    "load_map":             ["path"],
+    "set_map_visible":      ["visible"],
 }
 
 

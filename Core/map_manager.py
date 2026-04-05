@@ -50,18 +50,23 @@ class MapManager:
         self._window_title = "D&D Map Grid"
         self.running = True
 
-        self.floor_texture_original = pygame.image.load(os.path.join(dir_path, 'Textures/stonefloor3.jpg'))
-        self.wall_texture_original = pygame.image.load(os.path.join(dir_path, 'Textures/stonefloor4.jpg'))
-        self.wooden_door_closed_texture_original = pygame.image.load(os.path.join(dir_path, 'Textures/Wooden_door_closed.png'))
-        self.wooden_door_open_texture_original = pygame.image.load(os.path.join(dir_path, 'Textures/Wooden_door_open.png'))
-        self.iron_door_closed_texture_original = pygame.image.load(os.path.join(dir_path, 'Textures/Iron_door_closed.png'))
-        self.iron_door_open_texture_original = pygame.image.load(os.path.join(dir_path, 'Textures/Iron_door_open.png'))
-        self.secret_door_texture_original = self.wall_texture_original
-        self.trap_texture_original = pygame.image.load(os.path.join(dir_path, 'Textures/trap_pit.jpg'))
-        (self.floor_texture, self.wall_texture, self.wooden_door_closed_texture,
-         self.wooden_door_open_texture, self.iron_door_closed_texture,
-         self.iron_door_open_texture, self.secret_door_texture,
-         self.trap_texture) = self.scale_textures(self.tile_size)
+        # Textures are loaded/converted in _load_textures(), called from init_pygame().
+        self.floor_texture_original = None
+        self.wall_texture_original = None
+        self.wooden_door_closed_texture_original = None
+        self.wooden_door_open_texture_original = None
+        self.iron_door_closed_texture_original = None
+        self.iron_door_open_texture_original = None
+        self.secret_door_texture_original = None
+        self.trap_texture_original = None
+        self.floor_texture = None
+        self.wall_texture = None
+        self.wooden_door_closed_texture = None
+        self.wooden_door_open_texture = None
+        self.iron_door_closed_texture = None
+        self.iron_door_open_texture = None
+        self.secret_door_texture = None
+        self.trap_texture = None
 
         self.dragging_token = None
         self.drag_candidate = None
@@ -88,17 +93,35 @@ class MapManager:
         screen = pygame.display.set_mode((screen_width, screen_height), pygame.RESIZABLE)
         pygame.display.set_caption(self._window_title)
 
-        self.floor_texture_original = self.floor_texture_original.convert()
-        self.wall_texture_original = self.wall_texture_original.convert()
-        self.wooden_door_closed_texture_original = self.wooden_door_closed_texture_original.convert_alpha()
-        self.wooden_door_open_texture_original = self.wooden_door_open_texture_original.convert_alpha()
-        self.iron_door_closed_texture_original = self.iron_door_closed_texture_original.convert_alpha()
-        self.iron_door_open_texture_original = self.iron_door_open_texture_original.convert_alpha()
-        self.trap_texture_original = self.trap_texture_original.convert_alpha()
+        self._load_textures()
 
         self.ui_font = pygame.font.SysFont('Arial', 18)
+        # Re-cache icons (needed if map is reopened after close)
+        self.icons = {}
+        for c in self.server.combatants:
+            if c.icon and c.icon not in self.icons:
+                self.load_icon(c.icon)
         self._build_minimap_surface()
+        if self._center_on_player:
+            self._init_player_view(self._center_on_player)
+            self._center_on_player = None  # disarm after first use
         return screen
+
+    def _load_textures(self):
+        """Load textures from disk and convert them. Requires an active pygame display."""
+        d = self.dir_path
+        self.floor_texture_original = pygame.image.load(os.path.join(d, 'Textures/stonefloor3.jpg')).convert()
+        self.wall_texture_original = pygame.image.load(os.path.join(d, 'Textures/stonefloor4.jpg')).convert()
+        self.wooden_door_closed_texture_original = pygame.image.load(os.path.join(d, 'Textures/Wooden_door_closed.png')).convert_alpha()
+        self.wooden_door_open_texture_original = pygame.image.load(os.path.join(d, 'Textures/Wooden_door_open.png')).convert_alpha()
+        self.iron_door_closed_texture_original = pygame.image.load(os.path.join(d, 'Textures/Iron_door_closed.png')).convert_alpha()
+        self.iron_door_open_texture_original = pygame.image.load(os.path.join(d, 'Textures/Iron_door_open.png')).convert_alpha()
+        self.secret_door_texture_original = self.wall_texture_original
+        self.trap_texture_original = pygame.image.load(os.path.join(d, 'Textures/trap_pit.jpg')).convert_alpha()
+        (self.floor_texture, self.wall_texture, self.wooden_door_closed_texture,
+         self.wooden_door_open_texture, self.iron_door_closed_texture,
+         self.iron_door_open_texture, self.secret_door_texture,
+         self.trap_texture) = self.scale_textures(self.tile_size)
 
     def load_map_from_txt(self, filepath):
         def _parse(ch):
@@ -231,18 +254,17 @@ class MapManager:
 
     def _sync_from_snapshot(self, state):
         """Rebuild local view state from a server snapshot (e.g. after load or initial connect)."""
-        # Player clients receive the map grid in the snapshot; DM already has it from file.
-        if state.get("map_grid") and not self.map_data:
+        if state.get("map_grid"):
             self.map_data = state["map_grid"]
             import pygame as _pg
             if _pg.get_init():
                 self._build_minimap_surface()
-                if self._center_on_player:
-                    self._init_player_view(self._center_on_player)
         self.unplaced = [c for c in self.server.combatants if c.pos is None]
-        for c in self.server.combatants:
-            if c.icon and c.icon not in self.icons:
-                self.load_icon(c.icon)
+        import pygame as _pg
+        if _pg.get_init():
+            for c in self.server.combatants:
+                if c.icon and c.icon not in self.icons:
+                    self.load_icon(c.icon)
         self.selected_token = None
         self._remote_selections.clear()
 

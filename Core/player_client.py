@@ -132,6 +132,8 @@ class PlayerClient:
         self.server.trap_states = self._parse_key_dict(state.get("trap_states", {}))
         self.server.player_selection_locks = dict(state.get("player_selection_locks", {}))
         self.server.player_move_locks = dict(state.get("player_move_locks", {}))
+        self.server.map_path = state.get("map_path")
+        self.server.map_visible = state.get("map_visible", False)
         if state.get("map_grid"):
             self.server.map_grid = state["map_grid"]
 
@@ -202,9 +204,12 @@ class PlayerClient:
             else:
                 self.server.player_move_locks[event["name"]] = event["locked"]
 
-        # selection_changed, selection_cleared, player_connected,
+        elif action == "map_visibility_changed":
+            self.server.map_visible = event.get("visible", False)
+
+        # selection_changed, selection_cleared, map_loaded, player_connected,
         # player_disconnected, error — no mirror state change needed;
-        # subscribers (MapManager) handle them as needed.
+        # subscribers (MapManager / Game) handle them as needed.
 
     # ------------------------------------------------------------------
     # Outgoing intents (called by MapManager via submit())

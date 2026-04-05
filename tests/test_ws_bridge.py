@@ -139,6 +139,8 @@ def test_snapshot_contains_full_state_fields(bridge):
     assert "player_selection_locks" in state
     assert "player_move_locks" in state
     assert "map_grid" in state
+    assert "map_path" in state
+    assert "map_visible" in state
 
 
 # ---------------------------------------------------------------------------

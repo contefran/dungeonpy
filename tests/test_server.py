@@ -374,6 +374,7 @@ def test_save_load_roundtrip(server, tmp_path):
     add(server, "B", 10)
     server.active_index = 1
     server.turn = 3
+    server.map_path = "/some/map.txt"
 
     path = str(tmp_path / "combat.json")
     server.process_intent({"action": "save", "path": path})
@@ -386,6 +387,8 @@ def test_save_load_roundtrip(server, tmp_path):
     assert s2.combatants[1].name == "B"
     assert s2.active_index == 1
     assert s2.turn == 3
+    assert s2.map_path == "/some/map.txt"
+    assert s2.map_visible is False  # always hidden on session resume
 
 def test_load_replaces_existing_combatants(server, tmp_path):
     add(server, "A", 20)
@@ -415,3 +418,77 @@ def test_submit_broadcasts_to_all_subscribers(server):
     add(server, "A", 10)
     server.submit({"action": "advance_turn"})
     assert len(log1) == len(log2)
+
+
+# --- load_map ---
+
+def test_load_map_strips_npcs_keeps_pcs(server, tmp_path):
+    map_file = tmp_path / "dungeon.txt"
+    map_file.write_text("010\n111\n010\n")
+    server.process_intent({"action": "add_combatant",
+                           "combatant": {"name": "Alice", "initiative": 10, "is_pc": True}})
+    server.process_intent({"action": "add_combatant",
+                           "combatant": {"name": "Goblin", "initiative": 8, "is_pc": False}})
+    server.process_intent({"action": "load_map", "path": str(map_file)})
+    names = [c.name for c in server.combatants]
+    assert "Alice" in names
+    assert "Goblin" not in names
+
+def test_load_map_resets_pc_initiative_and_pos(server, tmp_path):
+    map_file = tmp_path / "dungeon.txt"
+    map_file.write_text("010\n111\n010\n")
+    server.process_intent({"action": "add_combatant",
+                           "combatant": {"name": "Alice", "initiative": 18, "is_pc": True,
+                                         "pos": [3, 4]}})
+    server.process_intent({"action": "load_map", "path": str(map_file)})
+    alice = server.combatants[0]
+    assert alice.initiative == 1
+    assert alice.pos is None
+
+def test_load_map_sets_map_visible_true(server, tmp_path):
+    map_file = tmp_path / "dungeon.txt"
+    map_file.write_text("111\n")
+    server.process_intent({"action": "load_map", "path": str(map_file)})
+    assert server.map_visible is True
+    assert server.map_path == str(map_file)
+
+def test_load_map_loads_grid(server, tmp_path):
+    map_file = tmp_path / "dungeon.txt"
+    map_file.write_text("012\n")
+    server.process_intent({"action": "load_map", "path": str(map_file)})
+    assert server.map_grid == [[0, 1, 2]]
+
+def test_load_map_emits_map_loaded_and_snapshot(server, tmp_path):
+    map_file = tmp_path / "dungeon.txt"
+    map_file.write_text("1\n")
+    events = server.process_intent({"action": "load_map", "path": str(map_file)})
+    assert events[0]["action"] == "map_loaded"
+    assert events[1]["type"] == "snapshot"
+
+def test_load_map_resets_door_states(server, tmp_path):
+    map_file = tmp_path / "dungeon.txt"
+    map_file.write_text("1\n")
+    server.door_states[(0, 1)] = "open"
+    server.iron_door_states[(2, 3)] = "open"
+    server.process_intent({"action": "load_map", "path": str(map_file)})
+    assert server.door_states == {}
+    assert server.iron_door_states == {}
+
+def test_load_map_invalid_path_ignored(server):
+    events = server.process_intent({"action": "load_map", "path": "/nonexistent/map.txt"})
+    assert events == []
+
+
+# --- set_map_visible ---
+
+def test_set_map_visible_true(server):
+    events = server.process_intent({"action": "set_map_visible", "visible": True})
+    assert server.map_visible is True
+    assert events[0]["action"] == "map_visibility_changed"
+    assert events[0]["visible"] is True
+
+def test_set_map_visible_false(server):
+    server.map_visible = True
+    events = server.process_intent({"action": "set_map_visible", "visible": False})
+    assert server.map_visible is False
+    assert events[0]["visible"] is False

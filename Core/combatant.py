@@ -6,7 +6,7 @@ def _migrate_timers(raw: dict) -> dict:
 class Combatant:
     
     def __init__(self, name, initiative, hp=None, max_hp=None, conditions=None,
-                 condition_timers=None, pos=None, icon=None, notes=''):
+                 condition_timers=None, pos=None, icon=None, notes='', is_pc=False):
         self.name = name
         self.initiative = initiative
         self.hp = hp  # int or None
@@ -16,6 +16,7 @@ class Combatant:
         self.pos = pos  # [x, y] or None
         self.icon = icon
         self.notes = notes
+        self.is_pc = is_pc  # True → kept across map loads; False → removed on new map
 
     def to_dict(self):
         return {
@@ -28,6 +29,7 @@ class Combatant:
             "pos": self.pos,
             "icon": self.icon,
             "notes": self.notes,
+            "is_pc": self.is_pc,
         }
 
     @classmethod
@@ -42,6 +44,7 @@ class Combatant:
             pos=data.get("pos"),
             icon=data.get("icon"),
             notes=data.get("notes", ''),
+            is_pc=data.get("is_pc", False),
         )
 
     def is_down(self):

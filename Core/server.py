@@ -11,8 +11,22 @@ Snapshot(server → client): {"type": "snapshot", "state": {...}}
 """
 
 import json
+import os
 from Core.combatant import Combatant
 from Core.protocol import validate_intent, make_event, make_snapshot, make_error
+
+
+def _load_map_grid(filepath: str) -> list:
+    """Parse a dungeon .txt file into a 2D list of ints."""
+    def _parse(ch):
+        if ch.isdigit():
+            return int(ch)
+        if ch.isalpha():
+            return ord(ch.lower()) - ord('a') + 10
+        return 0
+    with open(filepath, 'r') as f:
+        lines = f.readlines()
+    return [[_parse(ch) for ch in line.strip()] for line in lines if line.strip()]
 
 
 class GameServer:
@@ -27,7 +41,9 @@ class GameServer:
         self.trap_states: dict[tuple, str] = {}          # (row, col) → 'open'|'closed'  tile 6 trap
         self.player_selection_locks: dict[str, bool] = {}  # player name → allowed to select
         self.player_move_locks: dict[str, bool] = {}       # player name → allowed to move token
-        self.map_grid: list | None = None                # set by Game after map loads; sent in snapshot
+        self.map_grid: list | None = None                # 2-D tile grid; included in snapshots
+        self.map_path: str | None = None                 # absolute path to the loaded .txt map file
+        self.map_visible: bool = False                   # whether the map window is shown to everyone
         self._subscribers: list = []
         self._seq: int = 0
         self._snapshot_interval: int = snapshot_interval
@@ -119,6 +135,8 @@ class GameServer:
                 "player_selection_locks": dict(self.player_selection_locks),
                 "player_move_locks": dict(self.player_move_locks),
                 "map_grid": self.map_grid,
+                "map_path": self.map_path,
+                "map_visible": self.map_visible,
             },
         }
 
@@ -183,12 +201,19 @@ class GameServer:
         self.combatants = [Combatant.from_dict(c) for c in data.get("initiative", [])]
         self.active_index = data.get("active_index", 0)
         self.turn = data.get("turn", 1)
+        self.map_path = data.get("map_path")
+        self.map_visible = False  # always start hidden on session resume
+        if self.map_path and os.path.isfile(self.map_path):
+            self.map_grid = _load_map_grid(self.map_path)
+        else:
+            self.map_grid = None
 
     def save_to_file(self, filepath: str):
         data = {
             "initiative": [c.to_dict() for c in self.combatants],
             "active_index": self.active_index,
             "turn": self.turn,
+            "map_path": self.map_path,
         }
         with open(filepath, 'w', encoding='utf-8') as f:
             json.dump(data, f, indent=2)
@@ -379,6 +404,35 @@ class GameServer:
             self.player_selection_locks.pop(name, None)
             self.player_move_locks.pop(name, None)
             return [{"type": "event", "action": "player_disconnected", "name": name}]
+
+        # --- Map lifecycle ---
+        if action == "load_map":
+            path = intent.get("path")
+            if not path or not os.path.isfile(path):
+                return []
+            self.map_path = path
+            self.map_grid = _load_map_grid(path)
+            # Keep PCs only, reset their state for the new map
+            self.combatants = [c for c in self.combatants if c.is_pc]
+            for c in self.combatants:
+                c.initiative = 1
+                c.pos = None
+            self.active_index = 0
+            self.turn = 1
+            self.door_states = {}
+            self.iron_door_states = {}
+            self.secret_door_states = {}
+            self.trap_states = {}
+            self.map_visible = True  # auto-open so DM can place tokens
+            return [
+                {"type": "event", "action": "map_loaded", "path": path},
+                self.get_snapshot(),
+            ]
+
+        if action == "set_map_visible":
+            visible = bool(intent.get("visible", False))
+            self.map_visible = visible
+            return [{"type": "event", "action": "map_visibility_changed", "visible": visible}]
 
         # --- Persistence ---
         if action == "save":

@@ -337,16 +337,8 @@ def save_png(grid, txt_path, dir_path="./", tile_size=20):
     mm.offset_x  = 0
     mm.offset_y  = 0
 
-    # Replicate the convert() calls from init_pygame (requires display to exist)
-    mm.floor_texture_original                  = mm.floor_texture_original.convert()
-    mm.wall_texture_original                   = mm.wall_texture_original.convert()
-    mm.wooden_door_closed_texture_original     = mm.wooden_door_closed_texture_original.convert_alpha()
-    mm.wooden_door_open_texture_original       = mm.wooden_door_open_texture_original.convert_alpha()
-    mm.iron_door_closed_texture_original       = mm.iron_door_closed_texture_original.convert_alpha()
-    mm.iron_door_open_texture_original         = mm.iron_door_open_texture_original.convert_alpha()
-    mm.trap_texture_original                   = mm.trap_texture_original.convert_alpha()
-    mm.secret_door_texture_original            = mm.wall_texture_original  # same as wall
-
+    # Load and convert textures now that the display is initialised
+    mm._load_textures()
     (mm.floor_texture, mm.wall_texture, mm.wooden_door_closed_texture,
      mm.wooden_door_open_texture, mm.iron_door_closed_texture,
      mm.iron_door_open_texture, mm.secret_door_texture,

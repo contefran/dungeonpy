@@ -55,7 +55,9 @@ class Tracker:
         self._squelch_table_event = 0   # counter: suppress this many upcoming TABLE events
         self._selected_index = None
         self._pending_timers = {}   # condition → expiry turn, set during the current edit session
-        self._connected_players: dict[str, bool] = {}  # name → movement allowed
+        self._connected_players: dict[str, dict] = {}  # name → {"select": bool, "move": bool}
+        self._map_path: str | None = None
+        self._map_visible: bool = False
         self.window = None
 
         condition_dict = {
@@ -132,9 +134,14 @@ class Tracker:
     def _apply_server_event(self, event: dict):
         """Handle a server event on the GUI thread."""
         if event.get("type") == "snapshot":
-            # Refresh table with current selection; _selected_index was set by caller
+            # Validate that _selected_index is still in range (e.g. after load_map strips NPCs)
+            if self._selected_index is not None and self._selected_index >= len(self.server.combatants):
+                self._selected_index = None
+                self._clear_form()
             self.window['-TURN-'].update(str(self.server.turn))
             self.refresh_table(self._selected_index)
+            state = event.get("state", {})
+            self._sync_map_ui(state.get("map_path"), state.get("map_visible", False))
             return
 
         action = event.get("action")
@@ -166,6 +173,7 @@ class Tracker:
                     self.window['-INITIATIVE-'].update(c.initiative)
                     self.window['-HP-'].update('' if c.hp is None else c.hp)
                     self.window['-MAX_HP-'].update('' if c.max_hp is None else c.max_hp)
+                    self.window['-IS_PC-'].update(c.is_pc)
                     for cond in self.condition_list:
                         self.window[f'-COND_{cond}-'].update(cond in c.conditions)
                     self.window.refresh()
@@ -193,6 +201,12 @@ class Tracker:
                 self._connected_players[name][lock_type] = event["locked"]
                 self._refresh_players_table()
 
+        elif action == "map_loaded":
+            self._sync_map_ui(event.get("path"), True)
+
+        elif action == "map_visibility_changed":
+            self._sync_map_ui(self._map_path, event.get("visible", False))
+
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
@@ -206,11 +220,21 @@ class Tracker:
         ]
         self.window['-PLAYERS-'].update(values=rows)
 
+    def _sync_map_ui(self, map_path, map_visible):
+        """Keep internal map state and Toggle Map button in sync."""
+        self._map_path = map_path
+        self._map_visible = map_visible
+        has_map = bool(map_path)
+        self.window['Toggle Map'].update(disabled=not has_map)
+        if has_map:
+            self.window['Toggle Map'].update(text='Hide Map' if map_visible else 'Show Map')
+
     def _clear_form(self):
         self.window['-NAME-'].update('')
         self.window['-INITIATIVE-'].update('')
         self.window['-HP-'].update('')
         self.window['-MAX_HP-'].update('')
+        self.window['-IS_PC-'].update(False)
         for cond in self.condition_list:
             self.window[f'-COND_{cond}-'].update(False)
         self._pending_timers = {}
@@ -322,12 +346,17 @@ class Tracker:
              sg.Text('Max HP:', font=table_font), sg.Input(key='-MAX_HP-', size=(5, 1)),
              sg.Text('   Change:', font=table_font), sg.Input('0', key='-HP_CHANGE-', size=(5, 1)),
              sg.Button('Wound'), sg.Button('Heal')],
+            [sg.Checkbox('Player Character (PC)', key='-IS_PC-', font=table_font, enable_events=False)],
             [sg.Text('Conditions:', font=table_font)],
             *condition_rows,
             [
                 sg.Button('Add New'), sg.Button('Apply Stats'), sg.Button('Delete Selected'),
                 sg.Button('▲ Move Up'), sg.Button('▼ Move Down'),
                 sg.Button('💾 Export'), sg.Button('📂 Load')],
+            [sg.HorizontalSeparator()],
+            [sg.Text('Map:', font=table_font),
+             sg.Button('Load Map', key='Load Map'),
+             sg.Button('Show Map', key='Toggle Map', disabled=True)],
             [sg.HorizontalSeparator()],
             [sg.Text('Connected Players', font=('Helvetica', 12, 'bold'))],
             [sg.Table(
@@ -413,6 +442,7 @@ class Tracker:
                         self.window['-INITIATIVE-'].update(c.initiative)
                         self.window['-HP-'].update('' if c.hp is None else c.hp)
                         self.window['-MAX_HP-'].update('' if c.max_hp is None else c.max_hp)
+                        self.window['-IS_PC-'].update(c.is_pc)
                         for cond in self.condition_list:
                             self.window[f'-COND_{cond}-'].update(cond in c.conditions)
                         self._submit({"action": "select", "name": c.name})
@@ -490,6 +520,7 @@ class Tracker:
                     self._submit({"action": "add_combatant", "combatant": {
                         "name": name, "initiative": init, "hp": hp, "max_hp": max_hp,
                         "conditions": conditions, "icon": icon,
+                        "is_pc": values.get('-IS_PC-', False),
                     }})
                     self._selected_index = None
                     self._submit({"action": "clear_selection"})
@@ -506,6 +537,7 @@ class Tracker:
                     "initiative": int(values['-INITIATIVE-']),
                     "hp": int(values['-HP-'].strip()) if values['-HP-'].strip() else None,
                     "max_hp": int(values['-MAX_HP-'].strip()) if values['-MAX_HP-'].strip() else None,
+                    "is_pc": values.get('-IS_PC-', False),
                 }
             except ValueError:
                 sg.popup('Initiative must be a whole number.')
@@ -596,6 +628,18 @@ class Tracker:
                     self._submit({"action": "set_player_lock", "name": name,
                                   "lock_type": "move", "locked": not current})
 
+        elif event == 'Load Map':
+            path = sg.popup_get_file(
+                'Select dungeon map file',
+                file_types=(('Map Files', '*.txt'),),
+                keep_on_top=True,
+            )
+            if path:
+                self._submit({"action": "load_map", "path": path})
+
+        elif event == 'Toggle Map':
+            self._submit({"action": "set_map_visible", "visible": not self._map_visible})
+
         elif event == '💾 Export':
             path = os.path.join(dir_path, f'Data/combat_tracker_{datetime.now().strftime("%Y%m%d_%H%M%S")}.json')
             self._submit({"action": "save", "path": path})
@@ -623,6 +667,8 @@ class Tracker:
 
         self.refresh_table()
         self._squelch_table_event = 0  # initial populate doesn't fire a TABLE event; reset to avoid eating first click
+        # Restore map UI state from server (save may have been loaded before window opened)
+        self._sync_map_ui(self.server.map_path, self.server.map_visible)
         while True:
             event, values = self.window.read()
             if event == sg.WINDOW_CLOSE_ATTEMPTED_EVENT:
