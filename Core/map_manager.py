@@ -1,7 +1,5 @@
 import pygame
 import os
-import tkinter as tk
-from tkinter import messagebox
 from Core.log_utils import log
 import math
 
@@ -627,11 +625,53 @@ class MapManager:
     # ------------------------------------------------------------------
 
     def _confirm_quit(self):
-        root = tk.Tk()
-        root.withdraw()
-        result = messagebox.askyesno('Quit', 'Are you sure you want to quit DungeonPy?')
-        root.destroy()
-        return result
+        """Pygame-native yes/no dialog — safe to call from any thread on any OS."""
+        screen = pygame.display.get_surface()
+        sw, sh = screen.get_size()
+
+        # Dim overlay
+        overlay = pygame.Surface((sw, sh), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 160))
+        screen.blit(overlay, (0, 0))
+
+        font_big = pygame.font.SysFont('Arial', 20, bold=True)
+        font_btn = pygame.font.SysFont('Arial', 16)
+
+        msg   = font_big.render('Quit DungeonPy?', True, (230, 230, 230))
+        yes_t = font_btn.render('Yes', True, (230, 230, 230))
+        no_t  = font_btn.render('No',  True, (230, 230, 230))
+
+        box_w, box_h = 280, 120
+        bx = (sw - box_w) // 2
+        by = (sh - box_h) // 2
+        pygame.draw.rect(screen, (40, 40, 50), (bx, by, box_w, box_h), border_radius=8)
+        pygame.draw.rect(screen, (90, 90, 110), (bx, by, box_w, box_h), 2, border_radius=8)
+        screen.blit(msg, (bx + (box_w - msg.get_width()) // 2, by + 18))
+
+        yes_rect = pygame.Rect(bx + 40,  by + 68, 80, 32)
+        no_rect  = pygame.Rect(bx + 160, by + 68, 80, 32)
+        pygame.draw.rect(screen, (160, 50, 50),  yes_rect, border_radius=5)
+        pygame.draw.rect(screen, (55, 55, 70),   no_rect,  border_radius=5)
+        screen.blit(yes_t, yes_rect.move((yes_rect.w - yes_t.get_width()) // 2,
+                                         (yes_rect.h - yes_t.get_height()) // 2).topleft)
+        screen.blit(no_t,  no_rect.move((no_rect.w  - no_t.get_width())  // 2,
+                                         (no_rect.h  - no_t.get_height())  // 2).topleft)
+        pygame.display.flip()
+
+        while True:
+            for ev in pygame.event.get():
+                if ev.type == pygame.MOUSEBUTTONUP and ev.button == 1:
+                    if yes_rect.collidepoint(ev.pos):
+                        return True
+                    if no_rect.collidepoint(ev.pos):
+                        return False
+                if ev.type == pygame.KEYDOWN:
+                    if ev.key == pygame.K_RETURN:
+                        return True
+                    if ev.key == pygame.K_ESCAPE:
+                        return False
+                if ev.type == pygame.QUIT:
+                    return True
 
     def run_loop(self, screen):
         clock = pygame.time.Clock()

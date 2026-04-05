@@ -2,111 +2,148 @@
   "initiative": [
     {
       "name": "Ranger",
-      "initiative": 22,
-      "hp": 21,
+      "initiative": 21,
+      "hp": 14,
       "max_hp": 21,
-      "conditions": [],
-      "condition_timers": {},
+      "conditions": [
+        "Invisible"
+      ],
+      "condition_timers": {
+        "Invisible": [
+          13,
+          21
+        ]
+      },
       "pos": [
-        26,
-        28
+        27,
+        29
       ],
       "icon": "Ranger.png",
       "notes": "",
       "is_pc": true
     },
     {
-      "name": "Warrior",
-      "initiative": 21,
-      "hp": 24,
-      "max_hp": 28,
-      "conditions": [],
-      "condition_timers": {},
-      "pos": [
-        29,
-        30
+      "name": "Skeleton",
+      "initiative": 14,
+      "hp": 13,
+      "max_hp": 13,
+      "conditions": [
+        "Prone"
       ],
-      "icon": "Warrior.png",
-      "notes": "",
-      "is_pc": true
-    },
-    {
-      "name": "Wraith",
-      "initiative": 16,
-      "hp": 29,
-      "max_hp": 29,
-      "conditions": [],
       "condition_timers": {},
       "pos": [
-        25,
-        31
-      ],
-      "icon": "Wraith.png",
-      "notes": "",
-      "is_pc": false
-    },
-    {
-      "name": "Skeleton1",
-      "initiative": 11,
-      "hp": 10,
-      "max_hp": 10,
-      "conditions": [],
-      "condition_timers": {},
-      "pos": [
-        29,
-        33
+        27,
+        32
       ],
       "icon": "Skeleton.png",
       "notes": "",
       "is_pc": false
     },
     {
-      "name": "Mage",
-      "initiative": 8,
-      "hp": 16,
-      "max_hp": 16,
-      "conditions": [],
-      "condition_timers": {},
+      "name": "Warrior",
+      "initiative": 13,
+      "hp": 19,
+      "max_hp": 28,
+      "conditions": [
+        "Charmed"
+      ],
+      "condition_timers": {
+        "Charmed": [
+          9,
+          11
+        ]
+      },
       "pos": [
-        30,
-        28
+        25,
+        34
+      ],
+      "icon": "Warrior.png",
+      "notes": "",
+      "is_pc": true
+    },
+    {
+      "name": "Mage",
+      "initiative": 12,
+      "hp": 11,
+      "max_hp": 11,
+      "conditions": [
+        "Frightened"
+      ],
+      "condition_timers": {
+        "Frightened": [
+          6,
+          12
+        ]
+      },
+      "pos": [
+        29,
+        30
       ],
       "icon": "Mage.png",
       "notes": "",
       "is_pc": true
     },
     {
-      "name": "Cleric",
-      "initiative": 8,
-      "hp": 16,
-      "max_hp": 21,
-      "conditions": [],
-      "condition_timers": {},
-      "pos": [
-        27,
-        33
+      "name": "Wraith",
+      "initiative": 12,
+      "hp": 29,
+      "max_hp": 29,
+      "conditions": [
+        "Invisible"
       ],
-      "icon": "Cleric.png",
-      "notes": "",
-      "is_pc": true
-    },
-    {
-      "name": "Zombie",
-      "initiative": 4,
-      "hp": 8,
-      "max_hp": 13,
-      "conditions": [],
       "condition_timers": {},
       "pos": [
         24,
-        34
+        29
+      ],
+      "icon": "Wraith.png",
+      "notes": "",
+      "is_pc": false
+    },
+    {
+      "name": "Zombie",
+      "initiative": 8,
+      "hp": 2,
+      "max_hp": 8,
+      "conditions": [],
+      "condition_timers": {},
+      "pos": [
+        28,
+        33
       ],
       "icon": "Zombie.png",
       "notes": "",
       "is_pc": false
+    },
+    {
+      "name": "Cleric",
+      "initiative": 6,
+      "hp": 9,
+      "max_hp": 18,
+      "conditions": [
+        "Paralyzed",
+        "See-invisible"
+      ],
+      "condition_timers": {
+        "Paralyzed": [
+          4,
+          5
+        ],
+        "See-invisible": [
+          13,
+          6
+        ]
+      },
+      "pos": [
+        30,
+        28
+      ],
+      "icon": "Cleric.png",
+      "notes": "",
+      "is_pc": true
     }
   ],
-  "active_index": 1,
-  "turn": 1,
+  "active_index": 6,
+  "turn": 3,
   "map_path": "/home/zoia/Desktop/Fra/Projects/Dnd_py/Maps/sample_dungeon_matrix_with_voids.txt"
 }

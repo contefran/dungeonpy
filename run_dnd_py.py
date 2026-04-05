@@ -1,6 +1,21 @@
 import argparse
 import getpass
 import random
+import sys
+
+# On Windows, tkinter (used by PySimpleGUI) is DPI-unaware by default and gets
+# scaled up by the OS, making fonts and emoji huge on high-DPI displays.
+# Declaring DPI awareness before any GUI import prevents this.
+if sys.platform == 'win32':
+    import ctypes
+    try:
+        ctypes.windll.shcore.SetProcessDpiAwareness(1)
+    except Exception:
+        try:
+            ctypes.windll.user32.SetProcessDPIAware()
+        except Exception:
+            pass
+
 from Core.game import Game
 
 _PLAYER_COLORS = [
