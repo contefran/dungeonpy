@@ -38,6 +38,7 @@ class PlayerChatWindow:
             [
                 sg.Input(key='-INPUT-', expand_x=True, font=_FONT),
                 sg.Button('Send', key='Send'),
+                sg.Button('Quit', key='Quit', button_color=('white', '#7a2020')),
             ],
         ]
         win = sg.Window(
@@ -46,7 +47,7 @@ class PlayerChatWindow:
             resizable=True,
             finalize=True,
             size=(350, 400),
-            enable_close_attempted_event=True,  # intercept X so we hide instead of quit
+            enable_close_attempted_event=True,  # intercept X — do nothing (use Quit button)
         )
         win['-INPUT-'].bind('<Return>', '_RETURN')
         return win
@@ -57,8 +58,8 @@ class PlayerChatWindow:
 
     def run(self, quit_event: threading.Event):
         """
-        Block until quit_event is set (e.g. map closed).
-        Pressing the window X hides the chat; it can be re-shown from the map toolbar.
+        Block until quit_event is set (map closed or Quit button pressed).
+        X on the window is a no-op — use the map toolbar toggle or the Quit button.
         """
         self.window = self._build_window()
         self._is_hidden = False
@@ -72,10 +73,12 @@ class PlayerChatWindow:
                 break
 
             if event == sg.WINDOW_CLOSE_ATTEMPTED_EVENT:
-                # User pressed X on the chat window — hide it, don't quit
-                self.window.hide()
-                self._is_hidden = True
+                # X button on the chat window — ignored; use Quit button or map toggle
                 continue
+
+            if event == 'Quit':
+                quit_event.set()
+                break
 
             if event == '_TOGGLE_CHAT_':
                 if self._is_hidden:
