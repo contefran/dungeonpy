@@ -177,7 +177,11 @@ class Game:
         self.server.subscribe(self.map_manager.handle_server_event)
         self.server.subscribe(self._handle_player_map_events)
         self.server.subscribe(self._player_chat.handle_server_event)
-        self.player_client.start()   # blocks until first handshake (15 s timeout)
+        self.player_client.start()   # blocks until handshake or all attempts exhausted
+
+        if not self.player_client._running:
+            print("[DungeonPy] Could not connect to the DM server — exiting.")
+            raise SystemExit(1)
 
         if self.verbose:
             log(f"[Game] Player '{player_name}' connected to {host}:{port}")

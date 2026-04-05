@@ -252,8 +252,19 @@ class MapManager:
                     and self.active_tool == "highlight"):
                 self.active_tool = "select"
 
+        elif action == "recenter_all":
+            pos = event.get("pos")
+            if pos and self.map_data:
+                col, row = pos
+                screen = pygame.display.get_surface()
+                if screen:
+                    sw, sh = screen.get_size()
+                    self.offset_x = sw // 2 - col * self.tile_size - self.tile_size // 2
+                    self.offset_y = sh // 2 - row * self.tile_size - self.tile_size // 2
+
     def _init_player_view(self, player_name: str):
-        """Set mid-zoom and center the view on the player's token (called once on first snapshot)."""
+        """Set mid-zoom and center the view on the player's token (called once on first snapshot).
+        For a no-zoom recenter use _recenter_on_player() instead."""
         mid_zoom = (self.min_tile_size + self.max_tile_size) // 2
         self.tile_size = mid_zoom
         (self.floor_texture, self.wall_texture, self.wooden_door_closed_texture,
@@ -270,6 +281,19 @@ class MapManager:
             # Fall back to map centre if token isn't placed yet
             col = len(self.map_data[0]) // 2
             row = len(self.map_data) // 2
+        self.offset_x = screen_w // 2 - col * self.tile_size - self.tile_size // 2
+        self.offset_y = screen_h // 2 - row * self.tile_size - self.tile_size // 2
+
+    def _recenter_on_player(self):
+        """Re-center the view on the player's token without changing zoom."""
+        if not self._player_name or not self.map_data:
+            return
+        token = next((c for c in self.server.combatants
+                      if c.name == self._player_name and c.pos), None)
+        if not token:
+            return
+        col, row = token.pos
+        screen_w, screen_h = pygame.display.get_surface().get_size()
         self.offset_x = screen_w // 2 - col * self.tile_size - self.tile_size // 2
         self.offset_y = screen_h // 2 - row * self.tile_size - self.tile_size // 2
 
@@ -309,6 +333,11 @@ class MapManager:
         }
         if self._chat_toggle_fn is not None:
             rects["chat"] = pygame.Rect(x0, 168, 44, 44)
+        if self._player_name is not None:
+            chat_bottom = rects["chat"].bottom if "chat" in rects else rects["clear"].bottom
+            rects["recenter"] = pygame.Rect(x0, chat_bottom + 8, 44, 44)
+        if self._player_name is None:
+            rects["recenter_all"] = pygame.Rect(x0, rects["clear"].bottom + 16, 44, 44)
         return rects
 
     def _handle_toolbar_click(self, mx, my):
@@ -328,6 +357,10 @@ class MapManager:
             if self._chat_toggle_fn:
                 self._chat_toggle_fn()
                 self._chat_visible = not self._chat_visible
+        elif rects.get("recenter") and rects["recenter"].collidepoint(mx, my):
+            self._recenter_on_player()
+        elif rects.get("recenter_all") and rects["recenter_all"].collidepoint(mx, my):
+            self.active_tool = "recenter_pick"
 
     def _draw_toolbar(self, screen):
         sw, sh = screen.get_size()
@@ -402,6 +435,36 @@ class MapManager:
             tail = [(cx - 4, cy + 6), (cx - 9, cy + 11), (cx + 1, cy + 6)]
             pygame.draw.polygon(screen, ic, tail)
 
+        # --- Recenter-all button (DM only) ---
+        if rects.get("recenter_all"):
+            pygame.draw.line(screen, (55, 55, 70),
+                             (x0 + 8, rects["recenter_all"].top - 8),
+                             (sw - 8, rects["recenter_all"].top - 8), 1)
+            is_picking = self.active_tool == "recenter_pick"
+            bg = (70, 55, 85) if is_picking else _BG_INACTIVE
+            pygame.draw.rect(screen, bg, rects["recenter_all"], border_radius=4)
+            pygame.draw.rect(screen, _BORDER, rects["recenter_all"], 1, border_radius=4)
+            cx, cy = rects["recenter_all"].centerx, rects["recenter_all"].centery - 6
+            ic = (200, 170, 240) if is_picking else _ICON
+            # Eye icon: outer almond shape + pupil
+            pygame.draw.ellipse(screen, ic, (cx - 10, cy - 5, 20, 10), 2)
+            pygame.draw.circle(screen, ic, (cx, cy), 3)
+
+        # --- Recenter button (player mode only) ---
+        if rects.get("recenter"):
+            pygame.draw.line(screen, (55, 55, 70),
+                             (x0 + 8, rects["recenter"].top - 4),
+                             (sw - 8, rects["recenter"].top - 4), 1)
+            pygame.draw.rect(screen, _BG_INACTIVE, rects["recenter"], border_radius=4)
+            pygame.draw.rect(screen, _BORDER, rects["recenter"], 1, border_radius=4)
+            cx, cy = rects["recenter"].centerx, rects["recenter"].centery - 6
+            # Crosshair icon
+            pygame.draw.circle(screen, _ICON, (cx, cy), 7, 2)
+            pygame.draw.line(screen, _ICON, (cx - 11, cy), (cx - 8, cy), 2)
+            pygame.draw.line(screen, _ICON, (cx + 8,  cy), (cx + 11, cy), 2)
+            pygame.draw.line(screen, _ICON, (cx, cy - 11), (cx, cy - 8), 2)
+            pygame.draw.line(screen, _ICON, (cx, cy + 8),  (cx, cy + 11), 2)
+
         # Labels beneath icons
         if self._toolbar_font:
             for key, label, active in [
@@ -421,6 +484,16 @@ class MapManager:
                 chat_surf = self._toolbar_font.render("CHAT", True, ic)
                 r = rects["chat"]
                 screen.blit(chat_surf, (r.x + (r.width - chat_surf.get_width()) // 2, r.bottom - 13))
+            if rects.get("recenter"):
+                ctr_surf = self._toolbar_font.render("CTR", True, _ICON)
+                r = rects["recenter"]
+                screen.blit(ctr_surf, (r.x + (r.width - ctr_surf.get_width()) // 2, r.bottom - 13))
+            if rects.get("recenter_all"):
+                is_picking = self.active_tool == "recenter_pick"
+                ic = (200, 170, 240) if is_picking else _ICON
+                eye_surf = self._toolbar_font.render("VIEW", True, ic)
+                r = rects["recenter_all"]
+                screen.blit(eye_surf, (r.x + (r.width - eye_surf.get_width()) // 2, r.bottom - 13))
 
     # ------------------------------------------------------------------
     # Highlight rendering
@@ -768,6 +841,13 @@ class MapManager:
 
         col = (mx - self.offset_x) // self.tile_size
         row = (my - self.offset_y) // self.tile_size
+
+        # Recenter-pick mode — DM clicks a tile to recenter all players there
+        if button == 1 and self.active_tool == "recenter_pick":
+            if 0 <= row < len(self.map_data) and 0 <= col < len(self.map_data[0]):
+                self._submit({"action": "recenter_all", "pos": [col, row]})
+            self.active_tool = "select"
+            return
 
         # Highlight tool — toggle tile and skip all selection/placement logic
         if button == 1 and self.active_tool == "highlight":

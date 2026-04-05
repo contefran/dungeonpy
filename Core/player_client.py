@@ -7,7 +7,8 @@ performs the hello handshake, and then:
     MapManager can read state as if it were talking to a local server.
   - Outgoing intents from MapManager → forwarded to the DM server over WebSocket.
 
-Auto-reconnects indefinitely on connection loss (5 s back-off).
+Initial connection: up to 10 attempts with 5 s back-off, then gives up.
+After a successful handshake, reconnects indefinitely on drop (5 s back-off).
 """
 
 import asyncio
@@ -40,13 +41,14 @@ class PlayerClient:
     def start(self):
         """
         Start the reconnect loop in a daemon thread.
-        Blocks until the first successful handshake (or 15 s timeout).
+        Blocks until the first successful handshake or all initial attempts are exhausted.
+        Check ``_running`` after this returns to know whether connection succeeded.
         """
         ready = threading.Event()
         threading.Thread(
             target=self._run, args=(ready,), daemon=True, name='player-client'
         ).start()
-        ready.wait(timeout=15)
+        ready.wait()  # no timeout — unblocked by success or permanent failure
 
     def _run(self, ready: threading.Event):
         self._loop = asyncio.new_event_loop()
@@ -60,10 +62,13 @@ class PlayerClient:
     # Reconnect loop
     # ------------------------------------------------------------------
 
+    _MAX_INITIAL_TRIES = 10
+
     async def _reconnect_loop(self, ready: threading.Event):
         scheme = "wss" if self._ssl_context else "ws"
         url = f"{scheme}://{self.host}:{self.port}"
         first = True
+        initial_tries = 0
 
         while self._running:
             try:
@@ -86,6 +91,7 @@ class PlayerClient:
                     if first:
                         ready.set()
                         first = False
+                        initial_tries = 0   # reset — we're in a live session now
 
                     # Normal receive loop
                     async for raw in ws:
@@ -95,7 +101,17 @@ class PlayerClient:
                 self._ws = None
                 if not self._running:
                     break
-                print(f"[PlayerClient] Disconnected ({e}) — reconnecting in 5 s ...")
+                if first:
+                    initial_tries += 1
+                    if initial_tries >= self._MAX_INITIAL_TRIES:
+                        print(f"[PlayerClient] Could not reach {url} after "
+                              f"{self._MAX_INITIAL_TRIES} attempts — giving up.")
+                        self._running = False
+                        break
+                    print(f"[PlayerClient] Attempt {initial_tries}/{self._MAX_INITIAL_TRIES} "
+                          f"failed ({e}) — retrying in 5 s ...")
+                else:
+                    print(f"[PlayerClient] Disconnected ({e}) — reconnecting in 5 s ...")
                 await asyncio.sleep(5)
 
         if first:

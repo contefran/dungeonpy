@@ -37,6 +37,7 @@ INTENTS: dict[str, list[str]] = {
     "chat_message":         ["text"],
     "highlight_tile":       ["pos"],   # color/owner injected by bridge for players
     "clear_highlights":     ["owner"],
+    "recenter_all":         ["pos"],   # DM only — broadcast view recenter to all players
 }
 
 

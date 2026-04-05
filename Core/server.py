@@ -460,6 +460,12 @@ class GameServer:
             return [{"type": "event", "action": "highlights_changed",
                      "highlights": list(self.tile_highlights)}]
 
+        if action == "recenter_all":
+            pos = intent.get("pos")
+            if pos:
+                return [{"type": "event", "action": "recenter_all", "pos": pos}]
+            return []
+
         # --- Chat ---
         if action == "chat_message":
             text = intent.get("text", "").strip()

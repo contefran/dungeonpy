@@ -36,9 +36,9 @@ class PlayerChatWindow:
                 font=_FONT,
             )],
             [
+                sg.Button('Quit', key='Quit', button_color=('white', '#7a2020')),
                 sg.Input(key='-INPUT-', expand_x=True, font=_FONT),
                 sg.Button('Send', key='Send'),
-                sg.Button('Quit', key='Quit', button_color=('white', '#7a2020')),
             ],
         ]
         win = sg.Window(
