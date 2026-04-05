@@ -122,14 +122,14 @@ class MapManager:
     def _load_textures(self):
         """Load textures from disk and convert them. Requires an active pygame display."""
         d = self.dir_path
-        self.floor_texture_original = pygame.image.load(os.path.join(d, 'Textures/stonefloor3.jpg')).convert()
-        self.wall_texture_original = pygame.image.load(os.path.join(d, 'Textures/stonefloor4.jpg')).convert()
-        self.wooden_door_closed_texture_original = pygame.image.load(os.path.join(d, 'Textures/Wooden_door_closed.png')).convert_alpha()
-        self.wooden_door_open_texture_original = pygame.image.load(os.path.join(d, 'Textures/Wooden_door_open.png')).convert_alpha()
-        self.iron_door_closed_texture_original = pygame.image.load(os.path.join(d, 'Textures/Iron_door_closed.png')).convert_alpha()
-        self.iron_door_open_texture_original = pygame.image.load(os.path.join(d, 'Textures/Iron_door_open.png')).convert_alpha()
+        self.floor_texture_original = pygame.image.load(os.path.join(d, 'Assets/Textures/stonefloor3.jpg')).convert()
+        self.wall_texture_original = pygame.image.load(os.path.join(d, 'Assets/Textures/stonefloor4.jpg')).convert()
+        self.wooden_door_closed_texture_original = pygame.image.load(os.path.join(d, 'Assets/Textures/Wooden_door_closed.png')).convert_alpha()
+        self.wooden_door_open_texture_original = pygame.image.load(os.path.join(d, 'Assets/Textures/Wooden_door_open.png')).convert_alpha()
+        self.iron_door_closed_texture_original = pygame.image.load(os.path.join(d, 'Assets/Textures/Iron_door_closed.png')).convert_alpha()
+        self.iron_door_open_texture_original = pygame.image.load(os.path.join(d, 'Assets/Textures/Iron_door_open.png')).convert_alpha()
         self.secret_door_texture_original = self.wall_texture_original
-        self.trap_texture_original = pygame.image.load(os.path.join(d, 'Textures/trap_pit.jpg')).convert_alpha()
+        self.trap_texture_original = pygame.image.load(os.path.join(d, 'Assets/Textures/trap_pit.jpg')).convert_alpha()
         (self.floor_texture, self.wall_texture, self.wooden_door_closed_texture,
          self.wooden_door_open_texture, self.iron_door_closed_texture,
          self.iron_door_open_texture, self.secret_door_texture,
@@ -178,14 +178,14 @@ class MapManager:
     def rescale_icons(self):
         for file, icon in self.icons.items():
             try:
-                img = pygame.image.load(self.dir_path + "Icons/" + file).convert_alpha()
+                img = pygame.image.load(self.dir_path + "Assets/Icons/" + file).convert_alpha()
                 self.icons[file] = pygame.transform.smoothscale(img, (self.tile_size, self.tile_size))
             except Exception as e:
                 print(f"Could not rescale icon {file}: {e}")
 
     def load_icon(self, file):
         try:
-            img = pygame.image.load(self.dir_path + "Icons/" + file).convert_alpha()
+            img = pygame.image.load(self.dir_path + "Assets/Icons/" + file).convert_alpha()
             self.icons[file] = pygame.transform.smoothscale(img, (self.tile_size, self.tile_size))
         except Exception as e:
             print(f"Could not load icon {file}: {e}")

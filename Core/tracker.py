@@ -108,7 +108,7 @@ class Tracker:
         """
         images = {}
         for cond in self.condition_list:
-            png_path = os.path.join(self.dir_path, 'Icons', 'Conditions', f'{cond}.png')
+            png_path = os.path.join(self.dir_path, 'Assets', 'Icons', 'Conditions', f'{cond}.png')
             if os.path.isfile(png_path):
                 with open(png_path, 'rb') as f:
                     raw = f.read()
@@ -679,7 +679,7 @@ class Tracker:
             path = sg.popup_get_file(
                 "Save tracker as",
                 save_as=True,
-                initial_folder=os.path.join(dir_path, 'Data'),
+                initial_folder=os.path.join(dir_path, 'Savegames'),
                 default_path=default_name,
                 file_types=(("JSON Files", "*.json"),),
             )
@@ -690,7 +690,7 @@ class Tracker:
                 sg.popup(f"Saved to {path}")
 
         elif event == '📂 Load':
-            file_path = sg.popup_get_file("Select tracker file", initial_folder=dir_path + "Data",
+            file_path = sg.popup_get_file("Select tracker file", initial_folder=os.path.join(dir_path, 'Savegames'),
                                           file_types=(("JSON Files", "*.json"),))
             if file_path:
                 self._selected_index = None

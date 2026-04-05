@@ -10,7 +10,7 @@ from Core.tracker import Tracker
 from Core.log_utils import log
 
 DEFAULT_MAP_PATH  = 'Maps/sample_dungeon_matrix_with_voids.txt'
-DEFAULT_SAVE_FILE = 'Data/combat_tracker_example.json'
+DEFAULT_SAVE_FILE = 'Savegames/combat_tracker_example.json'
 AUTOSAVE_INTERVAL = 120   # seconds between autosaves
 AUTOSAVE_SLOTS    = 4     # number of rotating autosave files
 
@@ -271,7 +271,7 @@ class Game:
                 time.sleep(AUTOSAVE_INTERVAL)
                 slot[0] = (slot[0] % AUTOSAVE_SLOTS) + 1
                 path = os.path.join(
-                    self.dir_path, 'Data', f'autosave_{slot[0]}.json'
+                    self.dir_path, 'Savegames', f'autosave_{slot[0]}.json'
                 )
                 self.server.submit({"action": "save", "path": path})
                 if self.verbose:
