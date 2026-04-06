@@ -609,7 +609,7 @@ class MapManager:
         fog = pygame.Surface((map_w, map_h), pygame.SRCALPHA)
 
         BLACK      = (0,   0,   0, 255)
-        MEMORY     = (0,   0,   0, 50)
+        MEMORY     = (0,   0,   0, 70)
 
         for row in range(rows):
             for col in range(cols):
@@ -806,6 +806,18 @@ class MapManager:
         if rect is None:
             return
         screen.blit(self._minimap_surface, rect.topleft)
+
+        # In player mode, black out unexplored tiles
+        if self._player_name and self.map_data:
+            rows = len(self.map_data)
+            cols = len(self.map_data[0])
+            fog_px = pygame.Surface((cols, rows), pygame.SRCALPHA)
+            fog_px.fill((0, 0, 0, 255))
+            for (c, r) in self._explored_tiles:
+                if 0 <= r < rows and 0 <= c < cols:
+                    fog_px.set_at((c, r), (0, 0, 0, 0))
+            fog_surf = pygame.transform.scale(fog_px, (rect.width, rect.height))
+            screen.blit(fog_surf, rect.topleft)
 
         # Viewport rectangle
         rows = len(self.map_data)
