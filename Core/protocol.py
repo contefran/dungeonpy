@@ -39,7 +39,6 @@ INTENTS: dict[str, list[str]] = {
     "clear_highlights":     ["owner"],
     "recenter_all":         ["pos"],   # DM only — broadcast view recenter to all players
     "set_visibility_radius": ["radius"],  # DM only
-    "reveal_secret_door":   ["pos"],      # DM only — reveal to all players in LOS of that tile
 }
 
 

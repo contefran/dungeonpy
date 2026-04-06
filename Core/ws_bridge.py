@@ -240,11 +240,6 @@ class WSBridge:
             target = event.get("target")
             if target:
                 self._loop.create_task(self._send_to_player(json.dumps(event), target))
-        elif action == "secret_door_revealed":
-            # Send to each player in the revealed list individually
-            for pname in event.get("player_names", []):
-                self._loop.create_task(self._send_to_player(json.dumps(event), pname))
-            # DM is in-process subscriber — no WS send needed for them
         else:
             self._loop.create_task(self._broadcast(json.dumps(event)))
 

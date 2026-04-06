@@ -14,7 +14,7 @@ Tile opacity rules  (must match draw_map numbering):
   2  wall         — opaque
   3  wooden door  — opaque when closed, transparent when open
   4  iron door    — opaque when closed, transparent when open
-  5  secret door  — always opaque (player sees it as a wall)
+  5  secret door  — opaque when closed, transparent when open (fog-gated per player)
   6  trap         — transparent (floor-like)
 """
 
@@ -45,7 +45,7 @@ def compute_los(map_grid, pos, radius,
     ox, oy = pos          # origin col, row
     ds  = door_states        or {}
     ids = iron_door_states   or {}
-    # secret_door_states intentionally ignored — secret doors are always opaque
+    sds = secret_door_states or {}
 
     def is_opaque(c, r):
         if not (0 <= r < n_rows and 0 <= c < n_cols):
@@ -56,7 +56,7 @@ def compute_los(map_grid, pos, radius,
         if t == 2:        return True    # wall — opaque
         if t == 3:        return ds.get((r, c), "closed") != "open"
         if t == 4:        return ids.get((r, c), "closed") != "open"
-        if t == 5:        return True    # secret door = opaque wall
+        if t == 5:        return sds.get((r, c), "closed") != "open"
         return False
 
     visible = set()

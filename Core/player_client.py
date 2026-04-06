@@ -155,9 +155,6 @@ class PlayerClient:
         self.server.explored_tiles = {
             self.name: {tuple(t) for t in state.get("explored_tiles", [])}
         }
-        self.server.revealed_secret_doors = {
-            self.name: {tuple(t) for t in state.get("revealed_secret_doors", [])}
-        }
         if state.get("map_grid"):
             self.server.map_grid = state["map_grid"]
 
@@ -237,18 +234,6 @@ class PlayerClient:
         elif action == "explored_updated":
             new_tiles = {tuple(t) for t in event.get("new_tiles", [])}
             self.server.explored_tiles.setdefault(self.name, set()).update(new_tiles)
-
-        elif action == "secret_door_revealed":
-            pos = event.get("pos")
-            if pos:
-                self.server.revealed_secret_doors.setdefault(self.name, set()).add(tuple(pos))
-                # Update the local map grid: replace the wall (was tile 5→1) back to 5
-                # so the player now sees it as a door tile
-                if self.server.map_grid:
-                    col, row = pos
-                    if (0 <= row < len(self.server.map_grid)
-                            and 0 <= col < len(self.server.map_grid[0])):
-                        self.server.map_grid[row][col] = 5
 
         elif action == "visibility_radius_changed":
             self.server.visibility_radius = event.get("radius", 10)

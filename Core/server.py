@@ -48,7 +48,6 @@ class GameServer:
         self.map_visible: bool = False                   # whether the map window is shown to everyone
         self.visibility_radius: int = 10                 # LOS radius in tiles (DM-configurable)
         self.explored_tiles: dict[str, set] = {}         # {player_name: {(col,row), ...}}
-        self.revealed_secret_doors: dict[str, set] = {}  # {player_name: {(col,row), ...}}
         self._subscribers: list = []
         self._seq: int = 0
         self._snapshot_interval: int = snapshot_interval
@@ -128,17 +127,10 @@ class GameServer:
         """
         Return a raw snapshot dict (no seq stamp — stamping is done in submit()).
 
-        If *player_name* is given, the snapshot is filtered for that player:
-        - map_grid has unrevealed secret doors replaced with walls (tile 1)
-        - explored_tiles / revealed_secret_doors contain only that player's data
+        If *player_name* is given, explored_tiles contains only that player's data.
+        Secret doors are sent as tile-5 to all clients; fog-of-war is enforced
+        client-side via _player_secret_door_states.
         """
-        # Build the map grid to send (player sees secret doors as walls until revealed)
-        if player_name and self.map_grid:
-            revealed = self.revealed_secret_doors.get(player_name, set())
-            grid = self._player_map_grid(self.map_grid, revealed)
-        else:
-            grid = self.map_grid
-
         state = {
             "combatants": [c.to_dict() for c in self.combatants],
             "active_index": self.active_index,
@@ -149,32 +141,15 @@ class GameServer:
             "trap_states": {f"{r},{c}": v for (r, c), v in self.trap_states.items()},
             "player_selection_locks": dict(self.player_selection_locks),
             "player_move_locks": dict(self.player_move_locks),
-            "map_grid": grid,
+            "map_grid": self.map_grid,
             "map_path": self.map_path,
             "map_visible": self.map_visible,
             "tile_highlights": list(self.tile_highlights),
             "visibility_radius": self.visibility_radius,
             "explored_tiles": [list(t) for t in self.explored_tiles.get(player_name, set())]
                                if player_name else {},
-            "revealed_secret_doors": [list(t) for t in
-                                      self.revealed_secret_doors.get(player_name, set())]
-                                     if player_name else {},
         }
         return {"type": "snapshot", "seq": self._seq, "state": state}
-
-    @staticmethod
-    def _player_map_grid(grid: list, revealed: set) -> list:
-        """Return a copy of grid with unrevealed secret doors (tile 5) replaced by walls (tile 2)."""
-        result = []
-        for r, row in enumerate(grid):
-            new_row = []
-            for c, tile in enumerate(row):
-                if tile == 5 and (c, r) not in revealed:
-                    new_row.append(2)
-                else:
-                    new_row.append(tile)
-            result.append(new_row)
-        return result
 
     # ------------------------------------------------------------------
     # Damage / heal
@@ -244,10 +219,6 @@ class GameServer:
             name: {tuple(t) for t in tiles}
             for name, tiles in data.get("explored_tiles", {}).items()
         }
-        self.revealed_secret_doors = {
-            name: {tuple(t) for t in tiles}
-            for name, tiles in data.get("revealed_secret_doors", {}).items()
-        }
         if self.map_path and os.path.isfile(self.map_path):
             self.map_grid = _load_map_grid(self.map_path)
         else:
@@ -263,10 +234,6 @@ class GameServer:
             "explored_tiles": {
                 name: [list(t) for t in tiles]
                 for name, tiles in self.explored_tiles.items()
-            },
-            "revealed_secret_doors": {
-                name: [list(t) for t in tiles]
-                for name, tiles in self.revealed_secret_doors.items()
             },
         }
         with open(filepath, 'w', encoding='utf-8') as f:
@@ -510,7 +477,6 @@ class GameServer:
             self.trap_states = {}
             self.tile_highlights = []
             self.explored_tiles = {}
-            self.revealed_secret_doors = {}
             self.map_visible = True  # auto-open so DM can place tokens
             return [
                 {"type": "event", "action": "map_loaded", "path": path},
@@ -553,34 +519,6 @@ class GameServer:
             r = max(1, min(r, 30))
             self.visibility_radius = r
             return [{"type": "event", "action": "visibility_radius_changed", "radius": r}]
-
-        if action == "reveal_secret_door":
-            pos = intent.get("pos")
-            if not pos or not self.map_grid:
-                return []
-            col, row = pos
-            n_rows = len(self.map_grid)
-            n_cols = len(self.map_grid[0]) if n_rows else 0
-            if not (0 <= row < n_rows and 0 <= col < n_cols):
-                return []
-            if self.map_grid[row][col] != 5:
-                return []
-            # Reveal to every player whose current token position is in LOS of this tile
-            revealed_players = []
-            for c in self.combatants:
-                if not c.pos:
-                    continue
-                los = compute_los(
-                    self.map_grid, c.pos, self.visibility_radius,
-                    self.door_states, self.iron_door_states, self.secret_door_states,
-                )
-                if (col, row) in los:
-                    self.revealed_secret_doors.setdefault(c.name, set()).add((col, row))
-                    revealed_players.append(c.name)
-            if not revealed_players:
-                return []
-            return [{"type": "event", "action": "secret_door_revealed",
-                     "pos": pos, "player_names": revealed_players}]
 
         # --- Chat ---
         if action == "chat_message":

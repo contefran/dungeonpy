@@ -81,7 +81,7 @@ class MapManager:
         self.initial_token_pos = None
         self.ui_font = None
         self._minimap_surface = None
-        self.active_tool: str = "select"          # "select" | "highlight" | "recenter_pick" | "reveal"
+        self.active_tool: str = "select"          # "select" | "highlight" | "recenter_pick"
         self._player_name: str | None = None      # set by Game in player mode; None = DM
         self._chat_toggle_fn = None               # set by Game in player mode; None = DM
         self._chat_visible: bool = True           # tracks chat window state for toolbar icon
@@ -91,8 +91,9 @@ class MapManager:
         self._current_los: set = set()            # (col, row) tiles visible this frame
         self._fog_surface: pygame.Surface | None = None  # cached per-frame fog overlay
         # Last-seen door states (fog-gated): only updated when tile is in LOS
-        self._player_door_states: dict = {}       # (row, col) → state
-        self._player_iron_door_states: dict = {}  # (row, col) → state
+        self._player_door_states: dict = {}        # (row, col) → state
+        self._player_iron_door_states: dict = {}   # (row, col) → state
+        self._player_secret_door_states: dict = {} # (row, col) → state
 
     def init_pygame(self):
         pygame.init()
@@ -284,11 +285,7 @@ class MapManager:
                 self._explored_tiles = set()
                 self._player_door_states = {}
                 self._player_iron_door_states = {}
-
-        elif action == "secret_door_revealed":
-            # Refresh map_data from server so the tile now renders as a door
-            if self.server.map_grid:
-                self.map_data = self.server.map_grid
+                self._player_secret_door_states = {}
 
         elif action == "visibility_radius_changed":
             pass  # server.visibility_radius already updated by player_client; LOS recomputed next frame
@@ -373,7 +370,6 @@ class MapManager:
             rects["recenter"] = pygame.Rect(x0, chat_bottom + 8, 44, 44)
         if self._player_name is None:
             rects["recenter_all"] = pygame.Rect(x0, rects["clear"].bottom + 16, 44, 44)
-            rects["reveal"] = pygame.Rect(x0, rects["recenter_all"].bottom + 8, 44, 44)
         return rects
 
     def _handle_toolbar_click(self, mx, my):
@@ -396,9 +392,7 @@ class MapManager:
         elif rects.get("recenter") and rects["recenter"].collidepoint(mx, my):
             self._recenter_on_player()
         elif rects.get("recenter_all") and rects["recenter_all"].collidepoint(mx, my):
-            self.active_tool = "recenter_pick"
-        elif rects.get("reveal") and rects["reveal"].collidepoint(mx, my):
-            self.active_tool = "reveal"
+            self.active_tool = "highlight" if self.active_tool == "recenter_pick" else "recenter_pick"
 
     def _draw_toolbar(self, screen):
         sw, sh = screen.get_size()
@@ -488,22 +482,6 @@ class MapManager:
             pygame.draw.ellipse(screen, ic, (cx - 10, cy - 5, 20, 10), 2)
             pygame.draw.circle(screen, ic, (cx, cy), 3)
 
-        # --- Reveal button (DM only) ---
-        if rects.get("reveal"):
-            pygame.draw.line(screen, (55, 55, 70),
-                             (x0 + 8, rects["reveal"].top - 4),
-                             (sw - 8, rects["reveal"].top - 4), 1)
-            is_reveal = self.active_tool == "reveal"
-            bg = (70, 60, 30) if is_reveal else _BG_INACTIVE
-            pygame.draw.rect(screen, bg, rects["reveal"], border_radius=4)
-            pygame.draw.rect(screen, _BORDER, rects["reveal"], 1, border_radius=4)
-            cx, cy = rects["reveal"].centerx, rects["reveal"].centery - 6
-            ic = (240, 210, 100) if is_reveal else _ICON
-            # Key icon: circle head + rectanglar shaft
-            pygame.draw.circle(screen, ic, (cx - 3, cy - 4), 5, 2)
-            pygame.draw.line(screen, ic, (cx + 2, cy - 2), (cx + 9, cy + 5), 2)
-            pygame.draw.line(screen, ic, (cx + 6, cy + 2), (cx + 8, cy + 4), 2)
-
         # --- Recenter button (player mode only) ---
         if rects.get("recenter"):
             pygame.draw.line(screen, (55, 55, 70),
@@ -547,12 +525,6 @@ class MapManager:
                 eye_surf = self._toolbar_font.render("POINT", True, ic)
                 r = rects["recenter_all"]
                 screen.blit(eye_surf, (r.x + (r.width - eye_surf.get_width()) // 2, r.bottom - 13))
-            if rects.get("reveal"):
-                is_reveal = self.active_tool == "reveal"
-                ic = (240, 210, 100) if is_reveal else _ICON
-                rev_surf = self._toolbar_font.render("RVEAL", True, ic)
-                r = rects["reveal"]
-                screen.blit(rev_surf, (r.x + (r.width - rev_surf.get_width()) // 2, r.bottom - 13))
 
     # ------------------------------------------------------------------
     # Highlight rendering
@@ -574,17 +546,19 @@ class MapManager:
             return
         self._current_los = compute_los(
             self.map_data, token.pos, self.server.visibility_radius,
-            self._player_door_states,       # use last-seen states so fog gates LOS too
+            self._player_door_states,        # use last-seen states so fog gates LOS too
             self._player_iron_door_states,
-            self.server.secret_door_states,
+            self._player_secret_door_states,
         )
-        # For each newly visible tile, learn its current door state
+        # For each newly visible tile, learn its current door/secret-door state
         for (c, r) in self._current_los:
             k = (r, c)
             if k in self.server.door_states:
                 self._player_door_states[k] = self.server.door_states[k]
             if k in self.server.iron_door_states:
                 self._player_iron_door_states[k] = self.server.iron_door_states[k]
+            if k in self.server.secret_door_states:
+                self._player_secret_door_states[k] = self.server.secret_door_states[k]
         # Accumulate into local explored set (server is authoritative but this keeps
         # rendering smooth without waiting for the server round-trip)
         self._explored_tiles.update(self._current_los)
@@ -685,9 +659,10 @@ class MapManager:
                         screen.blit(self.iron_door_open_texture, (x, y))
                     else:
                         screen.blit(self.iron_door_closed_texture, (x, y))
-                elif tile == 5:  # secret door — looks like wall until revealed
+                elif tile == 5:  # secret door — wall until opened (fog-gated per player)
                     screen.blit(self.wall_texture, (x, y))
-                    if self.server.secret_door_states.get(key) == "open":
+                    secret_st = self._player_secret_door_states if self._player_name else self.server.secret_door_states
+                    if secret_st.get(key) == "open":
                         screen.blit(self.iron_door_open_texture, (x, y))
                 elif tile == 6:  # trap — looks like floor until revealed
                     screen.blit(self.floor_texture, (x, y))
@@ -996,12 +971,6 @@ class MapManager:
             self.active_tool = "select"
             return
 
-        # Reveal mode — DM clicks a secret door tile to reveal it to nearby players
-        if button == 1 and self.active_tool == "reveal":
-            if 0 <= row < len(self.map_data) and 0 <= col < len(self.map_data[0]):
-                self._submit({"action": "reveal_secret_door", "pos": [col, row]})
-            self.active_tool = "select"
-            return
 
         # Highlight tool — toggle tile and skip all selection/placement logic
         if button == 1 and self.active_tool == "highlight":
@@ -1129,8 +1098,6 @@ class MapManager:
         tile = self.map_data[row][col]
         if tile in (0, 2):  # nothing, wall
             return False
-        if tile == 5:  # secret door — only placeable once revealed
-            return self.server.secret_door_states.get((row, col)) == "open"
         if self._player_name:
             if (col, row) not in self._explored_tiles:
                 return False
@@ -1138,6 +1105,11 @@ class MapManager:
                 return False
             if tile == 4 and self._player_iron_door_states.get((row, col)) != "open":
                 return False
+            if tile == 5 and self._player_secret_door_states.get((row, col)) != "open":
+                return False
+        else:
+            if tile == 5:
+                return self.server.secret_door_states.get((row, col)) == "open"
         return True
 
     def get_pixel_coords(self, grid_pos):
