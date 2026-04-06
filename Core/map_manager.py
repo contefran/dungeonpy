@@ -1,5 +1,6 @@
 import pygame
 import os
+import struct
 from Core.log_utils import log
 from Core.los import compute_los
 import math
@@ -94,6 +95,26 @@ class MapManager:
         self._player_door_states: dict = {}        # (row, col) → state
         self._player_iron_door_states: dict = {}   # (row, col) → state
         self._player_secret_door_states: dict = {} # (row, col) → state
+        self._chat_unread: bool = False            # unread message arrived while chat closed
+        self._ping_sound = None                    # generated once after pygame.init()
+
+    def _make_ping_sound(self):
+        """Generate a short 880 Hz ping using the mixer's current format."""
+        try:
+            rate, size, channels = pygame.mixer.get_init()
+            if abs(size) != 16:
+                return None
+            n = int(rate * 0.12)
+            fmt = '<' + 'h' * channels
+            parts = []
+            for i in range(n):
+                fade = max(0.0, 1.0 - (i / n) * 4)
+                v = int(32767 * fade * math.sin(2 * math.pi * 880 * i / rate))
+                v = max(-32768, min(32767, v))
+                parts.append(struct.pack(fmt, *([v] * channels)))
+            return pygame.mixer.Sound(buffer=b''.join(parts))
+        except Exception:
+            return None
 
     def init_pygame(self):
         pygame.init()
@@ -115,6 +136,7 @@ class MapManager:
 
         self._load_textures()
 
+        self._ping_sound = self._make_ping_sound()
         self.ui_font = pygame.font.SysFont('Arial', 18)
         self._toolbar_font = pygame.font.SysFont('Arial', 11)
         # Re-cache icons (needed if map is reopened after close)
@@ -290,6 +312,12 @@ class MapManager:
         elif action == "visibility_radius_changed":
             pass  # server.visibility_radius already updated by player_client; LOS recomputed next frame
 
+        elif action == "chat_message":
+            if self._chat_toggle_fn is not None:
+                self._chat_unread = True
+                if self._ping_sound:
+                    self._ping_sound.play()
+
     def _init_player_view(self, player_name: str):
         """Set mid-zoom and center the view on the player's token (called once on first snapshot).
         For a no-zoom recenter use _recenter_on_player() instead."""
@@ -389,6 +417,8 @@ class MapManager:
             if self._chat_toggle_fn:
                 self._chat_toggle_fn()
                 self._chat_visible = not self._chat_visible
+                if self._chat_visible:
+                    self._chat_unread = False
         elif rects.get("recenter") and rects["recenter"].collidepoint(mx, my):
             self._recenter_on_player()
         elif rects.get("recenter_all") and rects["recenter_all"].collidepoint(mx, my):
@@ -511,7 +541,7 @@ class MapManager:
             r = rects["clear"]
             screen.blit(clr_surf, (r.x + (r.width - clr_surf.get_width()) // 2, r.bottom - 13))
             if self._chat_toggle_fn is not None:
-                ic = _ICON_ACTIVE if self._chat_visible else _ICON
+                ic = (255, 200, 50) if self._chat_unread else (_ICON_ACTIVE if self._chat_visible else _ICON)
                 chat_surf = self._toolbar_font.render("CHAT", True, ic)
                 r = rects["chat"]
                 screen.blit(chat_surf, (r.x + (r.width - chat_surf.get_width()) // 2, r.bottom - 13))
@@ -968,7 +998,7 @@ class MapManager:
         if button == 1 and self.active_tool == "recenter_pick":
             if 0 <= row < len(self.map_data) and 0 <= col < len(self.map_data[0]):
                 self._submit({"action": "recenter_all", "pos": [col, row]})
-            self.active_tool = "select"
+            self.active_tool = "highlight"
             return
 
 

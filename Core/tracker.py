@@ -221,6 +221,11 @@ class Tracker:
             pc_name = to_name if to_name else sender
             if self._chat:
                 self._chat.receive(pc_name, sender, text)
+            if sender != "DM":
+                try:
+                    self.window['-CHAT_NOTIFY-'].update('● new message')
+                except Exception:
+                    pass
 
     # ------------------------------------------------------------------
     # Helpers
@@ -382,7 +387,8 @@ class Tracker:
              sg.Button('Load Map', key='Load Map'),
              sg.Button('Show Map', key='Toggle Map', disabled=True),
              sg.Text('  Chat:', font=table_font),
-             sg.Button('Close Chat', key='Toggle Chat')],
+             sg.Button('Close Chat', key='Toggle Chat'),
+             sg.Text('', key='-CHAT_NOTIFY-', font=table_font, text_color='orange')],
             [sg.Text('Sight radius:', font=table_font),
              sg.Slider(range=(1, 30), default_value=10, orientation='h',
                        size=(20, 15), key='-SIGHT_RADIUS-', enable_events=True,
@@ -682,6 +688,7 @@ class Tracker:
             else:
                 self._chat.open(self._pc_names())
                 self.window['Toggle Chat'].update(text='Close Chat')
+                self.window['-CHAT_NOTIFY-'].update('')
 
         elif event == '💾 Export':
             default_name = f'combat_tracker_{datetime.now().strftime("%Y%m%d_%H%M%S")}.json'
@@ -759,6 +766,7 @@ class Tracker:
                 keep = self._chat.handle_event(event, values)
                 if not keep:
                     self.window['Toggle Chat'].update(text='Open Chat')
+                self.window['-CHAT_NOTIFY-'].update('')
 
         if self._chat:
             self._chat.close()

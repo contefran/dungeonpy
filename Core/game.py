@@ -82,6 +82,10 @@ class Game:
             self.server.subscribe(self.tracker.handle_server_event)
         self.server.subscribe(self._handle_map_events)
 
+        if self.tracker and self.tracker._chat:
+            mm = self.map_manager
+            self.tracker._chat._ping_fn = lambda: mm._ping_sound and mm._ping_sound.play()
+
         if self.verbose:
             log(f"[Game] Initialized in mode: {mode}")
 
@@ -131,6 +135,10 @@ class Game:
         self.server.subscribe(self.tracker.handle_server_event)
         self.server.subscribe(self.map_manager.handle_server_event)
         self.server.subscribe(self._handle_map_events)
+
+        if self.tracker and self.tracker._chat:
+            mm = self.map_manager
+            self.tracker._chat._ping_fn = lambda: mm._ping_sound and mm._ping_sound.play()
 
     def _init_player(self, host, port, player_name, player_color, insecure):
         """--mode player — remote map-only client; no local files needed."""

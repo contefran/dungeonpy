@@ -24,6 +24,8 @@ class ChatWindow:
         self._history: dict[str, list[str]] = {}
         self._pc_names: list[str] = []   # current tab order
         self.window: sg.Window | None = None
+        self._unread: set[str] = set()   # pc names with unread inbound messages
+        self._ping_fn = None             # injected by Game; called on inbound message
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -96,6 +98,15 @@ class ChatWindow:
     # Event handling (called from Tracker's read_all_windows loop)
     # ------------------------------------------------------------------
 
+    def _update_title(self):
+        if not self.window:
+            return
+        title = f'DM Chat  ●  {", ".join(sorted(self._unread))}' if self._unread else 'DM Chat'
+        try:
+            self.window.TKroot.title(title)
+        except Exception:
+            pass
+
     def handle_event(self, event, values) -> bool:
         """
         Process one event from this window.
@@ -105,6 +116,11 @@ class ChatWindow:
             self.window.close()
             self.window = None
             return False
+
+        # DM is interacting — clear unread indicator
+        if self._unread:
+            self._unread.clear()
+            self._update_title()
 
         for name in self._pc_names:
             if event in (f'-SEND_{name}-', f'-INPUT_{name}-_RETURN'):
@@ -137,3 +153,9 @@ class ChatWindow:
                 self.window[key].update(updated)
             except Exception:
                 pass
+        # Notify DM of inbound player message
+        if sender != "DM":
+            self._unread.add(pc_name)
+            self._update_title()
+            if self._ping_fn:
+                self._ping_fn()
