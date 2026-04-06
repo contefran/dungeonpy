@@ -364,10 +364,10 @@ class MapManager:
         rects = {
             "select":    pygame.Rect(x0, 12, 44, 44),
             "highlight": pygame.Rect(x0, 64, 44, 44),
-            "clear":     pygame.Rect(x0, 116, 44, 36),
+            "clear":     pygame.Rect(x0, 116, 44, 44),
         }
         if self._chat_toggle_fn is not None:
-            rects["chat"] = pygame.Rect(x0, 168, 44, 44)
+            rects["chat"] = pygame.Rect(x0, 176, 44, 44)
         if self._player_name is not None:
             chat_bottom = rects["chat"].bottom if "chat" in rects else rects["clear"].bottom
             rects["recenter"] = pygame.Rect(x0, chat_bottom + 8, 44, 44)
@@ -454,7 +454,7 @@ class MapManager:
         # --- Clear button ---
         pygame.draw.rect(screen, _BG_CLEAR, rects["clear"], border_radius=4)
         pygame.draw.rect(screen, _BORDER, rects["clear"], 1, border_radius=4)
-        cx, cy = rects["clear"].centerx, rects["clear"].centery
+        cx, cy = rects["clear"].centerx, rects["clear"].centery - 6
         pygame.draw.line(screen, _ICON, (cx - 7, cy - 7), (cx + 7, cy + 7), 2)
         pygame.draw.line(screen, _ICON, (cx + 7, cy - 7), (cx - 7, cy + 7), 2)
 
@@ -531,8 +531,7 @@ class MapManager:
                 screen.blit(surf, (r.x + (r.width - surf.get_width()) // 2, r.bottom - 13))
             clr_surf = self._toolbar_font.render("CLR", True, _ICON)
             r = rects["clear"]
-            screen.blit(clr_surf, (r.x + (r.width - clr_surf.get_width()) // 2,
-                                   r.y + (r.height - clr_surf.get_height()) // 2))
+            screen.blit(clr_surf, (r.x + (r.width - clr_surf.get_width()) // 2, r.bottom - 13))
             if self._chat_toggle_fn is not None:
                 ic = _ICON_ACTIVE if self._chat_visible else _ICON
                 chat_surf = self._toolbar_font.render("CHAT", True, ic)
@@ -545,7 +544,7 @@ class MapManager:
             if rects.get("recenter_all"):
                 is_picking = self.active_tool == "recenter_pick"
                 ic = (200, 170, 240) if is_picking else _ICON
-                eye_surf = self._toolbar_font.render("VIEW", True, ic)
+                eye_surf = self._toolbar_font.render("POINT", True, ic)
                 r = rects["recenter_all"]
                 screen.blit(eye_surf, (r.x + (r.width - eye_surf.get_width()) // 2, r.bottom - 13))
             if rects.get("reveal"):
@@ -714,6 +713,12 @@ class MapManager:
         for i, c in enumerate(self.server.combatants):
             if not c.pos:
                 continue
+
+            # In player mode, hide tokens outside LOS (own token always visible)
+            if self._player_name and c.name != self._player_name:
+                col, row = c.pos
+                if (col, row) not in self._current_los:
+                    continue
 
             x, y = self.get_pixel_coords(c.pos)
 
@@ -1117,7 +1122,8 @@ class MapManager:
         self.initial_token_pos = None
 
     def _is_placeable(self, col, row):
-        """Return True for passable tiles; secret doors only if already revealed."""
+        """Return True for passable tiles; secret doors only if already revealed.
+        In player mode, also requires the tile to have been explored."""
         if not (0 <= col < len(self.map_data[0]) and 0 <= row < len(self.map_data)):
             return False
         tile = self.map_data[row][col]
@@ -1125,6 +1131,13 @@ class MapManager:
             return False
         if tile == 5:  # secret door — only placeable once revealed
             return self.server.secret_door_states.get((row, col)) == "open"
+        if self._player_name:
+            if (col, row) not in self._explored_tiles:
+                return False
+            if tile == 3 and self._player_door_states.get((row, col)) != "open":
+                return False
+            if tile == 4 and self._player_iron_door_states.get((row, col)) != "open":
+                return False
         return True
 
     def get_pixel_coords(self, grid_pos):
