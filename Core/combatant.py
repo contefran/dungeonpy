@@ -6,17 +6,18 @@ def _migrate_timers(raw: dict) -> dict:
 class Combatant:
     
     def __init__(self, name, initiative, hp=None, max_hp=None, conditions=None,
-                 condition_timers=None, pos=None, icon=None, notes='', is_pc=False):
+                 condition_timers=None, pos=None, icon=None, notes='', is_pc=False, size=1):
         self.name = name
         self.initiative = initiative
         self.hp = hp  # int or None
         self.max_hp = max_hp  # int or None
         self.conditions = conditions or []
         self.condition_timers = condition_timers or {}  # {condition_name: expiry_turn}
-        self.pos = pos  # [x, y] or None
+        self.pos = pos  # [x, y] or None — top-left corner of the size×size footprint
         self.icon = icon
         self.notes = notes
         self.is_pc = is_pc  # True → kept across map loads; False → removed on new map
+        self.size = max(1, int(size))  # footprint side length in tiles (1=normal, 2=large, 3=huge…)
 
     def to_dict(self):
         return {
@@ -30,6 +31,7 @@ class Combatant:
             "icon": self.icon,
             "notes": self.notes,
             "is_pc": self.is_pc,
+            "size": self.size,
         }
 
     @classmethod
@@ -45,6 +47,7 @@ class Combatant:
             icon=data.get("icon"),
             notes=data.get("notes", ''),
             is_pc=data.get("is_pc", False),
+            size=data.get("size", 1),
         )
 
     def is_down(self):

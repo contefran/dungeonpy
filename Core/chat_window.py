@@ -36,6 +36,7 @@ class ChatWindow:
         if self.window:
             self.window.close()
         self._pc_names = list(pc_names)
+        self._current_tab: str | None = pc_names[0] if pc_names else None
         self.window = self._build_window()
 
     def close(self):
@@ -80,7 +81,8 @@ class ChatWindow:
                 ]
                 tabs.append(sg.Tab(name, tab_layout, key=f'-TAB_{name}-'))
             layout = [
-                [sg.TabGroup([tabs], expand_x=True, expand_y=True, font=_FONT_BOLD)],
+                [sg.TabGroup([tabs], key='-TABS-', enable_events=True,
+                             expand_x=True, expand_y=True, font=_FONT_BOLD)],
             ]
 
         win = sg.Window(
@@ -107,6 +109,12 @@ class ChatWindow:
         except Exception:
             pass
 
+    def mark_current_tab_read(self):
+        """Clear the unread indicator for whichever tab is currently visible."""
+        if self._current_tab:
+            self._unread.discard(self._current_tab)
+            self._update_title()
+
     def handle_event(self, event, values) -> bool:
         """
         Process one event from this window.
@@ -117,10 +125,12 @@ class ChatWindow:
             self.window = None
             return False
 
-        # DM is interacting — clear unread indicator
-        if self._unread:
-            self._unread.clear()
-            self._update_title()
+        # Tab switched — clear unread for the newly visible tab only
+        if event == '-TABS-':
+            self._current_tab = values.get('-TABS-')
+            if self._current_tab:
+                self._unread.discard(self._current_tab)
+                self._update_title()
 
         for name in self._pc_names:
             if event in (f'-SEND_{name}-', f'-INPUT_{name}-_RETURN'):
@@ -128,6 +138,8 @@ class ChatWindow:
                 if text:
                     self._submit({"action": "chat_message", "to": name, "text": text})
                     self.window[f'-INPUT_{name}-'].update('')
+                self._unread.discard(name)   # clear this tab's notification only
+                self._update_title()
                 break
 
         return True

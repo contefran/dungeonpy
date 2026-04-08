@@ -178,6 +178,7 @@ class Tracker:
                     self.window['-HP-'].update('' if c.hp is None else c.hp)
                     self.window['-MAX_HP-'].update('' if c.max_hp is None else c.max_hp)
                     self.window['-IS_PC-'].update(c.is_pc)
+                    self.window['-SIZE-'].update(c.size)
                     for cond in self.condition_list:
                         self.window[f'-COND_{cond}-'].update(cond in c.conditions)
                     self.window.refresh()
@@ -271,6 +272,7 @@ class Tracker:
         self.window['-HP-'].update('')
         self.window['-MAX_HP-'].update('')
         self.window['-IS_PC-'].update(False)
+        self.window['-SIZE-'].update('1')
         for cond in self.condition_list:
             self.window[f'-COND_{cond}-'].update(False)
         self._pending_timers = {}
@@ -372,7 +374,8 @@ class Tracker:
             [sg.Table(values=[], headings=['Name', 'Initiative', 'HP', 'Notes'],
                       auto_size_columns=False, justification='left', col_widths=[10, 10, 10, 40],
                       key='-TABLE-', enable_events=True, row_height=36, expand_x=True, num_rows=10,
-                      background_color='white', text_color='black', font=table_font)],
+                      background_color='white', text_color='black',
+                      font=(table_font[0], table_font[1], 'bold'))],
             [sg.Text('Turn:', font=table_font), sg.Input(str(self.server.turn), key='-TURN-', size=(5, 1)),
              sg.Button('⏮ Prev Char'), sg.Button('⏭ Next Char')],
             [sg.HorizontalSeparator()],
@@ -382,7 +385,9 @@ class Tracker:
              sg.Text('Max HP:', font=table_font), sg.Input(key='-MAX_HP-', size=(5, 1)),
              sg.Text('   Change:', font=table_font), sg.Input('0', key='-HP_CHANGE-', size=(5, 1)),
              sg.Button('Wound'), sg.Button('Heal')],
-            [sg.Checkbox('Player Character (PC)', key='-IS_PC-', font=table_font, enable_events=False)],
+            [sg.Checkbox('Player Character (PC)', key='-IS_PC-', font=table_font, enable_events=False),
+             sg.Text('  Size (tiles):', font=table_font),
+             sg.Input('1', key='-SIZE-', size=(3, 1))],
             [sg.Text('Conditions:', font=table_font)],
             *condition_rows,
             [
@@ -440,10 +445,7 @@ class Tracker:
             self.window['-TABLE-'].update(values=data, select_rows=[])
 
         tree = self.window['-TABLE-'].Widget
-        tree.tag_configure('dead', font=('Helvetica', 12, 'overstrike'))
-        # Bold tag for all known PCs (persists after disconnect)
-        tree.tag_configure('pc', font=('Helvetica', 12, 'bold'))
-        # Dimmed background tag for each currently-connected player color
+        tree.tag_configure('dead', font=('Helvetica', 16, 'overstrike'))
         for info in self._connected_players.values():
             c = info.get("color", "white")
             try:
@@ -451,25 +453,16 @@ class Tracker:
                 dimmed = f'#{(r + 255) // 2:02x}{(g + 255) // 2:02x}{(b + 255) // 2:02x}'
             except Exception:
                 dimmed = c
-            tree.tag_configure(f'pc_{c}', background=dimmed, foreground='black',
-                               font=('Helvetica', 12, 'bold'))
+            tree.tag_configure(f'pc_{c}', background=dimmed, foreground='black')
         new_photos = {}
         for item_id, conditions, cname in zip(tree.get_children(), row_conditions, row_names):
             connected = self._connected_players.get(cname)
-            if connected:
-                pc_tag = (f'pc_{connected["color"]}',)   # bold + dimmed background
-            elif cname in self._known_players:
-                pc_tag = ('pc',)                          # bold only
-            else:
-                pc_tag = ()
-            tags = (('dead',) + pc_tag) if 'Dead' in conditions else pc_tag
-            if _PIL_OK:
-                photo = self._make_condition_strip(conditions)
-                tree.item(item_id, text='', image=photo if photo else '', tags=tags)
-                if photo:
-                    new_photos[item_id] = photo
-            else:
-                tree.item(item_id, tags=tags)
+            color_tag = (f'pc_{connected["color"]}',) if connected else ()
+            tags = (('dead',) + color_tag) if 'Dead' in conditions else color_tag
+            photo = self._make_condition_strip(conditions)
+            tree.item(item_id, text='', image=photo if photo else '', tags=tags)
+            if photo:
+                new_photos[item_id] = photo
         self._table_photos = new_photos  # replace; old refs released
 
     # ------------------------------------------------------------------
@@ -508,6 +501,7 @@ class Tracker:
                         self.window['-HP-'].update('' if c.hp is None else c.hp)
                         self.window['-MAX_HP-'].update('' if c.max_hp is None else c.max_hp)
                         self.window['-IS_PC-'].update(c.is_pc)
+                        self.window['-SIZE-'].update(c.size)
                         for cond in self.condition_list:
                             self.window[f'-COND_{cond}-'].update(cond in c.conditions)
                         self._submit({"action": "select", "name": c.name})
@@ -582,10 +576,13 @@ class Tracker:
                         no_window=False,
                     )
                     icon = os.path.basename(icon_path) if icon_path else None
+                    size_str = values.get('-SIZE-', '1').strip()
+                    size = max(1, int(size_str)) if size_str.isdigit() else 1
                     self._submit({"action": "add_combatant", "combatant": {
                         "name": name, "initiative": init, "hp": hp, "max_hp": max_hp,
                         "conditions": conditions, "icon": icon,
                         "is_pc": values.get('-IS_PC-', False),
+                        "size": size,
                     }})
                     self._selected_index = None
                     self._submit({"action": "clear_selection"})
@@ -597,12 +594,14 @@ class Tracker:
             c = self.server.combatants[self._selected_index]
             old_name = c.name
             try:
+                size_str = values.get('-SIZE-', '1').strip()
                 fields = {
                     "name": values['-NAME-'],
                     "initiative": int(values['-INITIATIVE-']),
                     "hp": int(values['-HP-'].strip()) if values['-HP-'].strip() else None,
                     "max_hp": int(values['-MAX_HP-'].strip()) if values['-MAX_HP-'].strip() else None,
                     "is_pc": values.get('-IS_PC-', False),
+                    "size": max(1, int(size_str)) if size_str.isdigit() else 1,
                 }
             except ValueError:
                 sg.popup('Initiative must be a whole number.')
@@ -716,7 +715,9 @@ class Tracker:
             else:
                 self._chat.open(self._pc_names())
                 self.window['Toggle Chat'].update(text='Close Chat')
-                self.window['-CHAT_NOTIFY-'].update('')
+                self._chat.mark_current_tab_read()
+                if not self._chat._unread:
+                    self.window['-CHAT_NOTIFY-'].update('')
 
         elif event == '💾 Export':
             default_name = f'combat_tracker_{datetime.now().strftime("%Y%m%d_%H%M%S")}.json'
@@ -794,7 +795,8 @@ class Tracker:
                 keep = self._chat.handle_event(event, values)
                 if not keep:
                     self.window['Toggle Chat'].update(text='Open Chat')
-                self.window['-CHAT_NOTIFY-'].update('')
+                if not self._chat._unread:
+                    self.window['-CHAT_NOTIFY-'].update('')
 
         if self._chat:
             self._chat.close()

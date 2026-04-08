@@ -50,7 +50,8 @@ class MapManager:
         self.panning = False
         self.pan_start = (0, 0)
 
-        self.icons = {}
+        self.icons = {}          # file → surface scaled to tile_size (for normal tokens)
+        self.icons_original = {} # file → original full-resolution surface
         self.unplaced = []
         self.selected_token = None
         self._remote_selections: dict = {}  # selector_name → (token_name, color_name)
@@ -210,28 +211,37 @@ class MapManager:
         )
 
     def rescale_icons(self):
-        for file, icon in self.icons.items():
-            try:
-                img = pygame.image.load(self.dir_path + "Assets/Icons/" + file).convert_alpha()
-                self.icons[file] = pygame.transform.smoothscale(img, (self.tile_size, self.tile_size))
-            except Exception as e:
-                print(f"Could not rescale icon {file}: {e}")
+        for file, orig in self.icons_original.items():
+            self.icons[file] = pygame.transform.smoothscale(orig, (self.tile_size, self.tile_size))
 
     def load_icon(self, file):
         try:
             img = pygame.image.load(self.dir_path + "Assets/Icons/" + file).convert_alpha()
+            self.icons_original[file] = img
             self.icons[file] = pygame.transform.smoothscale(img, (self.tile_size, self.tile_size))
         except Exception as e:
             print(f"Could not load icon {file}: {e}")
         return self.icons.get(file)
 
-    def is_tile_occupied(self, x, y, ignore_token=None):
+    def is_tile_occupied(self, col, row, ignore_token=None):
         for c in self.server.combatants:
-            if c == ignore_token:
+            if c == ignore_token or not c.pos:
                 continue
-            if c.pos == [x, y]:
+            cx, cy = c.pos
+            s = c.size
+            if cx <= col < cx + s and cy <= row < cy + s:
                 return True
         return False
+
+    def _footprint_ok(self, col, row, size, ignore_token=None):
+        """Return True if every tile in the size×size footprint is placeable and unoccupied."""
+        for dc in range(size):
+            for dr in range(size):
+                if not self._is_placeable(col + dc, row + dr):
+                    return False
+                if self.is_tile_occupied(col + dc, row + dr, ignore_token=ignore_token):
+                    return False
+        return True
 
     # ------------------------------------------------------------------
     # Server event handling (pub/sub)
@@ -574,8 +584,11 @@ class MapManager:
         if not token:
             self._current_los = set()
             return
+        # LOS origin = centre tile of the footprint
+        s = token.size
+        los_origin = [token.pos[0] + s // 2, token.pos[1] + s // 2]
         self._current_los = compute_los(
-            self.map_data, token.pos, self.server.visibility_radius,
+            self.map_data, los_origin, self.server.visibility_radius,
             self._player_door_states,        # use last-seen states so fog gates LOS too
             self._player_iron_door_states,
             self._player_secret_door_states,
@@ -719,10 +732,18 @@ class MapManager:
             if not c.pos:
                 continue
 
-            # In player mode, hide tokens outside LOS (own token always visible)
+            size = c.size  # footprint side in tiles
+            px_size = size * self.tile_size  # footprint side in pixels
+
+            # In player mode, hide tokens outside LOS (own token always visible).
+            # A large token is visible if any tile of its footprint is in LOS.
             if self._player_name and c.name != self._player_name:
                 col, row = c.pos
-                if (col, row) not in self._current_los:
+                visible = any(
+                    (col + dc, row + dr) in self._current_los
+                    for dc in range(size) for dr in range(size)
+                )
+                if not visible:
                     continue
 
             x, y = self.get_pixel_coords(c.pos)
@@ -733,18 +754,27 @@ class MapManager:
                 x = mx - self.dragging_offset[0]
                 y = my - self.dragging_offset[1]
 
+            # Centre of the footprint in pixels (used for circle and glow)
+            cx = x + px_size // 2
+            cy = y + px_size // 2
+
             icon_file = c.icon
             is_dead = "Dead" in c.conditions
             if icon_file and icon_file in self.icons:
-                surf = pygame.transform.grayscale(self.icons[icon_file]) if is_dead else self.icons[icon_file]
+                if size > 1 and icon_file in self.icons_original:
+                    surf = pygame.transform.smoothscale(self.icons_original[icon_file], (px_size, px_size))
+                else:
+                    surf = self.icons[icon_file]
+                if is_dead:
+                    surf = pygame.transform.grayscale(surf)
                 screen.blit(surf, (x, y))
             else:
                 color = (160, 160, 160) if is_dead else (255, 0, 0)
-                pygame.draw.circle(screen, color, (x + self.tile_size // 2, y + self.tile_size // 2), self.tile_size // 3)
+                pygame.draw.circle(screen, color, (cx, cy), px_size // 3)
 
             # Highlight selected (DM local selection — gold)
             if c == selected_token:
-                pygame.draw.rect(screen, (255, 200, 0), pygame.Rect(x, y, self.tile_size, self.tile_size), 3)
+                pygame.draw.rect(screen, (255, 200, 0), pygame.Rect(x, y, px_size, px_size), 3)
 
             # Highlight remote player selections (each with their own color)
             offset = 0
@@ -753,16 +783,16 @@ class MapManager:
                     rgb = _ALL_COLORS.get(color_name, (255, 255, 255))
                     pygame.draw.rect(screen, rgb,
                                      pygame.Rect(x - offset, y - offset,
-                                                 self.tile_size + offset * 2,
-                                                 self.tile_size + offset * 2), 3)
+                                                 px_size + offset * 2,
+                                                 px_size + offset * 2), 3)
                     offset += 4  # stack multiple selections outward
 
-            # Highlight active — gold pulsing glow
+            # Highlight active — gold pulsing glow centered on footprint
             if active_combatant and c == active_combatant:
-                glow_radius = self.tile_size // 4 + int((self.tile_size//8) * (1 + math.sin(pygame.time.get_ticks() * 0.005)))
-                glow_surface = pygame.Surface((glow_radius * 2, glow_radius * 2), pygame.SRCALPHA)
-                pygame.draw.circle(glow_surface, (255, 200, 0, 120), (glow_radius, glow_radius), glow_radius)
-                screen.blit(glow_surface, (x + self.tile_size // 2 - glow_radius, y + self.tile_size // 2 - glow_radius))
+                base_r = px_size // 4 + int((px_size // 8) * (1 + math.sin(pygame.time.get_ticks() * 0.005)))
+                glow_surface = pygame.Surface((base_r * 2, base_r * 2), pygame.SRCALPHA)
+                pygame.draw.circle(glow_surface, (255, 200, 0, 120), (base_r, base_r), base_r)
+                screen.blit(glow_surface, (cx - base_r, cy - base_r))
 
     # ------------------------------------------------------------------
     # Minimap
@@ -1043,13 +1073,14 @@ class MapManager:
                         log(f"[Map] Toggled door at ({col}, {row})")
                     return
 
-            if not hit and self.unplaced and self._is_placeable(col, row):
+            if not hit and self.unplaced:
                 combatant = self.unplaced[0]  # peek; handle_server_event removes it on token_placed
-                self._submit({"action": "place_token", "name": combatant.name, "pos": [col, row]})
-                self._submit({"action": "select", "name": combatant.name})
-                if self.verbose:
-                    log(f"[Map] Placed new token: {combatant.name} at ({col},{row})")
-                hit = True
+                if self._footprint_ok(col, row, combatant.size):
+                    self._submit({"action": "place_token", "name": combatant.name, "pos": [col, row]})
+                    self._submit({"action": "select", "name": combatant.name})
+                    if self.verbose:
+                        log(f"[Map] Placed new token: {combatant.name} at ({col},{row})")
+                    hit = True
 
             if not hit:
                 if self.verbose:
@@ -1062,7 +1093,7 @@ class MapManager:
                 cx, cy = c.pos
                 x = cx * self.tile_size + self.offset_x
                 y = cy * self.tile_size + self.offset_y
-                rect = pygame.Rect(x, y, self.tile_size, self.tile_size)
+                rect = pygame.Rect(x, y, c.size * self.tile_size, c.size * self.tile_size)
                 if rect.collidepoint(mx, my):
                     return c
         return None
@@ -1103,18 +1134,21 @@ class MapManager:
         if not self.dragging_token:
             self.drag_candidate = None  # Clear any pending drag
             return
-        col = (mx - self.offset_x) // self.tile_size
-        row = (my - self.offset_y) // self.tile_size
+        token = self.dragging_token
+        # Snap so the grabbed sub-tile stays under the cursor
+        tile_off_x = self.dragging_offset[0] // self.tile_size
+        tile_off_y = self.dragging_offset[1] // self.tile_size
+        col = (mx - self.offset_x) // self.tile_size - tile_off_x
+        row = (my - self.offset_y) // self.tile_size - tile_off_y
 
-        if (self._is_placeable(col, row)
-                and not self.is_tile_occupied(col, row, ignore_token=self.dragging_token)):
-            self._submit({"action": "move_token", "name": self.dragging_token.name, "pos": [col, row]})
+        if self._footprint_ok(col, row, token.size, ignore_token=token):
+            self._submit({"action": "move_token", "name": token.name, "pos": [col, row]})
             if self.verbose:
-                log(f"[Map] Dropped token {self.dragging_token.name} at ({col},{row})")
+                log(f"[Map] Dropped token {token.name} at ({col},{row})")
         else:
-            self._submit({"action": "move_token", "name": self.dragging_token.name, "pos": self.initial_token_pos})
+            self._submit({"action": "move_token", "name": token.name, "pos": self.initial_token_pos})
             if self.verbose:
-                log(f"[Map] Invalid drop, reverted {self.dragging_token.name} to {self.initial_token_pos}")
+                log(f"[Map] Invalid drop, reverted {token.name} to {self.initial_token_pos}")
 
         self.dragging_token = None
         self.drag_candidate = None

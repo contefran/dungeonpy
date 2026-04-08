@@ -250,8 +250,11 @@ class GameServer:
         """
         if not self.map_grid or not pos:
             return []
+        c = self._get(name)
+        size = c.size if c else 1
+        los_origin = [pos[0] + size // 2, pos[1] + size // 2] if size > 1 else pos
         los = compute_los(
-            self.map_grid, pos, self.visibility_radius,
+            self.map_grid, los_origin, self.visibility_radius,
             self.door_states, self.iron_door_states, self.secret_door_states,
         )
         already = self.explored_tiles.get(name, set())
