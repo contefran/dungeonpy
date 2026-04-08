@@ -43,7 +43,7 @@ class GameServer:
         self.player_selection_locks: dict[str, bool] = {}  # player name → allowed to select
         self.player_move_locks: dict[str, bool] = {}       # player name → allowed to move token
         self.tile_highlights: list[dict] = []              # [{"pos":[c,r],"color":"gold","owner":"DM"}, ...]
-        self.map_objects: list[dict] = []                  # [{"pos":[c,r],"icon":"chest.png","size":1}, ...]
+        self.map_objects: list[dict] = []                  # [{"pos":[c,r],"icon":"chest.png","width":1,"height":1}, ...]
         self.map_grid: list | None = None                # 2-D tile grid; included in snapshots
         self.map_path: str | None = None                 # absolute path to the loaded .txt map file
         self.map_visible: bool = False                   # whether the map window is shown to everyone
@@ -518,11 +518,12 @@ class GameServer:
                      "highlights": list(self.tile_highlights)}]
 
         if action == "add_map_object":
-            pos  = intent.get("pos")
-            icon = intent.get("icon")
-            size = max(1, int(intent.get("size", 1)))
+            pos    = intent.get("pos")
+            icon   = intent.get("icon")
+            width  = max(1, int(intent.get("width",  intent.get("size", 1))))
+            height = max(1, int(intent.get("height", intent.get("size", 1))))
             if pos and icon:
-                obj = {"pos": pos, "icon": icon, "size": size}
+                obj = {"pos": pos, "icon": icon, "width": width, "height": height}
                 self.map_objects.append(obj)
                 return [{"type": "event", "action": "map_object_added", "object": obj}]
             return []

@@ -194,33 +194,36 @@ class MapManager:
         for obj in self.server.map_objects:
             pos = obj.get("pos")
             icon_file = obj.get("icon")
-            size = obj.get("size", 1)
+            _s = obj.get("size", 1)  # backward compat with old square saves
+            width  = obj.get("width",  _s)
+            height = obj.get("height", _s)
             if pos is None:
                 continue
             col, row = pos
-            px_size = size * self.tile_size
+            px_w = width  * self.tile_size
+            px_h = height * self.tile_size
             x = col * self.tile_size + self.offset_x
             y = row * self.tile_size + self.offset_y
             # In player mode, only show objects on explored tiles
             if self._player_name:
                 if not any(
                     (col + dc, row + dr) in self._explored_tiles
-                    for dc in range(size) for dr in range(size)
+                    for dc in range(width) for dr in range(height)
                 ):
                     continue
             if icon_file:
                 if icon_file not in self.object_icons:
                     self.load_object_icon(icon_file)
                 if icon_file in self.object_icons:
-                    if size > 1 and icon_file in self.object_icons_original:
+                    if (width != 1 or height != 1) and icon_file in self.object_icons_original:
                         surf = pygame.transform.smoothscale(
-                            self.object_icons_original[icon_file], (px_size, px_size)
+                            self.object_icons_original[icon_file], (px_w, px_h)
                         )
                     else:
                         surf = self.object_icons[icon_file]
                     screen.blit(surf, (x, y))
             else:
-                pygame.draw.rect(screen, (120, 80, 40), (x, y, px_size, px_size))
+                pygame.draw.rect(screen, (120, 80, 40), (x, y, px_w, px_h))
 
     def render(self, screen):
         screen.fill((0, 0, 0))
@@ -265,7 +268,7 @@ class MapManager:
 
     def load_icon(self, file):
         try:
-            img = pygame.image.load(self.dir_path + "Assets/Icons/" + file).convert_alpha()
+            img = pygame.image.load(os.path.join(self.dir_path, "Assets", "Combatants", file)).convert_alpha()
             self.icons_original[file] = img
             self.icons[file] = pygame.transform.smoothscale(img, (self.tile_size, self.tile_size))
         except Exception as e:
@@ -300,11 +303,14 @@ class MapManager:
             " filetypes=[('Images','*.png *.jpg *.jpeg *.gif'),('All files','*.*')])\n"
             "if not path:\n"
             "    root.destroy(); sys.exit(0)\n"
-            "size = simpledialog.askinteger('Object size','Size in tiles (1, 2, 3\u2026)?',"
-            " initialvalue=1, minvalue=1, maxvalue=9, parent=root)\n"
+            "w = simpledialog.askinteger('Object width', 'Width in tiles?',"
+            " initialvalue=1, minvalue=1, maxvalue=20, parent=root)\n"
+            "h = simpledialog.askinteger('Object height','Height in tiles?',"
+            " initialvalue=1, minvalue=1, maxvalue=20, parent=root)\n"
             "root.destroy()\n"
             "print(os.path.basename(path))\n"
-            "print(size or 1)\n"
+            "print(w or 1)\n"
+            "print(h or 1)\n"
         )
         try:
             result = subprocess.run(
@@ -313,13 +319,14 @@ class MapManager:
             )
             lines = result.stdout.strip().splitlines()
             if not lines or not lines[0]:
-                return None, 1
-            icon = lines[0]
-            size = int(lines[1]) if len(lines) > 1 and lines[1].isdigit() else 1
-            return icon, size
+                return None, 1, 1
+            icon   = lines[0]
+            width  = int(lines[1]) if len(lines) > 1 and lines[1].isdigit() else 1
+            height = int(lines[2]) if len(lines) > 2 and lines[2].isdigit() else 1
+            return icon, width, height
         except Exception as e:
             print(f"[Map] Object picker failed: {e}")
-            return None, 1
+            return None, 1, 1
 
     def _start_object_picker(self):
         """Non-blocking: run the file picker in a background thread so pygame keeps ticking."""
@@ -327,10 +334,10 @@ class MapManager:
         self._picking_object = True
 
         def _worker():
-            icon, size = self._run_object_picker_subprocess()
+            icon, width, height = self._run_object_picker_subprocess()
             self._picking_object = False
             if icon:
-                self._pending_object_icon = (icon, size)
+                self._pending_object_icon = (icon, width, height)
                 self.active_tool = "add_object"
             else:
                 self.active_tool = "select"
@@ -898,17 +905,23 @@ class MapManager:
     def draw_grid(self, screen):
         if not self.map_data:
             return
-        grid_color = (180, 180, 180)
         rows = len(self.map_data)
         cols = len(self.map_data[0])
+        sw, sh = screen.get_size()
+        grid_surf = pygame.Surface((sw, sh), pygame.SRCALPHA)
+        grid_color = (200, 200, 200, 70)   # white-ish, very transparent
 
         for col in range(cols + 1):
             x = col * self.tile_size + self.offset_x
-            pygame.draw.line(screen, grid_color, (x, self.offset_y), (x, rows * self.tile_size + self.offset_y))
+            pygame.draw.line(grid_surf, grid_color,
+                             (x, self.offset_y), (x, rows * self.tile_size + self.offset_y))
 
         for row in range(rows + 1):
             y = row * self.tile_size + self.offset_y
-            pygame.draw.line(screen, grid_color, (self.offset_x, y), (cols * self.tile_size + self.offset_x, y))
+            pygame.draw.line(grid_surf, grid_color,
+                             (self.offset_x, y), (cols * self.tile_size + self.offset_x, y))
+
+        screen.blit(grid_surf, (0, 0))
 
     def draw_tokens(self, screen, selected_token=None, active_combatant=None, mouse_pos=None):
         for i, c in enumerate(self.server.combatants):
@@ -928,6 +941,26 @@ class MapManager:
                 )
                 if not visible:
                     continue
+
+            # Invisibility / Hidden — own token is always fully visible to its player.
+            # show_faded=True means draw at half-alpha + purple outline (DM / see-invis viewer).
+            is_invisible = "Invisible" in c.conditions
+            is_hidden    = "Hidden"    in c.conditions
+            show_faded = False
+            if (is_invisible or is_hidden) and c.name != self._player_name:
+                if self._player_name:
+                    if is_hidden:
+                        continue    # Hidden: no player can see it, even with See-invisible
+                    # Invisible only:
+                    viewer = next(
+                        (v for v in self.server.combatants if v.name == self._player_name), None
+                    )
+                    if viewer and "See-invisible" in viewer.conditions:
+                        show_faded = True   # player with see-invis: show faded
+                    else:
+                        continue            # ordinary player: fully hidden
+                else:
+                    show_faded = True       # DM: show faded for both Invisible and Hidden
 
             x, y = self.get_pixel_coords(c.pos)
 
@@ -950,10 +983,21 @@ class MapManager:
                     surf = self.icons[icon_file]
                 if is_dead:
                     surf = pygame.transform.grayscale(surf)
-                screen.blit(surf, (x, y))
+                if show_faded:
+                    faded = surf.copy()
+                    faded.set_alpha(110)
+                    screen.blit(faded, (x, y))
+                else:
+                    screen.blit(surf, (x, y))
             else:
                 color = (160, 160, 160) if is_dead else (255, 0, 0)
-                pygame.draw.circle(screen, color, (cx, cy), px_size // 3)
+                if show_faded:
+                    circ = pygame.Surface((px_size, px_size), pygame.SRCALPHA)
+                    pygame.draw.circle(circ, (*color, 110), (px_size // 2, px_size // 2), px_size // 3)
+                    screen.blit(circ, (x, y))
+                else:
+                    pygame.draw.circle(screen, color, (cx, cy), px_size // 3)
+
 
             # Highlight selected (DM local selection — gold)
             if c == selected_token:
@@ -1220,9 +1264,10 @@ class MapManager:
         if button == 1 and self.active_tool == "add_object":
             if (self._pending_object_icon
                     and 0 <= row < len(self.map_data) and 0 <= col < len(self.map_data[0])):
-                icon, size = self._pending_object_icon
+                icon, width, height = self._pending_object_icon
                 self._submit({"action": "add_map_object",
-                              "pos": [col, row], "icon": icon, "size": size})
+                              "pos": [col, row], "icon": icon,
+                              "width": width, "height": height})
                 self._pending_object_icon = None
                 self.active_tool = "select"
             return
@@ -1233,8 +1278,10 @@ class MapManager:
                 op = obj.get("pos")
                 if op:
                     oc, or_ = op
-                    os_ = obj.get("size", 1)
-                    if oc <= col < oc + os_ and or_ <= row < or_ + os_:
+                    _s = obj.get("size", 1)
+                    ow = obj.get("width",  _s)
+                    oh = obj.get("height", _s)
+                    if oc <= col < oc + ow and or_ <= row < or_ + oh:
                         self._submit({"action": "remove_map_object", "pos": op})
                         break
             return

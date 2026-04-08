@@ -69,6 +69,7 @@ class Tracker:
             'Deaf': '🙉',
             'Frightened': '😱',
             'Grappled': '🤼',
+            'Hidden': '🫥',
             'Incapacitated': '💤',
             'Invisible': '👻',
             'Paralyzed': '🧊',
@@ -109,7 +110,7 @@ class Tracker:
         """
         images = {}
         for cond in self.condition_list:
-            png_path = os.path.join(self.dir_path, 'Assets', 'Icons', 'Conditions', f'{cond}.png')
+            png_path = os.path.join(self.dir_path, 'Assets', 'Conditions', f'{cond}.png')
             if os.path.isfile(png_path):
                 with open(png_path, 'rb') as f:
                     raw = f.read()
@@ -571,7 +572,7 @@ class Tracker:
                     conditions = [cond for cond in self.condition_list if values.get(f'-COND_{cond}-')]
                     icon_path = sg.popup_get_file(
                         f"Select icon for {name} (close to skip)",
-                        initial_folder=os.path.join(dir_path, 'Icons'),
+                        initial_folder=os.path.join(dir_path, 'Assets', 'Combatants'),
                         file_types=(("Image Files", "*.png *.jpg *.jpeg"),),
                         no_window=False,
                     )

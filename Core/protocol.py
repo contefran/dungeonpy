@@ -39,7 +39,7 @@ INTENTS: dict[str, list[str]] = {
     "clear_highlights":     ["owner"],
     "recenter_all":         ["pos"],   # DM only — broadcast view recenter to all players
     "set_visibility_radius": ["radius"],  # DM only
-    "add_map_object":       ["pos", "icon", "size"],  # DM only
+    "add_map_object":       ["pos", "icon", "width", "height"],  # DM only
     "remove_map_object":    ["pos"],                  # DM only — pos is the object's top-left
 }
 
