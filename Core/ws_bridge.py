@@ -114,7 +114,15 @@ class WSBridge:
                     {"type": "hello_ack", "ok": False, "reason": "wrong password"}))
                 return
         elif role == "player":
-            pass  # any name accepted
+            taken = any(
+                c["role"] == "player" and c["name"] == name
+                for c in self._clients.values()
+            )
+            if taken:
+                await ws.send(json.dumps(
+                    {"type": "hello_ack", "ok": False,
+                     "reason": f"name '{name}' is already connected"}))
+                return
         else:
             await ws.send(json.dumps(
                 {"type": "hello_ack", "ok": False,
