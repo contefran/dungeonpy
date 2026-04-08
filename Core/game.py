@@ -345,6 +345,12 @@ class Game:
     def shutdown(self):
         if self.verbose:
             log("[Game] Shutting down.")
+        # Close the map window and wait for the thread to finish cleanly.
+        # On Windows, SDL requires the pygame window to be destroyed on its own
+        # thread before the process exits — otherwise the window lingers.
+        self._close_map()
+        if self._map_thread and self._map_thread.is_alive():
+            self._map_thread.join(timeout=3.0)
         if self.bridge:
             self.bridge.stop()
         if self.player_client:
