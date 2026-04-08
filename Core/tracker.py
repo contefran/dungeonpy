@@ -56,7 +56,8 @@ class Tracker:
         self._squelch_table_event = 0   # counter: suppress this many upcoming TABLE events
         self._selected_index = None
         self._pending_timers = {}   # condition → expiry turn, set during the current edit session
-        self._connected_players: dict[str, dict] = {}  # name → {"select": bool, "move": bool}
+        self._connected_players: dict[str, dict] = {}  # name → {"select": bool, "move": bool, "color": str}
+        self._known_players: dict[str, str] = {}       # name → color; persists across disconnects
         self._map_path: str | None = None
         self._map_visible: bool = False
         self._chat: ChatWindow | None = None
@@ -190,12 +191,18 @@ class Tracker:
             self._clear_form()
 
         elif action == "player_connected":
-            self._connected_players[event["name"]] = {"select": False, "move": False}
+            color = event.get("color", "white")
+            self._connected_players[event["name"]] = {
+                "select": False, "move": False, "color": color,
+            }
+            self._known_players[event["name"]] = color
             self._refresh_players_table()
+            self.refresh_table(self._selected_index)
 
         elif action == "player_disconnected":
             self._connected_players.pop(event["name"], None)
             self._refresh_players_table()
+            self.refresh_table(self._selected_index)
 
         elif action == "player_lock_changed":
             name = event["name"]
@@ -415,6 +422,7 @@ class Tracker:
     def refresh_table(self, selected_index=None):
         data = [['', '', '', '']]  # blank row for deselection
         row_conditions = [[]]  # parallel list of condition lists per row
+        row_names      = ['']   # raw combatant names (no "→ " prefix) for color lookup
         for i, c in enumerate(self.server.combatants):
             name = f"→ {c.name}" if i == self.server.active_index else c.name
             timer_parts = [f"{_COND_ABBREV.get(cond, cond[:3])}:{exp[0]}@{exp[1]}"
@@ -422,6 +430,7 @@ class Tracker:
             notes_display = c.notes + (" [" + ", ".join(timer_parts) + "]" if timer_parts else "")
             data.append([name, c.initiative, '' if c.hp is None else c.hp, notes_display])
             row_conditions.append(list(c.conditions))
+            row_names.append(c.name)
 
         if selected_index is not None and 0 <= selected_index < len(self.server.combatants):
             self._squelch_table_event = 2  # update clears then reselects — two TABLE events expected
@@ -432,9 +441,28 @@ class Tracker:
 
         tree = self.window['-TABLE-'].Widget
         tree.tag_configure('dead', font=('Helvetica', 12, 'overstrike'))
+        # Bold tag for all known PCs (persists after disconnect)
+        tree.tag_configure('pc', font=('Helvetica', 12, 'bold'))
+        # Dimmed background tag for each currently-connected player color
+        for info in self._connected_players.values():
+            c = info.get("color", "white")
+            try:
+                r, g, b = (v >> 8 for v in tree.winfo_rgb(c))
+                dimmed = f'#{(r + 255) // 2:02x}{(g + 255) // 2:02x}{(b + 255) // 2:02x}'
+            except Exception:
+                dimmed = c
+            tree.tag_configure(f'pc_{c}', background=dimmed, foreground='black',
+                               font=('Helvetica', 12, 'bold'))
         new_photos = {}
-        for item_id, conditions in zip(tree.get_children(), row_conditions):
-            tags = ('dead',) if 'Dead' in conditions else ()
+        for item_id, conditions, cname in zip(tree.get_children(), row_conditions, row_names):
+            connected = self._connected_players.get(cname)
+            if connected:
+                pc_tag = (f'pc_{connected["color"]}',)   # bold + dimmed background
+            elif cname in self._known_players:
+                pc_tag = ('pc',)                          # bold only
+            else:
+                pc_tag = ()
+            tags = (('dead',) + pc_tag) if 'Dead' in conditions else pc_tag
             if _PIL_OK:
                 photo = self._make_condition_strip(conditions)
                 tree.item(item_id, text='', image=photo if photo else '', tags=tags)

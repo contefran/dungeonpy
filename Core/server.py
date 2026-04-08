@@ -446,10 +446,11 @@ class GameServer:
                          "name": name, "lock_type": "move", "locked": locked}]
 
         if action == "player_connected":
-            name = intent.get("name")
+            name  = intent.get("name")
+            color = intent.get("color", "white")
             self.player_selection_locks.setdefault(name, False)
             self.player_move_locks.setdefault(name, False)
-            return [{"type": "event", "action": "player_connected", "name": name}]
+            return [{"type": "event", "action": "player_connected", "name": name, "color": color}]
 
         if action == "player_disconnected":
             name = intent.get("name")

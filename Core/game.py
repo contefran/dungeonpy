@@ -292,6 +292,28 @@ class Game:
         threading.Thread(target=_loop, daemon=True, name='autosave').start()
 
     # ------------------------------------------------------------------
+    # Save / load helpers
+    # ------------------------------------------------------------------
+
+    def _resolve_load_path(self) -> str:
+        """Return the most recent autosave if it is newer than the default save file."""
+        default = os.path.join(self.dir_path, DEFAULT_SAVE_FILE)
+        savegames_dir = os.path.join(self.dir_path, 'Savegames')
+        candidates = [
+            os.path.join(savegames_dir, f'autosave_{i}.json')
+            for i in range(1, AUTOSAVE_SLOTS + 1)
+        ]
+        existing = [p for p in candidates if os.path.isfile(p)]
+        if not existing:
+            return default
+        newest = max(existing, key=os.path.getmtime)
+        default_mtime = os.path.getmtime(default) if os.path.isfile(default) else 0
+        if os.path.getmtime(newest) > default_mtime:
+            print(f"[DungeonPy] Loading autosave: {os.path.basename(newest)}")
+            return newest
+        return default
+
+    # ------------------------------------------------------------------
     # Run
     # ------------------------------------------------------------------
 
@@ -307,12 +329,12 @@ class Game:
             self.map_manager.run_loop(screen)
 
         elif self.mode == 'tracker':
-            save_path = os.path.join(self.dir_path, DEFAULT_SAVE_FILE)
+            save_path = self._resolve_load_path()
             self.server.submit({"action": "load", "path": save_path})
             self.tracker.run_gui(self.dir_path)
 
         elif self.mode in ('both', 'dm'):
-            save_path = os.path.join(self.dir_path, DEFAULT_SAVE_FILE)
+            save_path = self._resolve_load_path()
             self.server.submit({"action": "load", "path": save_path})
             self._start_autosave()
             # Tracker runs on the main thread (blocking until window closes)

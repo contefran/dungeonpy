@@ -133,7 +133,7 @@ class WSBridge:
         if role == "player":
             ip = ws.remote_address[0] if ws.remote_address else "unknown"
             print(f"[DungeonPy] Player '{name}' connected from {ip}.")
-            await self._queue.put((None, {"action": "player_connected", "name": name}))
+            await self._queue.put((None, {"action": "player_connected", "name": name, "color": color}))
 
         # Step 5: normal intent loop
         try:
