@@ -43,6 +43,7 @@ class GameServer:
         self.player_selection_locks: dict[str, bool] = {}  # player name → allowed to select
         self.player_move_locks: dict[str, bool] = {}       # player name → allowed to move token
         self.tile_highlights: list[dict] = []              # [{"pos":[c,r],"color":"gold","owner":"DM"}, ...]
+        self.map_objects: list[dict] = []                  # [{"pos":[c,r],"icon":"chest.png","size":1}, ...]
         self.map_grid: list | None = None                # 2-D tile grid; included in snapshots
         self.map_path: str | None = None                 # absolute path to the loaded .txt map file
         self.map_visible: bool = False                   # whether the map window is shown to everyone
@@ -145,6 +146,7 @@ class GameServer:
             "map_path": self.map_path,
             "map_visible": self.map_visible,
             "tile_highlights": list(self.tile_highlights),
+            "map_objects": list(self.map_objects),
             "visibility_radius": self.visibility_radius,
             "explored_tiles": [list(t) for t in self.explored_tiles.get(player_name, set())]
                                if player_name else {},
@@ -215,6 +217,7 @@ class GameServer:
         self.map_path = data.get("map_path")
         self.map_visible = False  # always start hidden on session resume
         self.visibility_radius = data.get("visibility_radius", 10)
+        self.map_objects = list(data.get("map_objects", []))
         self.explored_tiles = {
             name: {tuple(t) for t in tiles}
             for name, tiles in data.get("explored_tiles", {}).items()
@@ -231,6 +234,7 @@ class GameServer:
             "turn": self.turn,
             "map_path": self.map_path,
             "visibility_radius": self.visibility_radius,
+            "map_objects": list(self.map_objects),
             "explored_tiles": {
                 name: [list(t) for t in tiles]
                 for name, tiles in self.explored_tiles.items()
@@ -480,6 +484,7 @@ class GameServer:
             self.secret_door_states = {}
             self.trap_states = {}
             self.tile_highlights = []
+            self.map_objects = []
             self.explored_tiles = {}
             self.map_visible = True  # auto-open so DM can place tokens
             return [
@@ -511,6 +516,24 @@ class GameServer:
             self.tile_highlights = [h for h in self.tile_highlights if h["owner"] != owner]
             return [{"type": "event", "action": "highlights_changed",
                      "highlights": list(self.tile_highlights)}]
+
+        if action == "add_map_object":
+            pos  = intent.get("pos")
+            icon = intent.get("icon")
+            size = max(1, int(intent.get("size", 1)))
+            if pos and icon:
+                obj = {"pos": pos, "icon": icon, "size": size}
+                self.map_objects.append(obj)
+                return [{"type": "event", "action": "map_object_added", "object": obj}]
+            return []
+
+        if action == "remove_map_object":
+            pos = intent.get("pos")  # top-left corner of the object to remove
+            before = len(self.map_objects)
+            self.map_objects = [o for o in self.map_objects if o["pos"] != pos]
+            if len(self.map_objects) < before:
+                return [{"type": "event", "action": "map_object_removed", "pos": pos}]
+            return []
 
         if action == "recenter_all":
             pos = intent.get("pos")

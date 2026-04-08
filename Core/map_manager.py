@@ -52,6 +52,10 @@ class MapManager:
 
         self.icons = {}          # file → surface scaled to tile_size (for normal tokens)
         self.icons_original = {} # file → original full-resolution surface
+        self.object_icons = {}          # file → surface scaled to tile_size
+        self.object_icons_original = {} # file → original full-resolution surface
+        self._pending_object_icon: tuple | None = None  # (filename, size) while add_object active
+        self._picking_object: bool = False              # True while the file-picker subprocess runs
         self.unplaced = []
         self.selected_token = None
         self._remote_selections: dict = {}  # selector_name → (token_name, color_name)
@@ -142,9 +146,14 @@ class MapManager:
         self._toolbar_font = pygame.font.SysFont('Arial', 11)
         # Re-cache icons (needed if map is reopened after close)
         self.icons = {}
+        self.object_icons = {}
         for c in self.server.combatants:
             if c.icon and c.icon not in self.icons:
                 self.load_icon(c.icon)
+        for obj in self.server.map_objects:
+            icon = obj.get("icon")
+            if icon and icon not in self.object_icons:
+                self.load_object_icon(icon)
         self._build_minimap_surface()
         if self._center_on_player:
             self._init_player_view(self._center_on_player)
@@ -178,9 +187,45 @@ class MapManager:
             lines = f.readlines()
         return [[_parse(ch) for ch in line.strip()] for line in lines if line.strip()]
 
+    def draw_objects(self, screen):
+        """Draw map objects (furniture) — after draw_map(), before fog and tokens."""
+        if not self.server.map_objects:
+            return
+        for obj in self.server.map_objects:
+            pos = obj.get("pos")
+            icon_file = obj.get("icon")
+            size = obj.get("size", 1)
+            if pos is None:
+                continue
+            col, row = pos
+            px_size = size * self.tile_size
+            x = col * self.tile_size + self.offset_x
+            y = row * self.tile_size + self.offset_y
+            # In player mode, only show objects on explored tiles
+            if self._player_name:
+                if not any(
+                    (col + dc, row + dr) in self._explored_tiles
+                    for dc in range(size) for dr in range(size)
+                ):
+                    continue
+            if icon_file:
+                if icon_file not in self.object_icons:
+                    self.load_object_icon(icon_file)
+                if icon_file in self.object_icons:
+                    if size > 1 and icon_file in self.object_icons_original:
+                        surf = pygame.transform.smoothscale(
+                            self.object_icons_original[icon_file], (px_size, px_size)
+                        )
+                    else:
+                        surf = self.object_icons[icon_file]
+                    screen.blit(surf, (x, y))
+            else:
+                pygame.draw.rect(screen, (120, 80, 40), (x, y, px_size, px_size))
+
     def render(self, screen):
         screen.fill((0, 0, 0))
         self.draw_map(screen)
+        self.draw_objects(screen)
         if self._player_name:
             self._update_los()
             self._draw_fog(screen)
@@ -214,6 +259,10 @@ class MapManager:
         for file, orig in self.icons_original.items():
             self.icons[file] = pygame.transform.smoothscale(orig, (self.tile_size, self.tile_size))
 
+    def rescale_object_icons(self):
+        for file, orig in self.object_icons_original.items():
+            self.object_icons[file] = pygame.transform.smoothscale(orig, (self.tile_size, self.tile_size))
+
     def load_icon(self, file):
         try:
             img = pygame.image.load(self.dir_path + "Assets/Icons/" + file).convert_alpha()
@@ -222,6 +271,71 @@ class MapManager:
         except Exception as e:
             print(f"Could not load icon {file}: {e}")
         return self.icons.get(file)
+
+    def load_object_icon(self, file):
+        try:
+            img = pygame.image.load(
+                os.path.join(self.dir_path, "Assets", "Objects", file)
+            ).convert_alpha()
+            self.object_icons_original[file] = img
+            self.object_icons[file] = pygame.transform.smoothscale(img, (self.tile_size, self.tile_size))
+        except Exception as e:
+            print(f"Could not load object icon {file}: {e}")
+        return self.object_icons.get(file)
+
+    def _run_object_picker_subprocess(self):
+        """Blocking: spawns a tkinter file picker in a child process, returns (filename, size)."""
+        import subprocess
+        import sys
+        objects_dir = os.path.join(self.dir_path, "Assets", "Objects")
+        script = (
+            "import tkinter as tk\n"
+            "from tkinter import filedialog, simpledialog\n"
+            "import os, sys\n"
+            "root = tk.Tk()\n"
+            "root.withdraw()\n"
+            "root.lift()\n"
+            f"path = filedialog.askopenfilename(title='Select object icon',"
+            f" initialdir={repr(objects_dir)},"
+            " filetypes=[('Images','*.png *.jpg *.jpeg *.gif'),('All files','*.*')])\n"
+            "if not path:\n"
+            "    root.destroy(); sys.exit(0)\n"
+            "size = simpledialog.askinteger('Object size','Size in tiles (1, 2, 3\u2026)?',"
+            " initialvalue=1, minvalue=1, maxvalue=9, parent=root)\n"
+            "root.destroy()\n"
+            "print(os.path.basename(path))\n"
+            "print(size or 1)\n"
+        )
+        try:
+            result = subprocess.run(
+                [sys.executable, "-c", script],
+                capture_output=True, text=True, timeout=300,
+            )
+            lines = result.stdout.strip().splitlines()
+            if not lines or not lines[0]:
+                return None, 1
+            icon = lines[0]
+            size = int(lines[1]) if len(lines) > 1 and lines[1].isdigit() else 1
+            return icon, size
+        except Exception as e:
+            print(f"[Map] Object picker failed: {e}")
+            return None, 1
+
+    def _start_object_picker(self):
+        """Non-blocking: run the file picker in a background thread so pygame keeps ticking."""
+        import threading
+        self._picking_object = True
+
+        def _worker():
+            icon, size = self._run_object_picker_subprocess()
+            self._picking_object = False
+            if icon:
+                self._pending_object_icon = (icon, size)
+                self.active_tool = "add_object"
+            else:
+                self.active_tool = "select"
+
+        threading.Thread(target=_worker, daemon=True).start()
 
     def is_tile_occupied(self, col, row, ignore_token=None):
         for c in self.server.combatants:
@@ -322,6 +436,16 @@ class MapManager:
         elif action == "visibility_radius_changed":
             pass  # server.visibility_radius already updated by player_client; LOS recomputed next frame
 
+        elif action == "map_object_added":
+            obj = event.get("object")
+            if obj and pygame.get_init():
+                icon = obj.get("icon")
+                if icon and icon not in self.object_icons:
+                    self.load_object_icon(icon)
+
+        elif action == "map_object_removed":
+            pass  # server.map_objects already updated; rendering picks up on next frame
+
         elif action == "chat_message":
             if self._chat_toggle_fn is not None:
                 self._chat_unread = True
@@ -376,6 +500,10 @@ class MapManager:
             for c in self.server.combatants:
                 if c.icon and c.icon not in self.icons:
                     self.load_icon(c.icon)
+            for obj in self.server.map_objects:
+                icon = obj.get("icon")
+                if icon and icon not in self.object_icons:
+                    self.load_object_icon(icon)
         self.selected_token = None
         self._remote_selections.clear()
         # Restore fog state for player mode — union so periodic snapshots never shrink memory
@@ -408,6 +536,8 @@ class MapManager:
             rects["recenter"] = pygame.Rect(x0, chat_bottom + 8, 44, 44)
         if self._player_name is None:
             rects["recenter_all"] = pygame.Rect(x0, rects["clear"].bottom + 16, 44, 44)
+            rects["add_object"]   = pygame.Rect(x0, rects["recenter_all"].bottom + 16, 44, 44)
+            rects["remove_object"] = pygame.Rect(x0, rects["add_object"].bottom + 8, 44, 44)
         return rects
 
     def _handle_toolbar_click(self, mx, my):
@@ -433,6 +563,15 @@ class MapManager:
             self._recenter_on_player()
         elif rects.get("recenter_all") and rects["recenter_all"].collidepoint(mx, my):
             self.active_tool = "highlight" if self.active_tool == "recenter_pick" else "recenter_pick"
+        elif rects.get("add_object") and rects["add_object"].collidepoint(mx, my):
+            if self.active_tool in ("add_object", "picking_object"):
+                self.active_tool = "select"
+                self._pending_object_icon = None
+                self._picking_object = False
+            elif not self._picking_object:
+                self._start_object_picker()
+        elif rects.get("remove_object") and rects["remove_object"].collidepoint(mx, my):
+            self.active_tool = "select" if self.active_tool == "remove_object" else "remove_object"
 
     def _draw_toolbar(self, screen):
         sw, sh = screen.get_size()
@@ -522,6 +661,36 @@ class MapManager:
             pygame.draw.ellipse(screen, ic, (cx - 10, cy - 5, 20, 10), 2)
             pygame.draw.circle(screen, ic, (cx, cy), 3)
 
+        # --- Add Object button (DM only) ---
+        if rects.get("add_object"):
+            is_add_obj = self.active_tool == "add_object"
+            is_picking = self._picking_object
+            pygame.draw.line(screen, (55, 55, 70),
+                             (x0 + 8, rects["add_object"].top - 8),
+                             (sw - 8, rects["add_object"].top - 8), 1)
+            bg = (40, 70, 40) if is_add_obj else ((60, 60, 30) if is_picking else _BG_INACTIVE)
+            pygame.draw.rect(screen, bg, rects["add_object"], border_radius=4)
+            pygame.draw.rect(screen, _BORDER, rects["add_object"], 1, border_radius=4)
+            cx, cy = rects["add_object"].centerx, rects["add_object"].centery - 6
+            ic = (130, 220, 130) if is_add_obj else ((220, 220, 100) if is_picking else _ICON)
+            # "+" icon
+            pygame.draw.line(screen, ic, (cx, cy - 9), (cx, cy + 9), 2)
+            pygame.draw.line(screen, ic, (cx - 9, cy), (cx + 9, cy), 2)
+            # small square to suggest a tile
+            pygame.draw.rect(screen, ic, (cx + 3, cy + 3, 7, 7), 1)
+
+        # --- Remove Object button (DM only) ---
+        if rects.get("remove_object"):
+            is_rem_obj = self.active_tool == "remove_object"
+            bg = (70, 40, 40) if is_rem_obj else _BG_INACTIVE
+            pygame.draw.rect(screen, bg, rects["remove_object"], border_radius=4)
+            pygame.draw.rect(screen, _BORDER, rects["remove_object"], 1, border_radius=4)
+            cx, cy = rects["remove_object"].centerx, rects["remove_object"].centery - 6
+            ic = (220, 130, 130) if is_rem_obj else _ICON
+            # Eraser-like "–" with strike-through square
+            pygame.draw.rect(screen, ic, (cx - 8, cy - 8, 16, 16), 1)
+            pygame.draw.line(screen, ic, (cx - 8, cy - 8), (cx + 8, cy + 8), 2)
+
         # --- Recenter button (player mode only) ---
         if rects.get("recenter"):
             pygame.draw.line(screen, (55, 55, 70),
@@ -565,6 +734,20 @@ class MapManager:
                 eye_surf = self._toolbar_font.render("POINT", True, ic)
                 r = rects["recenter_all"]
                 screen.blit(eye_surf, (r.x + (r.width - eye_surf.get_width()) // 2, r.bottom - 13))
+            if rects.get("add_object"):
+                is_add_obj = self.active_tool == "add_object"
+                is_picking = self._picking_object
+                ic = (130, 220, 130) if is_add_obj else ((220, 220, 100) if is_picking else _ICON)
+                label = "..." if is_picking else "OBJ+"
+                surf = self._toolbar_font.render(label, True, ic)
+                r = rects["add_object"]
+                screen.blit(surf, (r.x + (r.width - surf.get_width()) // 2, r.bottom - 13))
+            if rects.get("remove_object"):
+                is_rem_obj = self.active_tool == "remove_object"
+                ic = (220, 130, 130) if is_rem_obj else _ICON
+                surf = self._toolbar_font.render("OBJ-", True, ic)
+                r = rects["remove_object"]
+                screen.blit(surf, (r.x + (r.width - surf.get_width()) // 2, r.bottom - 13))
 
     # ------------------------------------------------------------------
     # Highlight rendering
@@ -985,6 +1168,7 @@ class MapManager:
              self.iron_door_open_texture, self.secret_door_texture,
              self.trap_texture) = self.scale_textures(self.tile_size)
             self.rescale_icons()
+            self.rescale_object_icons()
         if self.verbose:
             log(f"[Map] Zoom level changed to tile_size = {self.tile_size}")
 
@@ -1031,6 +1215,29 @@ class MapManager:
             self.active_tool = "highlight"
             return
 
+
+        # Add-object tool — place a map object at the clicked tile, then revert to select
+        if button == 1 and self.active_tool == "add_object":
+            if (self._pending_object_icon
+                    and 0 <= row < len(self.map_data) and 0 <= col < len(self.map_data[0])):
+                icon, size = self._pending_object_icon
+                self._submit({"action": "add_map_object",
+                              "pos": [col, row], "icon": icon, "size": size})
+                self._pending_object_icon = None
+                self.active_tool = "select"
+            return
+
+        # Remove-object tool — remove a map object whose footprint covers the clicked tile
+        if button == 1 and self.active_tool == "remove_object":
+            for obj in self.server.map_objects:
+                op = obj.get("pos")
+                if op:
+                    oc, or_ = op
+                    os_ = obj.get("size", 1)
+                    if oc <= col < oc + os_ and or_ <= row < or_ + os_:
+                        self._submit({"action": "remove_map_object", "pos": op})
+                        break
+            return
 
         # Highlight tool — toggle tile and skip all selection/placement logic
         if button == 1 and self.active_tool == "highlight":
