@@ -68,8 +68,10 @@ class WSBridge:
 
     async def _serve(self, ready: threading.Event):
         self._stop_event = asyncio.Event()
+        # Bind to both IPv4 and IPv6 when using the default wildcard address.
+        bind_host = ['0.0.0.0', '::'] if self.host == '::' else self.host
         async with websockets.serve(
-            self._handler, self.host, self.port, ssl=self._ssl_context
+            self._handler, bind_host, self.port, ssl=self._ssl_context
         ) as srv:
             self.port = srv.sockets[0].getsockname()[1]
             ready.set()
