@@ -66,7 +66,8 @@ class PlayerClient:
 
     async def _reconnect_loop(self, ready: threading.Event):
         scheme = "wss" if self._ssl_context else "ws"
-        url = f"{scheme}://{self.host}:{self.port}"
+        host = f"[{self.host}]" if ":" in self.host else self.host
+        url = f"{scheme}://{host}:{self.port}"
         first = True
         initial_tries = 0
 

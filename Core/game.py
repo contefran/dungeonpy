@@ -18,7 +18,7 @@ AUTOSAVE_SLOTS    = 4     # number of rotating autosave files
 class Game:
 
     def __init__(self, dir_path, mode='both', verbose=False, super_verbose=False,
-                 host='0.0.0.0', port=8765, player_name=None, player_color='white',
+                 host='::', port=8765, player_name=None, player_color='white',
                  password=None, insecure=False, cert=None, key=None):
         self.mode = mode
         self.dir_path = dir_path
@@ -103,7 +103,7 @@ class Game:
         self.server = GameServer()
         self.bridge = WSBridge(
             self.server,
-            host=host or '0.0.0.0',
+            host=host or '::',
             port=port,
             password=password,
             ssl_context=ssl_ctx,

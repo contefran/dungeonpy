@@ -1,5 +1,5 @@
 pygame==2.6.1
-PySimpleGUI==4.60.5
+PySimpleGUI>=4.60.5
 Pillow>=9.2.0
 pytest>=7.0
 websockets>=12.0
