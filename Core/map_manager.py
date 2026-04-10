@@ -74,6 +74,7 @@ class MapManager:
         self.iron_door_open_texture_original = None
         self.secret_door_texture_original = None
         self.trap_texture_original = None
+        self.grass_texture_original = None
         self.floor_texture = None
         self.wall_texture = None
         self.wooden_door_closed_texture = None
@@ -82,6 +83,7 @@ class MapManager:
         self.iron_door_open_texture = None
         self.secret_door_texture = None
         self.trap_texture = None
+        self.grass_texture = None
 
         self.dragging_token = None
         self.drag_candidate = None
@@ -173,10 +175,11 @@ class MapManager:
         self.iron_door_open_texture_original = pygame.image.load(os.path.join(d, 'Assets/Textures/Iron_door_open.png')).convert_alpha()
         self.secret_door_texture_original = self.wall_texture_original
         self.trap_texture_original = pygame.image.load(os.path.join(d, 'Assets/Textures/trap_pit.jpg')).convert_alpha()
+        self.grass_texture_original = pygame.image.load(os.path.join(d, 'Assets/Textures/grass_1.png')).convert()
         (self.floor_texture, self.wall_texture, self.wooden_door_closed_texture,
          self.wooden_door_open_texture, self.iron_door_closed_texture,
          self.iron_door_open_texture, self.secret_door_texture,
-         self.trap_texture) = self.scale_textures(self.tile_size)
+         self.trap_texture, self.grass_texture) = self.scale_textures(self.tile_size)
 
     def load_map_from_txt(self, filepath):
         def _parse(ch):
@@ -259,6 +262,7 @@ class MapManager:
             pygame.transform.scale(self.iron_door_open_texture_original, (tile_size, tile_size)),
             pygame.transform.scale(self.secret_door_texture_original, (tile_size, tile_size)),
             pygame.transform.scale(self.trap_texture_original, (tile_size, tile_size)),
+            pygame.transform.scale(self.grass_texture_original, (tile_size, tile_size)),
         )
 
     def rescale_icons(self):
@@ -603,7 +607,7 @@ class MapManager:
         (self.floor_texture, self.wall_texture, self.wooden_door_closed_texture,
          self.wooden_door_open_texture, self.iron_door_closed_texture,
          self.iron_door_open_texture, self.secret_door_texture,
-         self.trap_texture) = self.scale_textures(self.tile_size)
+         self.trap_texture, self.grass_texture) = self.scale_textures(self.tile_size)
         self.rescale_icons()
 
         token = next((c for c in self.server.combatants if c.name == player_name and c.pos), None)
@@ -1113,6 +1117,8 @@ class MapManager:
                     screen.blit(self.floor_texture, (x, y))
                     if self.server.trap_states.get(key) == "open":
                         screen.blit(self.trap_texture, (x, y))
+                elif tile == 16:  # grass ('g')
+                    screen.blit(self.grass_texture, (x, y))
 
     def draw_grid(self, screen):
         if not self.map_data:
@@ -1255,6 +1261,8 @@ class MapManager:
                     color = (0, 0, 0)
                 elif tile == 2:
                     color = (100, 60, 40)
+                elif tile == 16:
+                    color = (80, 160, 60)   # green for grass
                 else:
                     color = (210, 210, 200)
                 pixel_surf.set_at((col, row), color)
@@ -1422,7 +1430,7 @@ class MapManager:
             (self.floor_texture, self.wall_texture, self.wooden_door_closed_texture,
              self.wooden_door_open_texture, self.iron_door_closed_texture,
              self.iron_door_open_texture, self.secret_door_texture,
-             self.trap_texture) = self.scale_textures(self.tile_size)
+             self.trap_texture, self.grass_texture) = self.scale_textures(self.tile_size)
             self.rescale_icons()
             self.rescale_object_icons()
         if self.verbose:
