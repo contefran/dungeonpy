@@ -909,7 +909,7 @@ class MapManager:
         cols = len(self.map_data[0])
         sw, sh = screen.get_size()
         grid_surf = pygame.Surface((sw, sh), pygame.SRCALPHA)
-        grid_color = (200, 200, 200, 70)   # white-ish, very transparent
+        grid_color = (200, 200, 200, 50)   # white-ish, very transparent
 
         for col in range(cols + 1):
             x = col * self.tile_size + self.offset_x
