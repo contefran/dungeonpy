@@ -41,6 +41,8 @@ INTENTS: dict[str, list[str]] = {
     "set_visibility_radius": ["radius"],  # DM only
     "add_map_object":       ["pos", "icon", "width", "height"],  # DM only
     "remove_map_object":    ["pos"],                  # DM only — pos is the object's top-left
+    "add_light_source":     ["pos", "radius", "color"],  # DM only
+    "remove_light_source":  ["pos"],                  # DM only
 }
 
 

@@ -54,8 +54,10 @@ class MapManager:
         self.icons_original = {} # file → original full-resolution surface
         self.object_icons = {}          # file → surface scaled to tile_size
         self.object_icons_original = {} # file → original full-resolution surface
-        self._pending_object_icon: tuple | None = None  # (filename, size) while add_object active
+        self._pending_object_icon: tuple | None = None  # (filename, width, height) while add_object active
         self._picking_object: bool = False              # True while the file-picker subprocess runs
+        self._pending_light: tuple | None = None        # (radius, color_name) while add_light active
+        self._picking_light: bool = False               # True while the light picker subprocess runs
         self.unplaced = []
         self.selected_token = None
         self._remote_selections: dict = {}  # selector_name → (token_name, color_name)
@@ -229,6 +231,7 @@ class MapManager:
         screen.fill((0, 0, 0))
         self.draw_map(screen)
         self.draw_objects(screen)
+        self.draw_lights(screen)
         if self._player_name:
             self._update_los()
             self._draw_fog(screen)
@@ -344,6 +347,133 @@ class MapManager:
 
         threading.Thread(target=_worker, daemon=True).start()
 
+    # ------------------------------------------------------------------
+    # Light source picker
+    # ------------------------------------------------------------------
+
+    _LIGHT_COLORS = {
+        "warm":  (255, 180,  60),   # torch / candle
+        "cool":  (120, 160, 255),   # magic / moonlight
+        "white": (255, 255, 200),   # bright daylight
+        "red":   (255,  60,  60),   # blood / alarm
+        "green": ( 60, 220,  80),   # poison / nature
+        "blue":  ( 60, 120, 255),   # arcane / cold
+        "black": (  0,   0,   0),   # magical darkness — darkens rather than illuminates
+    }
+
+    def _run_light_picker_subprocess(self):
+        """Blocking: ask radius + color via subprocess tkinter. Returns (radius, color_name)."""
+        import subprocess, sys
+        script = (
+            "import tkinter as tk\n"
+            "from tkinter import simpledialog\n"
+            "root = tk.Tk(); root.withdraw(); root.lift()\n"
+            "r = simpledialog.askinteger('Light radius','Radius in tiles?',"
+            " initialvalue=4, minvalue=1, maxvalue=20, parent=root)\n"
+            "if not r: root.destroy(); import sys; sys.exit(0)\n"
+            "dlg = tk.Toplevel(root); dlg.title('Light settings')\n"
+            "dlg.resizable(False,False)\n"
+            "tk.Label(dlg, text='Color:').pack(padx=10, pady=(10,2))\n"
+            "color_var = tk.StringVar(value='warm')\n"
+            "for c in ('warm','cool','white','red','green','blue','black'):\n"
+            "    tk.Radiobutton(dlg, text=c, variable=color_var, value=c).pack(anchor='w', padx=20)\n"
+            "tk.Label(dlg, text='Intensity:').pack(padx=10, pady=(8,2))\n"
+            "alpha_var = tk.IntVar(value=60)\n"
+            "tk.Scale(dlg, from_=0, to=255, orient='horizontal',"
+            " variable=alpha_var, length=180).pack(padx=10)\n"
+            "tk.Button(dlg, text='OK', command=dlg.destroy).pack(pady=8)\n"
+            "dlg.grab_set(); root.wait_window(dlg)\n"
+            "root.destroy()\n"
+            "print(r)\n"
+            "print(color_var.get())\n"
+            "print(alpha_var.get())\n"
+        )
+        try:
+            result = subprocess.run(
+                [sys.executable, "-c", script],
+                capture_output=True, text=True, timeout=300,
+            )
+            lines = result.stdout.strip().splitlines()
+            if not lines or not lines[0].isdigit():
+                return None, "warm", 60
+            radius = int(lines[0])
+            color  = lines[1] if len(lines) > 1 and lines[1] in self._LIGHT_COLORS else "warm"
+            alpha  = int(lines[2]) if len(lines) > 2 and lines[2].isdigit() else 60
+            return radius, color, alpha
+        except Exception as e:
+            print(f"[Map] Light picker failed: {e}")
+            return None, "warm", 60
+
+    def _start_light_picker(self):
+        """Non-blocking: run the light picker in a background thread."""
+        import threading
+        self._picking_light = True
+
+        def _worker():
+            radius, color, alpha = self._run_light_picker_subprocess()
+            self._picking_light = False
+            if radius:
+                self._pending_light = (radius, color, alpha)
+                self.active_tool = "add_light"
+            else:
+                self.active_tool = "select"
+
+        threading.Thread(target=_worker, daemon=True).start()
+
+    def draw_lights(self, screen):
+        """Draw LOS-aware tile-based light glows above the map, below fog.
+        Uses compute_los so walls and corners block the light correctly.
+        Wall and void tiles are excluded from illumination."""
+        if not self.server.light_sources or not self.map_data:
+            return
+        ts   = self.tile_size
+        rows = len(self.map_data)
+        cols = len(self.map_data[0])
+        tile_surf = pygame.Surface((ts, ts), pygame.SRCALPHA)
+        for ls in self.server.light_sources:
+            pos       = ls.get("pos")
+            radius    = ls.get("radius", 4)
+            color     = ls.get("color", "warm")
+            alpha_max = ls.get("alpha", 60)
+            if pos is None:
+                continue
+            lc, lr  = pos
+            rgb     = self._LIGHT_COLORS.get(color, (255, 180, 60))
+            is_dark = (color == "black")
+            lit_tiles = compute_los(
+                self.map_data, pos, radius,
+                self.server.door_states,
+                self.server.iron_door_states,
+                self.server.secret_door_states,
+            )
+            for (tc, tr) in lit_tiles:
+                # Skip non-floor tiles (walls, voids)
+                if not (0 <= tr < rows and 0 <= tc < cols):
+                    continue
+                tile_type = self.map_data[tr][tc]
+                if tile_type in (0, 2):   # void, wall
+                    continue
+                dist  = math.sqrt((tc - lc) ** 2 + (tr - lr) ** 2)
+                t     = max(0.0, 1.0 - dist / radius)
+                alpha = int(alpha_max * (t ** 0.55))
+                if alpha <= 0:
+                    continue
+                x = tc * ts + self.offset_x
+                y = tr * ts + self.offset_y
+                if is_dark:
+                    # Magical darkness: darken the tile with a semi-transparent black overlay
+                    tile_surf.fill((0, 0, 0, alpha))
+                    screen.blit(tile_surf, (x, y))
+                else:
+                    # Pre-multiply RGB by alpha so the ADD blend honours the intensity slider.
+                    # BLEND_RGBA_ADD ignores the alpha channel — it adds R,G,B directly,
+                    # so we scale the colour down instead of relying on alpha.
+                    r = rgb[0] * alpha // 255
+                    g = rgb[1] * alpha // 255
+                    b = rgb[2] * alpha // 255
+                    tile_surf.fill((r, g, b, 255))
+                    screen.blit(tile_surf, (x, y), special_flags=pygame.BLEND_RGBA_ADD)
+
     def is_tile_occupied(self, col, row, ignore_token=None):
         for c in self.server.combatants:
             if c == ignore_token or not c.pos:
@@ -453,6 +583,12 @@ class MapManager:
         elif action == "map_object_removed":
             pass  # server.map_objects already updated; rendering picks up on next frame
 
+        elif action == "light_source_added":
+            pass  # server.light_sources already updated; cache will build on next draw
+
+        elif action == "light_source_removed":
+            pass  # server.light_sources already updated; rendering picks up on next frame
+
         elif action == "chat_message":
             if self._chat_toggle_fn is not None:
                 self._chat_unread = True
@@ -542,9 +678,11 @@ class MapManager:
             chat_bottom = rects["chat"].bottom if "chat" in rects else rects["clear"].bottom
             rects["recenter"] = pygame.Rect(x0, chat_bottom + 8, 44, 44)
         if self._player_name is None:
-            rects["recenter_all"] = pygame.Rect(x0, rects["clear"].bottom + 16, 44, 44)
-            rects["add_object"]   = pygame.Rect(x0, rects["recenter_all"].bottom + 16, 44, 44)
+            rects["recenter_all"]  = pygame.Rect(x0, rects["clear"].bottom + 16, 44, 44)
+            rects["add_object"]    = pygame.Rect(x0, rects["recenter_all"].bottom + 16, 44, 44)
             rects["remove_object"] = pygame.Rect(x0, rects["add_object"].bottom + 8, 44, 44)
+            rects["add_light"]     = pygame.Rect(x0, rects["remove_object"].bottom + 16, 44, 44)
+            rects["remove_light"]  = pygame.Rect(x0, rects["add_light"].bottom + 8, 44, 44)
         return rects
 
     def _handle_toolbar_click(self, mx, my):
@@ -579,6 +717,15 @@ class MapManager:
                 self._start_object_picker()
         elif rects.get("remove_object") and rects["remove_object"].collidepoint(mx, my):
             self.active_tool = "select" if self.active_tool == "remove_object" else "remove_object"
+        elif rects.get("add_light") and rects["add_light"].collidepoint(mx, my):
+            if self.active_tool in ("add_light",) or self._picking_light:
+                self.active_tool = "select"
+                self._pending_light = None
+                self._picking_light = False
+            elif not self._picking_light:
+                self._start_light_picker()
+        elif rects.get("remove_light") and rects["remove_light"].collidepoint(mx, my):
+            self.active_tool = "select" if self.active_tool == "remove_light" else "remove_light"
 
     def _draw_toolbar(self, screen):
         sw, sh = screen.get_size()
@@ -698,6 +845,40 @@ class MapManager:
             pygame.draw.rect(screen, ic, (cx - 8, cy - 8, 16, 16), 1)
             pygame.draw.line(screen, ic, (cx - 8, cy - 8), (cx + 8, cy + 8), 2)
 
+        # --- Add Light button (DM only) ---
+        if rects.get("add_light"):
+            is_add_light = self.active_tool == "add_light"
+            is_pick_light = self._picking_light
+            pygame.draw.line(screen, (55, 55, 70),
+                             (x0 + 8, rects["add_light"].top - 8),
+                             (sw - 8, rects["add_light"].top - 8), 1)
+            bg = (55, 50, 20) if is_add_light else ((60, 55, 20) if is_pick_light else _BG_INACTIVE)
+            pygame.draw.rect(screen, bg, rects["add_light"], border_radius=4)
+            pygame.draw.rect(screen, _BORDER, rects["add_light"], 1, border_radius=4)
+            cx, cy = rects["add_light"].centerx, rects["add_light"].centery - 6
+            ic = (255, 220, 80) if (is_add_light or is_pick_light) else _ICON
+            # Sun/flame icon: circle + rays
+            pygame.draw.circle(screen, ic, (cx, cy), 5, 2)
+            for angle_deg in range(0, 360, 45):
+                angle = math.radians(angle_deg)
+                x1 = int(cx + 7  * math.cos(angle))
+                y1 = int(cy + 7  * math.sin(angle))
+                x2 = int(cx + 11 * math.cos(angle))
+                y2 = int(cy + 11 * math.sin(angle))
+                pygame.draw.line(screen, ic, (x1, y1), (x2, y2), 1)
+
+        # --- Remove Light button (DM only) ---
+        if rects.get("remove_light"):
+            is_rem_light = self.active_tool == "remove_light"
+            bg = (60, 50, 20) if is_rem_light else _BG_INACTIVE
+            pygame.draw.rect(screen, bg, rects["remove_light"], border_radius=4)
+            pygame.draw.rect(screen, _BORDER, rects["remove_light"], 1, border_radius=4)
+            cx, cy = rects["remove_light"].centerx, rects["remove_light"].centery - 6
+            ic = (200, 160, 60) if is_rem_light else _ICON
+            # Crossed-out circle (extinguished light)
+            pygame.draw.circle(screen, ic, (cx, cy), 7, 2)
+            pygame.draw.line(screen, ic, (cx - 5, cy - 5), (cx + 5, cy + 5), 2)
+
         # --- Recenter button (player mode only) ---
         if rects.get("recenter"):
             pygame.draw.line(screen, (55, 55, 70),
@@ -755,6 +936,20 @@ class MapManager:
                 surf = self._toolbar_font.render("OBJ-", True, ic)
                 r = rects["remove_object"]
                 screen.blit(surf, (r.x + (r.width - surf.get_width()) // 2, r.bottom - 13))
+            if rects.get("add_light"):
+                is_add_light = self.active_tool == "add_light"
+                is_pick_light = self._picking_light
+                ic = (255, 220, 80) if (is_add_light or is_pick_light) else _ICON
+                label = "..." if is_pick_light else "LIT+"
+                surf = self._toolbar_font.render(label, True, ic)
+                r = rects["add_light"]
+                screen.blit(surf, (r.x + (r.width - surf.get_width()) // 2, r.bottom - 13))
+            if rects.get("remove_light"):
+                is_rem_light = self.active_tool == "remove_light"
+                ic = (200, 160, 60) if is_rem_light else _ICON
+                surf = self._toolbar_font.render("LIT-", True, ic)
+                r = rects["remove_light"]
+                screen.blit(surf, (r.x + (r.width - surf.get_width()) // 2, r.bottom - 13))
 
     # ------------------------------------------------------------------
     # Highlight rendering
@@ -792,6 +987,20 @@ class MapManager:
                 self._player_iron_door_states[k] = self.server.iron_door_states[k]
             if k in self.server.secret_door_states:
                 self._player_secret_door_states[k] = self.server.secret_door_states[k]
+        # Layer 2: light sources also reveal tiles, even outside the player's own vision.
+        # Run compute_los from each light source and union the result into _current_los.
+        for ls in self.server.light_sources:
+            lpos = ls.get("pos")
+            lrad = ls.get("radius", 4)
+            if lpos:
+                lit = compute_los(
+                    self.map_data, lpos, lrad,
+                    self.server.door_states,
+                    self.server.iron_door_states,
+                    self.server.secret_door_states,
+                )
+                self._current_los.update(lit)
+
         # Accumulate into local explored set (server is authoritative but this keeps
         # rendering smooth without waiting for the server round-trip)
         self._explored_tiles.update(self._current_los)
@@ -1284,6 +1493,26 @@ class MapManager:
                     if oc <= col < oc + ow and or_ <= row < or_ + oh:
                         self._submit({"action": "remove_map_object", "pos": op})
                         break
+            return
+
+        # Add-light tool — place a light source, then revert to select
+        if button == 1 and self.active_tool == "add_light":
+            if (self._pending_light
+                    and 0 <= row < len(self.map_data) and 0 <= col < len(self.map_data[0])):
+                radius, color, alpha = self._pending_light
+                self._submit({"action": "add_light_source",
+                              "pos": [col, row], "radius": radius, "color": color, "alpha": alpha})
+                self._pending_light = None
+                self.active_tool = "select"
+            return
+
+        # Remove-light tool — click the source tile to remove it
+        if button == 1 and self.active_tool == "remove_light":
+            for ls in self.server.light_sources:
+                lp = ls.get("pos")
+                if lp and lp[0] == col and lp[1] == row:
+                    self._submit({"action": "remove_light_source", "pos": lp})
+                    break
             return
 
         # Highlight tool — toggle tile and skip all selection/placement logic

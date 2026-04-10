@@ -153,6 +153,7 @@ class PlayerClient:
         self.server.map_visible = state.get("map_visible", False)
         self.server.tile_highlights = list(state.get("tile_highlights", []))
         self.server.map_objects = list(state.get("map_objects", []))
+        self.server.light_sources = list(state.get("light_sources", []))
         self.server.visibility_radius = state.get("visibility_radius", 10)
         self.server.explored_tiles = {
             self.name: {tuple(t) for t in state.get("explored_tiles", [])}
@@ -241,6 +242,15 @@ class PlayerClient:
         elif action == "map_object_removed":
             pos = event.get("pos")
             self.server.map_objects = [o for o in self.server.map_objects if o["pos"] != pos]
+
+        elif action == "light_source_added":
+            ls = event.get("light")
+            if ls:
+                self.server.light_sources.append(ls)
+
+        elif action == "light_source_removed":
+            pos = event.get("pos")
+            self.server.light_sources = [ls for ls in self.server.light_sources if ls["pos"] != pos]
 
         elif action == "explored_updated":
             new_tiles = {tuple(t) for t in event.get("new_tiles", [])}
