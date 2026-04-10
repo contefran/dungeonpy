@@ -987,19 +987,22 @@ class MapManager:
                 self._player_iron_door_states[k] = self.server.iron_door_states[k]
             if k in self.server.secret_door_states:
                 self._player_secret_door_states[k] = self.server.secret_door_states[k]
-        # Layer 2: light sources also reveal tiles, even outside the player's own vision.
-        # Run compute_los from each light source and union the result into _current_los.
+        # Layer 2: a light source extends visibility only if the player can see the light source
+        # tile itself. If the source is visible, add all tiles it illuminates.
         for ls in self.server.light_sources:
             lpos = ls.get("pos")
             lrad = ls.get("radius", 4)
-            if lpos:
-                lit = compute_los(
-                    self.map_data, lpos, lrad,
-                    self.server.door_states,
-                    self.server.iron_door_states,
-                    self.server.secret_door_states,
-                )
-                self._current_los.update(lit)
+            if not lpos:
+                continue
+            if (lpos[0], lpos[1]) not in self._current_los:
+                continue  # light source is behind a wall / out of range
+            lit = compute_los(
+                self.map_data, lpos, lrad,
+                self.server.door_states,
+                self.server.iron_door_states,
+                self.server.secret_door_states,
+            )
+            self._current_los.update(lit)
 
         # Accumulate into local explored set (server is authoritative but this keeps
         # rendering smooth without waiting for the server round-trip)
