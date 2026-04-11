@@ -1,6 +1,7 @@
 Presentation/
 Data/combat_tracker_*.json
 Core/__pycache__/
+__pycache__/
 .vscode/
 .pytest_cache/
 tests/__pycache__/
@@ -11,3 +12,8 @@ bug.md
 .gitignore
 plan.txt
 Savegames/auto*
+
+# PyInstaller build output
+dist/
+build/
+*.spec

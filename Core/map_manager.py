@@ -175,7 +175,7 @@ class MapManager:
         self.iron_door_open_texture_original = pygame.image.load(os.path.join(d, 'Assets/Textures/Iron_door_open.png')).convert_alpha()
         self.secret_door_texture_original = self.wall_texture_original
         self.trap_texture_original = pygame.image.load(os.path.join(d, 'Assets/Textures/trap_pit.jpg')).convert_alpha()
-        self.grass_texture_original = pygame.image.load(os.path.join(d, 'Assets/Textures/grass_1.png')).convert()
+        self.grass_texture_original = pygame.image.load(os.path.join(d, 'Assets/Textures/grass_4.png')).convert()
         (self.floor_texture, self.wall_texture, self.wooden_door_closed_texture,
          self.wooden_door_open_texture, self.iron_door_closed_texture,
          self.iron_door_open_texture, self.secret_door_texture,
@@ -294,10 +294,26 @@ class MapManager:
         return self.object_icons.get(file)
 
     def _run_object_picker_subprocess(self):
-        """Blocking: spawns a tkinter file picker in a child process, returns (filename, size)."""
-        import subprocess
-        import sys
+        """Blocking: spawns a tkinter file picker in a child process, returns (filename, width, height).
+        When frozen by PyInstaller, re-invokes the executable with --_picker instead of -c."""
+        import subprocess, sys
         objects_dir = os.path.join(self.dir_path, "Assets", "Objects")
+        if getattr(sys, 'frozen', False):
+            try:
+                result = subprocess.run(
+                    [sys.executable, "--_picker", "object", objects_dir],
+                    capture_output=True, text=True, timeout=300,
+                )
+                lines = result.stdout.strip().splitlines()
+                if not lines or not lines[0]:
+                    return None, 1, 1
+                icon   = lines[0]
+                width  = int(lines[1]) if len(lines) > 1 and lines[1].isdigit() else 1
+                height = int(lines[2]) if len(lines) > 2 and lines[2].isdigit() else 1
+                return icon, width, height
+            except Exception as e:
+                print(f"[Map] Object picker failed: {e}")
+                return None, 1, 1
         script = (
             "import tkinter as tk\n"
             "from tkinter import filedialog, simpledialog\n"
@@ -366,8 +382,25 @@ class MapManager:
     }
 
     def _run_light_picker_subprocess(self):
-        """Blocking: ask radius + color via subprocess tkinter. Returns (radius, color_name)."""
+        """Blocking: ask radius + color via subprocess tkinter. Returns (radius, color_name, alpha).
+        When frozen by PyInstaller, re-invokes the executable with --_picker instead of -c."""
         import subprocess, sys
+        if getattr(sys, 'frozen', False):
+            try:
+                result = subprocess.run(
+                    [sys.executable, "--_picker", "light"],
+                    capture_output=True, text=True, timeout=300,
+                )
+                lines = result.stdout.strip().splitlines()
+                if not lines or not lines[0].isdigit():
+                    return None, "warm", 60
+                radius = int(lines[0])
+                color  = lines[1] if len(lines) > 1 and lines[1] in self._LIGHT_COLORS else "warm"
+                alpha  = int(lines[2]) if len(lines) > 2 and lines[2].isdigit() else 60
+                return radius, color, alpha
+            except Exception as e:
+                print(f"[Map] Light picker failed: {e}")
+                return None, "warm", 60
         script = (
             "import tkinter as tk\n"
             "from tkinter import simpledialog\n"
