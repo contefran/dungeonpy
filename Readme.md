@@ -56,7 +56,7 @@ A Dungeon Master toolkit for virtual tabletop D&D sessions. DungeonPy runs two s
 ## Installation — From Source
 
 ```bash
-git clone https://github.com/<your-username>/DungeonPy.git
+git clone https://github.com/contefran/DungeonPy.git
 cd DungeonPy
 pip install -r requirements.txt
 ```
