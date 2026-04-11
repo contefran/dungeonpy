@@ -413,3 +413,93 @@ def test_bridge_injects_owner_into_highlight(bridge, ws_server):
     run(_test())
     # Server should have Alice's highlight, not DM's
     assert all(h["owner"] == "Alice" for h in ws_server.tile_highlights)
+
+
+# ---------------------------------------------------------------------------
+# Chat routing
+# ---------------------------------------------------------------------------
+
+def test_duplicate_player_name_rejected(bridge):
+    """Two players with the same name — second should be rejected."""
+    async def _test():
+        async with (
+            websockets.connect(ws_url(bridge)) as ws1,
+            websockets.connect(ws_url(bridge)) as ws2,
+        ):
+            await player_hello(ws1, "Alice")
+            # Send hello for second Alice — bridge sends ack then closes the socket.
+            await ws2.send(json.dumps({"type": "hello", "role": "player", "name": "Alice"}))
+            ack = json.loads(await ws2.recv())
+            return ack
+    ack = run(_test())
+    assert ack["ok"] is False
+    assert "already connected" in ack["reason"]
+
+
+def test_player_disconnected_event_reaches_dm(bridge):
+    """DM should receive player_disconnected when a player's connection closes."""
+    async def _test():
+        async with websockets.connect(ws_url(bridge)) as dm_ws:
+            await dm_hello(dm_ws)
+            async with websockets.connect(ws_url(bridge)) as p_ws:
+                await player_hello(p_ws, "Alice")
+                # Drain the player_connected event
+                await asyncio.wait_for(dm_ws.recv(), timeout=2.0)
+            # Player has disconnected — DM should be notified
+            msg = json.loads(await asyncio.wait_for(dm_ws.recv(), timeout=2.0))
+            return msg
+    msg = run(_test())
+    assert msg["action"] == "player_disconnected"
+    assert msg["name"] == "Alice"
+
+
+def test_chat_dm_to_player_only_reaches_target(bridge):
+    """DM→player chat message should arrive only at the named player."""
+    async def _test():
+        async with (
+            websockets.connect(ws_url(bridge)) as dm_ws,
+            websockets.connect(ws_url(bridge)) as alice_ws,
+            websockets.connect(ws_url(bridge)) as bob_ws,
+        ):
+            await dm_hello(dm_ws)
+            await player_hello(alice_ws, "Alice")
+            await player_hello(bob_ws, "Bob")
+            # Drain player_connected events from DM socket
+            await asyncio.wait_for(dm_ws.recv(), timeout=1.0)
+            await asyncio.wait_for(dm_ws.recv(), timeout=1.0)
+
+            # DM sends to Alice only
+            bridge.submit({"action": "chat_message", "text": "hello Alice", "to": "Alice"})
+
+            alice_msg = json.loads(await asyncio.wait_for(alice_ws.recv(), timeout=2.0))
+
+            bob_got = False
+            try:
+                await asyncio.wait_for(bob_ws.recv(), timeout=0.5)
+                bob_got = True
+            except asyncio.TimeoutError:
+                pass
+
+            return alice_msg, bob_got
+
+    alice_msg, bob_got = run(_test())
+    assert alice_msg["action"] == "chat_message"
+    assert alice_msg["text"] == "hello Alice"
+    assert bob_got is False
+
+
+def test_chat_player_to_dm_from_field_injected(bridge):
+    """Bridge must inject the 'from' field from the authenticated player identity."""
+    received = []
+    bridge.server.subscribe(received.append)
+
+    async def _test():
+        async with websockets.connect(ws_url(bridge)) as ws:
+            await player_hello(ws, "Alice")
+            await ws.send(json.dumps({"action": "chat_message", "text": "help!"}))
+            await asyncio.sleep(0.2)
+
+    run(_test())
+    chat_events = [e for e in received if e.get("action") == "chat_message"]
+    assert len(chat_events) == 1
+    assert chat_events[0]["from"] == "Alice"
