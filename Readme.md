@@ -8,7 +8,7 @@ A Dungeon Master toolkit for virtual tabletop D&D sessions. DungeonPy runs two s
 
 | Combat Tracker | 2D Map | Player View |
 |:-:|:-:|:-:|
-| ![Tracker](Docs/Screenshots/DM_tracker.png) | ![Map](Docs/Screenshots/DM_map.png) | ![Player](Docs/Screenshots/Player.png) |
+| ![Tracker](docs/Screenshots/DM_tracker.png) | ![Map](docs/Screenshots/DM_map.png) | ![Player](docs/Screenshots/Player.png) |
 
 ---
 
@@ -129,7 +129,7 @@ python3 run_dnd_py.py --mode player
 A connection dialog will appear asking for your name and the DM's address. You can also pass them directly:
 
 ```bash
-python3 run_dnd_py.py --mode player --name "Aria" --host 192.168.1.10
+python3 run_dnd_py.py --mode player --name "Aeriael" --host 192.168.1.10
 ```
 
 Optional flags:
