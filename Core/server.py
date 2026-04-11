@@ -1,13 +1,16 @@
 """
-Authoritative game server — owns all canonical state.
+server.py — Authoritative game server for DungeonPy.
 
-Phase A: pure state machine, no networking.
-Clients submit intents (dicts); the server validates, mutates state, and
-returns a list of event/snapshot dicts to be broadcast.
+Pure state machine — no networking.  Clients submit intent dicts; the server
+validates them, mutates its internal state, and broadcasts the resulting event
+dicts to all registered subscribers (Tracker, MapManager, WSBridge).
 
-Intent  (client → server): {"action": "...", ...fields}
-Event   (server → client): {"type": "event",    "action": "...", ...fields}
-Snapshot(server → client): {"type": "snapshot", "state": {...}}
+Message shapes
+--------------
+Intent   (client → server):  ``{"action": "...", ...fields}``
+Event    (server → client):  ``{"type": "event",    "action": "...", "seq": int, ...fields}``
+Snapshot (server → client):  ``{"type": "snapshot", "seq": int,     "state": {...}}``
+Error    (server → client):  ``{"type": "error",    "seq": int,     "reason": str}``
 """
 
 import json
@@ -31,6 +34,34 @@ def _load_map_grid(filepath: str) -> list:
 
 
 class GameServer:
+    """Owns all canonical game state and processes intents submitted by clients.
+
+    This is a pure state machine — it has no knowledge of networking or GUI.
+    Callers submit intent dicts; the server validates them, mutates its state,
+    and broadcasts the resulting event dicts to all registered subscribers.
+
+    All mutations go through ``submit()`` → ``process_intent()`` → subscribers,
+    so subscribers always see a consistent, fully-applied state.
+
+    Attributes:
+        combatants: Initiative-ordered list of all combatants.
+        active_index: Index into ``combatants`` of the current-turn combatant.
+        turn: Current round number (increments when initiative wraps around).
+        door_states: ``{(row, col): "open"|"closed"}`` for wooden doors (tile 3).
+        iron_door_states: Same for iron doors (tile 4).
+        secret_door_states: Same for secret doors (tile 5).
+        trap_states: Same for traps (tile 6).
+        player_selection_locks: ``{player_name: bool}`` — whether the player may select tokens.
+        player_move_locks: ``{player_name: bool}`` — whether the player may move their token.
+        tile_highlights: List of ``{"pos", "color", "owner"}`` highlight dicts.
+        map_objects: List of ``{"pos", "icon", "width", "height"}`` decoration dicts.
+        light_sources: List of ``{"pos", "radius", "color", "alpha"}`` light dicts.
+        map_grid: 2-D tile grid loaded from the active ``.txt`` map file.
+        map_path: Absolute path to the loaded map file.
+        map_visible: Whether the map window is currently shown to players.
+        visibility_radius: Player LOS radius in tiles (DM-configurable, default 10).
+        explored_tiles: ``{player_name: {(col, row), ...}}`` — permanently revealed tiles.
+    """
 
     def __init__(self, snapshot_interval: int = 50):
         self.combatants: list[Combatant] = []
@@ -211,6 +242,15 @@ class GameServer:
     # ------------------------------------------------------------------
 
     def load_from_file(self, filepath: str):
+        """Load a session from a JSON save file, replacing all current state.
+
+        Args:
+            filepath: Path to a ``.json`` save file produced by ``save_to_file()``.
+
+        Note:
+            ``map_visible`` is always reset to ``False`` on load so the DM can
+            place tokens before revealing the map to players.
+        """
         with open(filepath, 'r', encoding='utf-8') as f:
             data = json.load(f)
         self.combatants = [Combatant.from_dict(c) for c in data.get("initiative", [])]
@@ -231,6 +271,11 @@ class GameServer:
             self.map_grid = None
 
     def save_to_file(self, filepath: str):
+        """Persist the current session state to a JSON file.
+
+        Args:
+            filepath: Destination path.  Parent directory must exist.
+        """
         data = {
             "initiative": [c.to_dict() for c in self.combatants],
             "active_index": self.active_index,
@@ -279,6 +324,18 @@ class GameServer:
     # ------------------------------------------------------------------
 
     def process_intent(self, intent: dict) -> list[dict]:
+        """Apply a validated intent and return the resulting raw event list.
+
+        This is the single point of truth for all state mutations.  Callers
+        should normally use ``submit()`` rather than calling this directly, as
+        ``submit()`` handles sequence-stamping and subscriber notification.
+
+        Args:
+            intent: A validated intent dict with at minimum an ``"action"`` key.
+
+        Returns:
+            A list of raw event/snapshot dicts (no ``seq`` stamps yet).
+        """
         action = intent.get("action")
 
         # --- Selection ---

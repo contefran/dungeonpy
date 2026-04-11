@@ -1,9 +1,34 @@
+"""
+combatant.py — Data class for a single combat participant.
+
+Each Combatant holds the initiative-tracker state (name, initiative, HP,
+conditions) and the map state (grid position, icon, size).  Instances are
+shared by reference between the Tracker and MapManager in local play so that
+a single mutation is visible to both components immediately.
+"""
+
+
 def _migrate_timers(raw: dict) -> dict:
     """Upgrade old {cond: round_int} format to {cond: [round, initiative]}."""
     return {k: v if isinstance(v, list) else [v, 999] for k, v in raw.items()}
 
 
 class Combatant:
+    """A single participant in the combat encounter.
+
+    Attributes:
+        name: Unique display name used as the primary key throughout the system.
+        initiative: Roll result; combatants are sorted highest-first.
+        hp: Current hit points, or None if HP is not being tracked.
+        max_hp: Maximum hit points, or None if not set.
+        conditions: List of active condition names (e.g. ``["Poisoned", "Prone"]``).
+        condition_timers: Maps condition name to ``[expiry_round, expiry_initiative]``.
+        pos: ``[col, row]`` top-left tile on the map, or None if not yet placed.
+        icon: Filename (no path) of the token image resolved against ``Assets/Combatants/``.
+        notes: Freeform DM notes shown in the tracker detail pane.
+        is_pc: True for player characters — PCs persist across map loads.
+        size: Token footprint in tiles on one side (1 = normal, 2 = large, 3 = huge).
+    """
     
     def __init__(self, name, initiative, hp=None, max_hp=None, conditions=None,
                  condition_timers=None, pos=None, icon=None, notes='', is_pc=False, size=1):
@@ -19,7 +44,8 @@ class Combatant:
         self.is_pc = is_pc  # True → kept across map loads; False → removed on new map
         self.size = max(1, int(size))  # footprint side length in tiles (1=normal, 2=large, 3=huge…)
 
-    def to_dict(self):
+    def to_dict(self) -> dict:
+        """Serialise to a JSON-compatible dict (used for save files and wire protocol)."""
         return {
             "name": self.name,
             "initiative": self.initiative,
@@ -35,7 +61,8 @@ class Combatant:
         }
 
     @classmethod
-    def from_dict(cls, data):
+    def from_dict(cls, data: dict) -> "Combatant":
+        """Deserialise from a dict produced by ``to_dict()`` or a save file."""
         return cls(
             name=data.get("name"),
             initiative=data.get("initiative", 0),
@@ -50,7 +77,8 @@ class Combatant:
             size=data.get("size", 1),
         )
 
-    def is_down(self):
+    def is_down(self) -> bool:
+        """Return True if the combatant is at 0 HP or has the Unconscious condition."""
         return self.hp == 0 or "Unconscious" in self.conditions
 
     def __repr__(self):

@@ -6,8 +6,6 @@ A Dungeon Master toolkit for virtual tabletop D&D sessions. DungeonPy runs two s
 
 ## Screenshots
 
-> *(Coming soon)*
-
 | Combat Tracker | 2D Map | Player View |
 |:-:|:-:|:-:|
 | ![Tracker](Docs/Screenshots/DM_tracker.png) | ![Map](Docs/Screenshots/DM_map.png) | ![Player](Docs/Screenshots/Player.png) |

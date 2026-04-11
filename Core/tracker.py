@@ -1,3 +1,19 @@
+"""
+tracker.py — DM-side combat tracker UI for DungeonPy.
+
+Runs a PySimpleGUI initiative table in a daemon thread (in ``both``/``dm``
+mode the map occupies the main thread).  The tracker displays combatants
+sorted by initiative, lets the DM manage HP, conditions, and turns, and
+communicates changes to the MapManager via the GameServer event bus.
+
+Key interactions
+----------------
+- Token selected on map  → ``handle_server_event`` highlights the matching row.
+- Turn advanced in tracker → server emits ``turn_advanced`` → map applies blue glow.
+- Combatant added/edited  → server emits ``combatant_updated`` → map redraws token.
+- ``_squelch_table_event`` prevents feedback loops when the map triggers a row change.
+"""
+
 from datetime import datetime
 import io
 import os
@@ -46,6 +62,20 @@ def _render_emoji_png(char: str, size: int = 22) -> bytes | None:
 
 
 class Tracker:
+    """PySimpleGUI combat tracker window.
+
+    Manages the combatant list, HP, conditions, and turn order.  Sends intents
+    to the GameServer via ``_submit`` and reacts to server events delivered
+    through ``handle_server_event()``.
+
+    Args:
+        server: The shared ``GameServer`` instance (used to read current state).
+        submit: Callable ``(intent: dict) → None`` used to send all mutations.
+            Defaults to ``server.submit`` if not provided.
+        dir_path: Base directory for asset resolution (icons, condition images).
+        verbose: Enable timestamped logging.
+        super_verbose: Enable per-combatant comparison logs.
+    """
 
     def __init__(self, server, submit=None, dir_path='', verbose=False, super_verbose=False):
         self.server = server
@@ -744,6 +774,11 @@ class Tracker:
                 self._submit({"action": "load", "path": file_path})
 
     def run_gui(self, dir_path):
+        """Build and run the tracker GUI event loop.  Blocks until the window is closed.
+
+        Args:
+            dir_path: Base directory used to resolve save/load file paths.
+        """
         layout = self.build_gui_layout()
         self.window = sg.Window('D&D Initiative Tracker', layout, resizable=True, finalize=True)
 

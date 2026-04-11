@@ -1,3 +1,24 @@
+"""
+game.py — Top-level orchestrator for DungeonPy.
+
+Instantiates and wires together all subsystems (GameServer, WSBridge, Tracker,
+MapManager, PlayerClient) according to the selected run mode, then delegates
+to the appropriate blocking entry point.
+
+Run modes
+---------
+both / map / tracker
+    Local play — no networking.  Tracker and map share the same GameServer
+    object directly; a lightweight in-process WSBridge serialises concurrent
+    submits without TCP overhead.
+dm
+    Full DM interface + TLS WebSocket server.  Remote players connect as
+    clients and receive a fog-of-war filtered view of the map.
+player
+    Remote client only — map window + chat window.  All state is received
+    from the DM server; no local files are needed.
+"""
+
 import os
 import ssl
 import threading
@@ -16,6 +37,22 @@ AUTOSAVE_SLOTS    = 4     # number of rotating autosave files
 
 
 class Game:
+    """Wires together all DungeonPy subsystems and owns the run loop.
+
+    Args:
+        dir_path: Base directory for ``Assets/``, ``Maps/``, ``Data/``, etc.
+        mode: One of ``both``, ``map``, ``tracker``, ``dm``, or ``player``.
+        verbose: Enable timestamped event logging.
+        super_verbose: Enable per-combatant comparison logs (very noisy).
+        host: Bind address for DM mode, or DM's IP/hostname for player mode.
+        port: WebSocket port (default 8765).
+        player_name: Character name — required for player mode.
+        player_color: Token highlight colour for player mode.
+        password: DM session password (prompted at runtime if omitted in DM mode).
+        insecure: Skip TLS certificate verification in player mode.
+        cert: Path to a custom TLS certificate for DM mode.
+        key: Path to the matching TLS private key for DM mode.
+    """
 
     def __init__(self, dir_path, mode='both', verbose=False, super_verbose=False,
                  host=None, port=8765, player_name=None, player_color='white',
@@ -318,6 +355,7 @@ class Game:
     # ------------------------------------------------------------------
 
     def run(self):
+        """Start the appropriate blocking entry point for the selected mode."""
         if self.verbose:
             log(f"[Game] Launching in {self.mode} mode...")
 
@@ -343,6 +381,7 @@ class Game:
         self.shutdown()
 
     def shutdown(self):
+        """Tear down all subsystems cleanly — called automatically at the end of run()."""
         if self.verbose:
             log("[Game] Shutting down.")
         # Close the map window and wait for the thread to finish cleanly.
