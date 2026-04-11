@@ -219,7 +219,7 @@ They enter this in the connection dialog when launching `player_connect.sh`. For
 
 ---
 
-## How to Play
+## How to Use DungeonPy
 
 ### Combat Tracker (DM)
 
@@ -317,13 +317,6 @@ Even after connecting, players have limited capabilities by default:
 
 Players cannot spoof another player's identity, claim DM privileges, or connect twice under the same name.
 
-### What players can and cannot see
-
-- **Fog of war** is enforced server-side: each player's snapshot contains only their own explored tiles, not the full map.
-- **Invisible** tokens are stripped from player snapshots unless the receiving player has *See Invisible*.
-- **Hidden** tokens are never included in player snapshots.
-- Chat messages are routed point-to-point: a DM message to Alice is never sent to Bob's connection.
-
 ### Summary
 
 | Scenario | Recommended settings |
@@ -357,7 +350,7 @@ Session files are JSON and live in `Data/` (examples) or `Savegames/` (runtime s
 ```json
 {
   "initiative": [
-    { "name": "Aria", "initiative": 18, "hp": 30, "conditions": [], "pos": [3, 5], "icon": "aria.png", "is_pc": true }
+    { "name": "Aeriael", "initiative": 18, "hp": 30, "conditions": [], "pos": [3, 5], "icon": "aeriael.png", "is_pc": true }
   ],
   "active_index": 0,
   "turn": 1,
