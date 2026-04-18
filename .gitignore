@@ -16,7 +16,6 @@ Savegames/auto*
 # PyInstaller build output
 dist/
 build/
-*.spec
 
 # TLS certificates — generated locally, never commit private keys
 dm_cert.pem
