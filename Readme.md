@@ -48,7 +48,7 @@ A Dungeon Master toolkit for virtual tabletop D&D sessions. DungeonPy runs two s
 ## Requirements
 
 - Python 3.11+
-- Linux (Windows support planned — see [Future work](#future-work))
+- Linux or Windows
 
 ---
 
@@ -72,17 +72,54 @@ Dependencies installed:
 
 ---
 
-## Installation — Binary (Linux)
+## Installation — Pre-built Binary
 
-Pre-built binaries are available on the [Releases](../../releases) page. Download and extract the `.zip`, then make the scripts executable:
+Pre-built binaries for Linux and Windows are available on the [Releases](../../releases) page.
 
+**Linux**
 ```bash
 unzip dungeonpy-linux.zip
 cd dungeonpy
 chmod +x dm_server.sh player_connect.sh
 ```
 
-No Python installation required for players using the binary.
+**Windows** — extract `dungeonpy-windows.zip` and run `dungeonpy.exe` directly, or use the provided `.bat` launchers.
+
+No Python installation required.
+
+---
+
+## Building from Source
+
+### Linux
+
+```bash
+./build.sh
+```
+
+Produces a self-contained folder at `dist/dungeonpy/` with the binary and all assets.
+
+### Windows
+
+```cmd
+pip install pyinstaller "PySimpleGUI==4.60.5"
+pip install -r requirements.txt
+pyinstaller dungeonpy.spec --noconfirm
+xcopy /E /I Assets dist\dungeonpy\Assets
+xcopy /E /I Maps   dist\dungeonpy\Maps
+mkdir dist\dungeonpy\Savegames
+```
+
+### CI — GitHub Actions
+
+Pushing a version tag builds both platforms automatically and attaches the zips to a GitHub Release:
+
+```bash
+git tag v1.2.0
+git push origin v1.2.0
+```
+
+You can also trigger a manual build from the **Actions** tab without creating a release.
 
 ---
 
@@ -384,7 +421,6 @@ python3 run_dnd_py.py [--mode MODE] [--dir PATH] [--verbose] [--super_verbose]
 
 ## Future Work
 
-- **Windows support** — PyInstaller builds for Windows; CI pipeline with GitHub Actions for cross-platform releases
 - **Meshnet play** — out-of-the-box support for overlay networks (e.g. Tailscale, ZeroTier) so players can connect without port forwarding
 - **Dice roller** — integrated dice rolling with results broadcast to all players
 

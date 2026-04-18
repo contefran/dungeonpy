@@ -1,0 +1,85 @@
+name: Build executables
+
+# Triggered automatically on version tags (e.g. v1.2.0) and manually via
+# the GitHub Actions UI.  Both platforms build in parallel; if one fails the
+# other still uploads its artifact.
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+
+permissions:
+  contents: write   # needed to create/update GitHub Releases
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artifact: dungeonpy-linux
+          - os: windows-latest
+            artifact: dungeonpy-windows
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      # PySimpleGUI >= 5.x is commercial; pin to the last free release.
+      - name: Install dependencies
+        run: |
+          pip install pyinstaller
+          pip install "PySimpleGUI==4.60.5"
+          pip install -r requirements.txt
+
+      - name: Build with PyInstaller
+        run: pyinstaller dungeonpy.spec --noconfirm
+
+      # ── Stage external assets (Linux) ─────────────────────────────────
+      - name: Stage assets (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          cp -r Assets dist/dungeonpy/
+          cp -r Maps   dist/dungeonpy/
+          mkdir -p dist/dungeonpy/Savegames
+          [ -d Data ] && cp -r Data dist/dungeonpy/ || true
+
+      # ── Stage external assets (Windows) ───────────────────────────────
+      - name: Stage assets (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Copy-Item -Recurse -Force Assets dist\dungeonpy\
+          Copy-Item -Recurse -Force Maps   dist\dungeonpy\
+          New-Item -ItemType Directory -Force dist\dungeonpy\Savegames | Out-Null
+          if (Test-Path Data) { Copy-Item -Recurse -Force Data dist\dungeonpy\ }
+
+      # ── Package ───────────────────────────────────────────────────────
+      - name: Create zip (Linux)
+        if: runner.os == 'Linux'
+        run: cd dist && zip -r ../${{ matrix.artifact }}.zip dungeonpy/
+
+      - name: Create zip (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Compress-Archive -Path dist\dungeonpy -DestinationPath ${{ matrix.artifact }}.zip
+
+      # ── Upload build artifact (always) ────────────────────────────────
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.artifact }}.zip
+
+      # ── Attach to GitHub Release (tag pushes only) ────────────────────
+      - name: Publish to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ matrix.artifact }}.zip
