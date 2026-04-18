@@ -21,10 +21,6 @@ mkdir -p "$DIST/Savegames"
 # Copy example data if present
 [ -d Data ] && cp -r Data "$DIST/"
 
-echo "[build] Generating API docs..."
-python -m pdoc Core run_dnd_py --output-dir docs/api --no-search
-echo "        API docs written to docs/api/"
-
 echo ""
 echo "[build] Done. Distribution folder: $DIST/"
 echo "        Launch (DM):    $DIST/dungeonpy --mode dm"
