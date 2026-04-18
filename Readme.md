@@ -102,7 +102,7 @@ Produces a self-contained folder at `dist/dungeonpy/` with the binary and all as
 ### Windows
 
 ```cmd
-pip install pyinstaller "PySimpleGUI==4.60.5"
+pip install pyinstaller "PySimpleGUI==4.60.5.1"
 pip install -r requirements.txt
 pyinstaller dungeonpy.spec --noconfirm
 xcopy /E /I Assets dist\dungeonpy\Assets

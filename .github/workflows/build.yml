@@ -12,6 +12,9 @@ on:
 permissions:
   contents: write   # needed to create/update GitHub Releases
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   build:
     strategy:
@@ -36,7 +39,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install pyinstaller
-          pip install "PySimpleGUI==4.60.5"
+          pip install "PySimpleGUI==4.60.5.1"
           pip install -r requirements.txt
 
       - name: Build with PyInstaller
