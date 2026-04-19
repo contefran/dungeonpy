@@ -51,12 +51,13 @@ class Game:
 
     def __init__(self, dir_path, mode='dm', verbose=False, super_verbose=False,
                  host=None, port=8765, player_name=None, player_color='white',
-                 password=None, insecure=False, cert=None, key=None):
+                 password=None, insecure=False, cert=None, key=None, load_path=None):
         self.mode = mode
         self.dir_path = dir_path
         self.verbose = verbose
         self.super_verbose = super_verbose
 
+        self.load_path = load_path
         self.server = None
         self.bridge = None
         self.tracker = None
@@ -284,22 +285,8 @@ class Game:
     # ------------------------------------------------------------------
 
     def _resolve_load_path(self) -> str:
-        """Return the most recent autosave if it is newer than the default save file."""
-        default = os.path.join(self.dir_path, DEFAULT_SAVE_FILE)
-        savegames_dir = os.path.join(self.dir_path, 'Savegames')
-        candidates = [
-            os.path.join(savegames_dir, f'autosave_{i}.json')
-            for i in range(1, AUTOSAVE_SLOTS + 1)
-        ]
-        existing = [p for p in candidates if os.path.isfile(p)]
-        if not existing:
-            return default
-        newest = max(existing, key=os.path.getmtime)
-        default_mtime = os.path.getmtime(default) if os.path.isfile(default) else 0
-        if os.path.getmtime(newest) > default_mtime:
-            print(f"[DungeonPy] Loading autosave: {os.path.basename(newest)}")
-            return newest
-        return default
+        """Return the default example save path."""
+        return os.path.join(self.dir_path, DEFAULT_SAVE_FILE)
 
     # ------------------------------------------------------------------
     # Run
@@ -314,7 +301,7 @@ class Game:
             self._player_chat.run(self._quit_event)  # blocks until chat window closes
 
         else:  # dm
-            save_path = self._resolve_load_path()
+            save_path = self.load_path or self._resolve_load_path()
             if os.path.isfile(save_path):
                 self.server.submit({"action": "load", "path": save_path})
             self._start_autosave()

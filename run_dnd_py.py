@@ -115,7 +115,15 @@ def _run_launcher() -> argparse.Namespace | None:
     _prev_theme = sg.theme()
     sg.theme("DarkGrey13")
 
+    savegames_dir = os.path.join(_DEFAULT_DIR, 'Savegames')
+
     dm_fields = [
+        [sg.Radio("Start a new game",    "GAME", key='-NEW_GAME-',  default=True, enable_events=True)],
+        [sg.Radio("Load a previous game", "GAME", key='-LOAD_GAME-', default=False, enable_events=True)],
+        [sg.Column([
+            [sg.Input('', key='-LOAD_PATH-', size=(22, 1), disabled=True, disabled_readonly_background_color=None),
+             sg.Button("Browse", key='-BROWSE-', size=(6, 1))],
+        ], key='-LOAD_ROW-', visible=False, pad=(0, (0, 4)))],
         [sg.Text("Password:", size=(12, 1)),
          sg.Input('', key='-DM_PASS-', password_char='*', size=(24, 1))],
         [sg.Text("Leave blank to allow anyone to join.", font=("Arial", 9),
@@ -167,6 +175,22 @@ def _run_launcher() -> argparse.Namespace | None:
             window['-DM_COL-'].update(visible=False)
             window['-PLAYER_COL-'].update(visible=True)
 
+        elif event == '-NEW_GAME-':
+            window['-LOAD_ROW-'].update(visible=False)
+
+        elif event == '-LOAD_GAME-':
+            window['-LOAD_ROW-'].update(visible=True)
+
+        elif event == '-BROWSE-':
+            path = sg.popup_get_file(
+                'Select save file',
+                file_types=(('Save Files', '*.json'), ('All files', '*.*')),
+                initial_folder=savegames_dir if os.path.isdir(savegames_dir) else _DEFAULT_DIR,
+                keep_on_top=True,
+            )
+            if path:
+                window['-LOAD_PATH-'].update(path)
+
         elif event == "Launch":
             if values['-MODE_PLAYER-']:
                 name = values['-NAME-'].strip()
@@ -174,6 +198,9 @@ def _run_launcher() -> argparse.Namespace | None:
                 if not name or not host:
                     sg.popup_error("Name and DM address are required.", title="DungeonPy")
                     continue
+            if values.get('-LOAD_GAME-') and not (values.get('-LOAD_PATH-') or '').strip():
+                sg.popup_error("Please select a save file to load.", title="DungeonPy")
+                continue
             break
 
     window.close()
@@ -189,19 +216,22 @@ def _run_launcher() -> argparse.Namespace | None:
     )
 
     if values['-MODE_DM-']:
-        args.mode     = 'dm'
-        args.host     = None
-        args.password = values['-DM_PASS-'].strip() or None
-        args.name     = None
-        args.color    = 'white'
-        args.insecure = False
+        args.mode      = 'dm'
+        args.host      = None
+        args.password  = values['-DM_PASS-'].strip() or None
+        args.name      = None
+        args.color     = 'white'
+        args.insecure  = False
+        load_path = (values.get('-LOAD_PATH-') or '').strip()
+        args.load_path = load_path if values.get('-LOAD_GAME-') and load_path else None
     else:
-        args.mode     = 'player'
-        args.name     = values['-NAME-'].strip()
-        args.host     = values['-HOST-'].strip()
-        args.color    = values['-COLOR-']
-        args.insecure = values['-INSECURE-']
-        args.password = None
+        args.mode      = 'player'
+        args.name      = values['-NAME-'].strip()
+        args.host      = values['-HOST-'].strip()
+        args.color     = values['-COLOR-']
+        args.insecure  = values['-INSECURE-']
+        args.password  = None
+        args.load_path = None
 
     return args
 
@@ -309,6 +339,7 @@ def main():
         insecure=args.insecure,
         cert=args.cert,
         key=args.key,
+        load_path=getattr(args, 'load_path', None),
     )
     game.run()
 

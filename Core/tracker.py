@@ -668,9 +668,11 @@ class Tracker:
                                   "lock_type": "move", "locked": not current})
 
         elif event == 'Load Map':
+            maps_dir = os.path.join(self.dir_path, 'Maps')
             path = sg.popup_get_file(
                 'Select dungeon map file',
                 file_types=(('Map Files', '*.txt'),),
+                initial_folder=maps_dir if os.path.isdir(maps_dir) else self.dir_path,
                 keep_on_top=True,
             )
             if path:
