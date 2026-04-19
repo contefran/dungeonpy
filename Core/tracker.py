@@ -30,9 +30,7 @@ try:
 except ImportError:
     _PIL_OK = False
 
-# On Windows, Noto Sans is loaded from Assets/Fonts/ at startup; on Linux it
-# is available via the 'gothic' family alias (fontconfig maps it to Noto Sans).
-_UI_FONT = 'Noto Sans' if sys.platform == 'win32' else 'gothic'
+_UI_FONT = 'Segoe UI' if sys.platform == 'win32' else 'gothic'
 
 CONDITION_ICON_SIZE = 36 # pixels
 
