@@ -60,9 +60,9 @@ cd dungeonpy
 ./dungeonpy
 ```
 
-**Windows** — extract `dungeonpy-windows.zip` and double-click `dungeonpy.exe`.
+**Windows**
 
-A launcher dialog appears asking whether you are the DM or a player, and collects any connection details. No command-line flags needed.
+Extract `dungeonpy-windows.zip` and double-click `dungeonpy.exe`.
 
 ### From Source
 
@@ -124,14 +124,6 @@ You can also trigger a manual build from the **Actions** tab without creating a 
 
 ### Starting the application
 
-Launch DungeonPy and a startup dialog appears. Select your role:
-
-- **Dungeon Master** — opens the tracker, map editor, and hosts a server that players can connect to.
-  - **Start a new game** — loads the built-in example session so you can start placing combatants immediately.
-  - **Load a previous game** — click **Browse** to pick a save file from `Savegames/` (or anywhere else).
-  - Enter an optional session password (leave blank to allow anyone to join).
-- **Player** — enter your character name and the DM's address, then connect.
-
 **Binary**
 ```bash
 ./dungeonpy          # Linux
@@ -143,9 +135,17 @@ dungeonpy.exe        # Windows (or double-click)
 python3 run_dnd_py.py
 ```
 
+Launch DungeonPy and a startup dialog appears. Select your role:
+
+- **Dungeon Master** — opens the tracker, map editor, and hosts a server that players can connect to.
+  - **Start a new game** — loads the built-in example session so you can start placing combatants immediately.
+  - **Load a previous game** — click **Browse** to pick a save file from `Savegames/` (or anywhere else).
+  - Enter an optional session password (leave blank to allow anyone to join).
+- **Player** — enter your character name and the DM's address, then connect.
+
 ### Advanced: command-line flags
 
-Power users can skip the launcher by passing flags directly:
+Users can skip the launcher by passing flags directly:
 
 ```bash
 python3 run_dnd_py.py --mode dm
@@ -193,6 +193,8 @@ This only happens once. The same files are reused for all future sessions. Keep 
 
 ### 3. Find your IP address
 
+> **Testing on the same machine?** Use `127.0.0.1` as the DM address. Run DungeonPy twice — once as DM, once as Player — in two separate terminals or by double-clicking the binary twice.
+
 **LAN session** (everyone on the same network):
 ```bash
 hostname -I        # shows your local IP, e.g. 192.168.1.42
@@ -226,12 +228,10 @@ LAN sessions do not require port forwarding.
 
 Tell your players to connect to:
 ```
-<your-ip>:8765
+<your-ip>:<your-port> (e.g. 192.168.1.1:8765)
 ```
 
 They enter this in the **DM address** field of the Player connection dialog. For LAN sessions the local IP is enough; for internet sessions use the public IP (or IPv6 wrapped in square brackets).
-
-> **Testing on the same machine?** Use `127.0.0.1` as the DM address. Run DungeonPy twice — once as DM, once as Player — in two separate terminals or by double-clicking the binary twice.
 
 ### 6. Load a map and start the session
 

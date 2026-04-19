@@ -21,7 +21,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
+          - os: ubuntu-22.04
             artifact: dungeonpy-linux
           - os: windows-latest
             artifact: dungeonpy-windows
