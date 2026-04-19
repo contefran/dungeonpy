@@ -21,7 +21,7 @@ import sys
 import tkinter as tk
 import PySimpleGUI as sg
 from Core.combatant import Combatant
-from Core.log_utils import log
+from Core.log_utils import log_msg
 from Core.chat_window import ChatWindow
 
 try:
@@ -88,7 +88,7 @@ class Tracker:
         self._table_photos = {}   # keeps ImageTk.PhotoImage refs alive (tkinter GC guard)
 
         if self.verbose:
-            log("[Tracker] Tracker module loaded.")
+            log_msg("[Tracker] Tracker module loaded.")
 
     # ------------------------------------------------------------------
     # Condition image loading
@@ -453,14 +453,14 @@ class Tracker:
             return
 
         if self.verbose:
-            log(f"[Tracker] Event: {event}")
+            log_msg(f"[Tracker] Event: {event}")
 
         if event == '-TABLE-':
             try:
                 if values['-TABLE-']:
                     row_index = values['-TABLE-'][0]
                     if self.verbose:
-                        log(f"[Tracker] Handling row selection: {row_index}")
+                        log_msg(f"[Tracker] Handling row selection: {row_index}")
                     if row_index == 0:
                         self._selected_index = None
                         self._submit({"action": "clear_selection"})
@@ -470,7 +470,7 @@ class Tracker:
                         self._selected_index = row_index - 1
                         c = self.server.combatants[self._selected_index]
                         if self.verbose:
-                            log(f"[Tracker] Selected index = {self._selected_index}, Combatant: {c}")
+                            log_msg(f"[Tracker] Selected index = {self._selected_index}, Combatant: {c}")
                         self.window['-NAME-'].update(c.name)
                         self.window['-INITIATIVE-'].update(c.initiative)
                         self.window['-HP-'].update('' if c.hp is None else c.hp)

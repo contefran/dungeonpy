@@ -1,7 +1,7 @@
 import pygame
 import os
 import struct
-from Core.log_utils import log
+from Core.log_utils import log_msg
 from Core.los import compute_los
 import math
 
@@ -1319,7 +1319,7 @@ class MapManager:
         self.offset_x = screen_w // 2 - int(frac_x * map_px_w)
         self.offset_y = screen_h // 2 - int(frac_y * map_px_h)
         if self.verbose:
-            log(f"[Map] Minimap click at ({mx},{my}) -> recentered to frac ({frac_x:.2f},{frac_y:.2f})")
+            log_msg(f"[Map] Minimap click at ({mx},{my}) -> recentered to frac ({frac_x:.2f},{frac_y:.2f})")
 
     def draw_minimap(self, screen):
         rect = self._minimap_rect()
@@ -1467,7 +1467,7 @@ class MapManager:
             self.rescale_icons()
             self.rescale_object_icons()
         if self.verbose:
-            log(f"[Map] Zoom level changed to tile_size = {self.tile_size}")
+            log_msg(f"[Map] Zoom level changed to tile_size = {self.tile_size}")
 
     def start_panning(self, pos):
         self.panning = True
@@ -1484,7 +1484,7 @@ class MapManager:
             self.offset_y += dy
             self.pan_start = pos
             if self.verbose:
-                log(f"[Map] Panning by ({dx}, {dy})")
+                log_msg(f"[Map] Panning by ({dx}, {dy})")
 
     def handle_click(self, pos, button):
         mx, my = pos
@@ -1570,7 +1570,7 @@ class MapManager:
             return
 
         if self.verbose:
-            log(f"[Map] Mouse click at pixel=({mx},{my}) tile=({col},{row})")
+            log_msg(f"[Map] Mouse click at pixel=({mx},{my}) tile=({col},{row})")
 
         if button == 1:
             if self.super_verbose:
@@ -1580,8 +1580,8 @@ class MapManager:
                         x = cx * self.tile_size + self.offset_x
                         y = cy * self.tile_size + self.offset_y
                         rect = pygame.Rect(x, y, self.tile_size, self.tile_size)
-                        log(f"[Map] Checking token {c.name} at tile {c.pos} -> pixel ({x},{y})")
-                        log(f"rect: {rect}, tile size: {self.tile_size}, offset: ({self.offset_x}, {self.offset_y})")
+                        log_msg(f"[Map] Checking token {c.name} at tile {c.pos} -> pixel ({x},{y})")
+                        log_msg(f"rect: {rect}, tile size: {self.tile_size}, offset: ({self.offset_x}, {self.offset_y})")
 
             # Tokens have priority: check for a token before checking the tile type.
             # This ensures a token placed on a door can still be selected.
@@ -1590,14 +1590,14 @@ class MapManager:
             if token:
                 self._submit({"action": "select", "name": token.name})
                 if self.verbose:
-                    log(f"[Map] Selected token: {token.name}")
+                    log_msg(f"[Map] Selected token: {token.name}")
 
             if not hit and 0 <= col < len(self.map_data[0]) and 0 <= row < len(self.map_data):
                 tile = self.map_data[row][col]
                 if tile in (3, 4, 5, 6):
                     self._submit({"action": "toggle_door", "x": col, "y": row, "tile_type": tile})
                     if self.verbose:
-                        log(f"[Map] Toggled door at ({col}, {row})")
+                        log_msg(f"[Map] Toggled door at ({col}, {row})")
                     return
 
             if not hit and self.unplaced:
@@ -1606,12 +1606,12 @@ class MapManager:
                     self._submit({"action": "place_token", "name": combatant.name, "pos": [col, row]})
                     self._submit({"action": "select", "name": combatant.name})
                     if self.verbose:
-                        log(f"[Map] Placed new token: {combatant.name} at ({col},{row})")
+                        log_msg(f"[Map] Placed new token: {combatant.name} at ({col},{row})")
                     hit = True
 
             if not hit:
                 if self.verbose:
-                    log(f"[Map] No token selected")
+                    log_msg(f"[Map] No token selected")
                 self._submit({"action": "clear_selection"})
 
     def get_token_at_pixel(self, mx, my):
@@ -1655,7 +1655,7 @@ class MapManager:
                 self.dragging_token = self.drag_candidate
                 self.drag_candidate = None
                 if self.verbose:
-                    log(f"[Map] Dragging token: {self.dragging_token.name} from {self.dragging_token.pos}")
+                    log_msg(f"[Map] Dragging token: {self.dragging_token.name} from {self.dragging_token.pos}")
 
     def drop_token(self, mx, my):
         if not self.dragging_token:
@@ -1671,11 +1671,11 @@ class MapManager:
         if self._footprint_ok(col, row, token.size, ignore_token=token):
             self._submit({"action": "move_token", "name": token.name, "pos": [col, row]})
             if self.verbose:
-                log(f"[Map] Dropped token {token.name} at ({col},{row})")
+                log_msg(f"[Map] Dropped token {token.name} at ({col},{row})")
         else:
             self._submit({"action": "move_token", "name": token.name, "pos": self.initial_token_pos})
             if self.verbose:
-                log(f"[Map] Invalid drop, reverted {token.name} to {self.initial_token_pos}")
+                log_msg(f"[Map] Invalid drop, reverted {token.name} to {self.initial_token_pos}")
 
         self.dragging_token = None
         self.drag_candidate = None
