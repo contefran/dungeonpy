@@ -223,7 +223,10 @@ def _run_launcher() -> argparse.Namespace | None:
         args.color     = 'white'
         args.insecure  = False
         load_path = (values.get('-LOAD_PATH-') or '').strip()
-        args.load_path = load_path if values.get('-LOAD_GAME-') and load_path else None
+        if values.get('-LOAD_GAME-') and load_path:
+            args.load_path = load_path   # explicit file to load
+        else:
+            args.load_path = False       # explicit new game — load nothing
     else:
         args.mode      = 'player'
         args.name      = values['-NAME-'].strip()
