@@ -301,9 +301,12 @@ class Game:
             self._player_chat.run(self._quit_event)  # blocks until chat window closes
 
         else:  # dm
-            save_path = self.load_path or self._resolve_load_path()
-            if os.path.isfile(save_path):
-                self.server.submit({"action": "load", "path": save_path})
+            if self.load_path is False:
+                pass  # new game — start empty
+            else:
+                save_path = self.load_path or self._resolve_load_path()
+                if os.path.isfile(save_path):
+                    self.server.submit({"action": "load", "path": save_path})
             self._start_autosave()
             self.tracker.run_gui(self.dir_path)
 

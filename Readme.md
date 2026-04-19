@@ -86,38 +86,6 @@ Dependencies:
 
 ---
 
-## Building from Source
-
-### Linux
-
-```bash
-./build.sh
-```
-
-Produces a self-contained folder at `dist/dungeonpy/` with the binary and all assets.
-
-### Windows
-
-```cmd
-pip install pyinstaller "PySimpleGUI==4.60.5.1"
-pip install -r requirements.txt
-pyinstaller dungeonpy.spec --noconfirm
-xcopy /E /I Assets dist\dungeonpy\Assets
-xcopy /E /I Maps   dist\dungeonpy\Maps
-mkdir dist\dungeonpy\Savegames
-```
-
-### CI — GitHub Actions
-
-Pushing a version tag builds both platforms automatically and attaches the zips to a GitHub Release:
-
-```bash
-git tag v1.2.0
-git push origin v1.2.0
-```
-
-You can also trigger a manual build from the **Actions** tab without creating a release.
-
 ---
 
 ## Usage
