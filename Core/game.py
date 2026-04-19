@@ -28,7 +28,7 @@ from Core.server import GameServer
 from Core.ws_bridge import WSBridge
 from Core.map_manager import MapManager
 from Core.tracker import Tracker
-from Core.log_utils import log
+from Core.log_utils import log_msg
 
 DEFAULT_MAP_PATH  = 'Maps/sample_dungeon_matrix_with_voids.txt'
 DEFAULT_SAVE_FILE = 'Savegames/combat_tracker_example.json'
@@ -91,7 +91,7 @@ class Game:
         self.bridge.start()
 
         if self.verbose:
-            log(f"[Game] WebSocket bridge on ws://{self.bridge.host}:{self.bridge.port}")
+            log_msg(f"[Game] WebSocket bridge on ws://{self.bridge.host}:{self.bridge.port}")
 
         if mode != 'map':
             self.tracker = Tracker(
@@ -124,7 +124,7 @@ class Game:
             self.tracker._chat._ping_fn = lambda: mm._ping_sound and mm._ping_sound.play()
 
         if self.verbose:
-            log(f"[Game] Initialized in mode: {mode}")
+            log_msg(f"[Game] Initialized in mode: {mode}")
 
     def _init_dm(self, host, port, password, cert, key):
         """--mode dm — full DM GUI + TLS WebSocket server for remote players."""
@@ -150,7 +150,7 @@ class Game:
         print(f"[DungeonPy] DM server listening on wss://*:{self.bridge.port}")
         print(f"[DungeonPy] Share your public IP + port with players.")
         if self.verbose:
-            log(f"[Game] DM bridge on wss://{host}:{self.bridge.port}")
+            log_msg(f"[Game] DM bridge on wss://{host}:{self.bridge.port}")
 
         self.tracker = Tracker(
             server=self.server,
@@ -229,7 +229,7 @@ class Game:
             raise SystemExit(1)
 
         if self.verbose:
-            log(f"[Game] Player '{player_name}' connected to {host}:{port}")
+            log_msg(f"[Game] Player '{player_name}' connected to {host}:{port}")
 
     # ------------------------------------------------------------------
     # Map window lifecycle
@@ -324,7 +324,7 @@ class Game:
                 )
                 self.server.submit({"action": "save", "path": path})
                 if self.verbose:
-                    log(f"[Game] Autosaved to {path}")
+                    log_msg(f"[Game] Autosaved to {path}")
 
         threading.Thread(target=_loop, daemon=True, name='autosave').start()
 
@@ -357,7 +357,7 @@ class Game:
     def run(self):
         """Start the appropriate blocking entry point for the selected mode."""
         if self.verbose:
-            log(f"[Game] Launching in {self.mode} mode...")
+            log_msg(f"[Game] Launching in {self.mode} mode...")
 
         if self.mode == 'player':
             self._player_chat.run(self._quit_event)  # blocks until chat window closes
@@ -385,7 +385,7 @@ class Game:
     def shutdown(self):
         """Tear down all subsystems cleanly — called automatically at the end of run()."""
         if self.verbose:
-            log("[Game] Shutting down.")
+            log_msg("[Game] Shutting down.")
         # Close the map window and wait for the thread to finish cleanly.
         # On Windows, SDL requires the pygame window to be destroyed on its own
         # thread before the process exits — otherwise the window lingers.

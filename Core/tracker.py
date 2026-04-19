@@ -21,16 +21,17 @@ import sys
 import tkinter as tk
 import PySimpleGUI as sg
 from Core.combatant import Combatant
-from Core.log_utils import log
+from Core.log_utils import log_msg
 from Core.chat_window import ChatWindow
 
 try:
-    from PIL import Image, ImageDraw, ImageFont as PILFont, ImageTk
+    from PIL import Image, ImageTk
     _PIL_OK = True
 except ImportError:
     _PIL_OK = False
 
-_NOTO_COLOR_EMOJI = "/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf"
+_UI_FONT = 'Noto Sans' if sys.platform == 'win32' else 'gothic'
+
 CONDITION_ICON_SIZE = 36 # pixels
 
 _COND_ABBREV = {
@@ -40,25 +41,6 @@ _COND_ABBREV = {
     'See-invisible': 'SeI', 'Stunned': 'Stn', 'Unconscious': 'Unc', 'Dead': 'Ded',
 }
 
-
-def _render_emoji_png(char: str, size: int = 22) -> bytes | None:
-    """Render a single emoji as a colour PNG via NotoColorEmoji. Returns None on failure."""
-    if not _PIL_OK or not os.path.exists(_NOTO_COLOR_EMOJI):
-        return None
-    try:
-        font = PILFont.truetype(_NOTO_COLOR_EMOJI, 109)  # 109 = native bitmap size
-        dummy = Image.new("RGBA", (1, 1))
-        bbox = ImageDraw.Draw(dummy).textbbox((0, 0), char, font=font, embedded_color=True)
-        w = max(1, bbox[2] - bbox[0])
-        h = max(1, bbox[3] - bbox[1])
-        img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
-        ImageDraw.Draw(img).text((-bbox[0], -bbox[1]), char, font=font, embedded_color=True)
-        img = img.resize((size, size), Image.LANCZOS)
-        buf = io.BytesIO()
-        img.save(buf, format="PNG")
-        return buf.getvalue()
-    except Exception:
-        return None
 
 
 class Tracker:
@@ -93,67 +75,40 @@ class Tracker:
         self._chat: ChatWindow | None = None
         self.window = None
 
-        condition_dict = {
-            'Blind': '🙈',
-            'Charmed': '💘',
-            'Deaf': '🙉',
-            'Frightened': '😱',
-            'Grappled': '🤼',
-            'Hidden': '🫥',
-            'Incapacitated': '💤',
-            'Invisible': '👻',
-            'Paralyzed': '🧊',
-            'Petrified': '🗿',
-            'Poisoned': '🩸',
-            'Prone': '🛌',
-            'Restrained': '⛓',
-            'See-invisible': '👁',
-            'Stunned': '😵',
-            'Unconscious': '🛑',
-            'Dead': '💀',
-        }
-        self.condition_list = list(condition_dict.keys())
+        self.condition_list = [
+            'Blind', 'Charmed', 'Deaf', 'Frightened', 'Grappled', 'Hidden',
+            'Incapacitated', 'Invisible', 'Paralyzed', 'Petrified', 'Poisoned',
+            'Prone', 'Restrained', 'See-invisible', 'Stunned', 'Unconscious', 'Dead',
+        ]
 
-        def sanitize_emoji(s: str) -> str:  # remove U+FE0F (variation selector-16)
-            return s.replace('\ufe0f', '')
-
-        if sys.platform.startswith("linux"):
-            self.condition_icons = {k: sanitize_emoji(v) for k, v in condition_dict.items()}
-        else:
-            self.condition_icons = dict(condition_dict)
-
-        # Load condition images: PNG files take priority, emoji rendering is the fallback.
+        # Load condition images from Assets/Conditions/.
         self.condition_images = self._load_condition_images()
         self._table_photos = {}   # keeps ImageTk.PhotoImage refs alive (tkinter GC guard)
 
         if self.verbose:
-            log("[Tracker] Tracker module loaded.")
+            log_msg("[Tracker] Tracker module loaded.")
 
     # ------------------------------------------------------------------
     # Condition image loading
     # ------------------------------------------------------------------
 
     def _load_condition_images(self) -> dict:
-        """
-        Return {condition_name: png_bytes} for each condition.
-        Prefers Icons/Conditions/<name>.png; falls back to emoji rendering.
-        """
+        """Return {condition_name: png_bytes} for each condition found in Assets/Conditions/."""
         images = {}
         for cond in self.condition_list:
             png_path = os.path.join(self.dir_path, 'Assets', 'Conditions', f'{cond}.png')
-            if os.path.isfile(png_path):
-                with open(png_path, 'rb') as f:
-                    raw = f.read()
-                if _PIL_OK:
-                    img = Image.open(io.BytesIO(raw)).convert("RGBA")
-                    img = img.resize((CONDITION_ICON_SIZE, CONDITION_ICON_SIZE), Image.LANCZOS)
-                    buf = io.BytesIO()
-                    img.save(buf, format="PNG")
-                    images[cond] = buf.getvalue()
-                else:
-                    images[cond] = raw
+            if not os.path.isfile(png_path):
+                continue
+            with open(png_path, 'rb') as f:
+                raw = f.read()
+            if _PIL_OK:
+                img = Image.open(io.BytesIO(raw)).convert("RGBA")
+                img = img.resize((CONDITION_ICON_SIZE, CONDITION_ICON_SIZE), Image.LANCZOS)
+                buf = io.BytesIO()
+                img.save(buf, format="PNG")
+                images[cond] = buf.getvalue()
             else:
-                images[cond] = _render_emoji_png(self.condition_icons[cond])
+                images[cond] = raw
         return images
 
     # ------------------------------------------------------------------
@@ -373,15 +328,7 @@ class Tracker:
         def chunk(lst, size):
             return [lst[i:i + size] for i in range(0, len(lst), size)]
 
-        if self.verbose:
-            print(f'Platform: {sys.platform}')
-        if sys.platform == "win32":
-            emoji_font = ("Segoe UI Emoji", 12)
-        elif sys.platform == "darwin":
-            emoji_font = ("Apple Color Emoji", 12)
-        else:
-            emoji_font = ("Noto Emoji", 12)
-        table_font = ("Helvetica", 16)
+        table_font = (_UI_FONT, 16, 'normal')
 
         COND_COL_WIDTH = 15  # fixed chars — wide enough for "See-invisible"
         condition_rows = []
@@ -391,13 +338,8 @@ class Tracker:
                 img_data = self.condition_images.get(cond)
                 if img_data:
                     row_elements.append(sg.Image(data=img_data))
-                    row_elements.append(sg.Checkbox(cond, key=f'-COND_{cond}-', font=table_font,
-                                                    size=(COND_COL_WIDTH, 1), enable_events=True))
-                else:
-                    row_elements.append(sg.Checkbox(
-                        f"{self.condition_icons[cond]} {cond}", key=f'-COND_{cond}-', font=emoji_font,
-                        size=(COND_COL_WIDTH, 1), enable_events=True
-                    ))
+                row_elements.append(sg.Checkbox(cond, key=f'-COND_{cond}-', font=table_font,
+                                                size=(COND_COL_WIDTH, 1), enable_events=True))
             condition_rows.append(row_elements)
 
         layout = [
@@ -438,7 +380,7 @@ class Tracker:
                        font=table_font),
              sg.Text('tiles', font=table_font)],
             [sg.HorizontalSeparator()],
-            [sg.Text('Connected Players', font=('Helvetica', 12, 'bold'))],
+            [sg.Text('Connected Players', font=(_UI_FONT, 12, 'bold'))],
             [sg.Table(
                 values=[],
                 headings=['Player', 'Select', 'Move'],
@@ -448,7 +390,7 @@ class Tracker:
                 col_widths=[14, 7, 7],
                 auto_size_columns=False,
                 num_rows=4,
-                font=('Helvetica', 12),
+                font=(_UI_FONT, 12),
             )],
             [sg.Button('Toggle Selection', key='Toggle Selection'),
              sg.Button('Toggle Movement', key='Toggle Movement')],
@@ -476,7 +418,7 @@ class Tracker:
             self.window['-TABLE-'].update(values=data, select_rows=[])
 
         tree = self.window['-TABLE-'].Widget
-        tree.tag_configure('dead', font=('Helvetica', 16, 'overstrike'))
+        tree.tag_configure('dead', font=(_UI_FONT, 16, 'overstrike'))
         for info in self._connected_players.values():
             c = info.get("color", "white")
             try:
@@ -509,14 +451,14 @@ class Tracker:
             return
 
         if self.verbose:
-            log(f"[Tracker] Event: {event}")
+            log_msg(f"[Tracker] Event: {event}")
 
         if event == '-TABLE-':
             try:
                 if values['-TABLE-']:
                     row_index = values['-TABLE-'][0]
                     if self.verbose:
-                        log(f"[Tracker] Handling row selection: {row_index}")
+                        log_msg(f"[Tracker] Handling row selection: {row_index}")
                     if row_index == 0:
                         self._selected_index = None
                         self._submit({"action": "clear_selection"})
@@ -526,7 +468,7 @@ class Tracker:
                         self._selected_index = row_index - 1
                         c = self.server.combatants[self._selected_index]
                         if self.verbose:
-                            log(f"[Tracker] Selected index = {self._selected_index}, Combatant: {c}")
+                            log_msg(f"[Tracker] Selected index = {self._selected_index}, Combatant: {c}")
                         self.window['-NAME-'].update(c.name)
                         self.window['-INITIATIVE-'].update(c.initiative)
                         self.window['-HP-'].update('' if c.hp is None else c.hp)
@@ -552,7 +494,7 @@ class Tracker:
                      sg.Input('', key='-ROUNDS-', size=(5, 1))],
                     [sg.Text('Initiative at expiry:', size=(18, 1)),
                      sg.Input(str(sel.initiative), key='-INIT-', size=(5, 1))],
-                    [sg.Text('(leave Rounds blank for permanent)', font=('Helvetica', 10))],
+                    [sg.Text('(leave Rounds blank for permanent)', font=(_UI_FONT, 10))],
                     [sg.Button('OK'), sg.Button('Cancel')],
                 ]
                 popup = sg.Window('Condition Duration', popup_layout,
@@ -790,6 +732,11 @@ class Tracker:
             "WM_DELETE_WINDOW",
             lambda: self.window.write_event_value('-CLOSE_REQUESTED-', None),
         )
+
+        # Override the ttk Treeview style — the Windows 'vista' theme applies bold
+        # to row text regardless of the font argument passed to the Table element.
+        import tkinter.ttk as ttk
+        ttk.Style().configure('Treeview', font=(_UI_FONT, 16, 'normal'))
 
         tree = self.window['-TABLE-'].Widget
         tree.bind('<Double-Button-1>', self._start_notes_edit)

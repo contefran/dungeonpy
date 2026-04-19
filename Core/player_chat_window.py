@@ -6,11 +6,14 @@ Runs on the main thread via its own event loop.  The map runs on a daemon
 thread, so when this window closes the whole process exits cleanly.
 """
 
+import sys
 import threading
+
 import PySimpleGUI as sg
 
 
-_FONT = ('Helvetica', 12)
+_UI_FONT = 'Noto Sans' if sys.platform == 'win32' else 'gothic'
+_FONT    = (_UI_FONT, 12)
 
 
 class PlayerChatWindow:
