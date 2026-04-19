@@ -126,7 +126,10 @@ You can also trigger a manual build from the **Actions** tab without creating a 
 
 Launch DungeonPy and a startup dialog appears. Select your role:
 
-- **Dungeon Master** — opens the tracker, map editor, and hosts a server that players can connect to. Enter an optional session password (leave blank to allow anyone to join).
+- **Dungeon Master** — opens the tracker, map editor, and hosts a server that players can connect to.
+  - **Start a new game** — loads the built-in example session so you can start placing combatants immediately.
+  - **Load a previous game** — click **Browse** to pick a save file from `Savegames/` (or anywhere else).
+  - Enter an optional session password (leave blank to allow anyone to join).
 - **Player** — enter your character name and the DM's address, then connect.
 
 **Binary**
@@ -175,7 +178,7 @@ Follow these steps the first time you host a multiplayer session.
 
 ### 1. Start the server
 
-Launch DungeonPy, select **Dungeon Master**, enter an optional password, and click **Launch**. The tracker and map windows open and the server starts listening for players immediately.
+Launch DungeonPy, select **Dungeon Master**, choose **Start a new game** or **Load a previous game**, enter an optional password, and click **Launch**. The tracker and map windows open and the server starts listening for players immediately.
 
 ### 2. TLS certificate (first run only)
 
