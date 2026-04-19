@@ -30,7 +30,7 @@ try:
 except ImportError:
     _PIL_OK = False
 
-_UI_FONT = 'Segoe UI' if sys.platform == 'win32' else 'gothic'
+_UI_FONT = 'Noto Sans' if sys.platform == 'win32' else 'gothic'
 
 CONDITION_ICON_SIZE = 36 # pixels
 
@@ -328,7 +328,7 @@ class Tracker:
         def chunk(lst, size):
             return [lst[i:i + size] for i in range(0, len(lst), size)]
 
-        table_font = (_UI_FONT, 16)
+        table_font = (_UI_FONT, 16, 'normal')
 
         COND_COL_WIDTH = 15  # fixed chars — wide enough for "See-invisible"
         condition_rows = []

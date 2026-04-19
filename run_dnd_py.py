@@ -18,6 +18,33 @@ if sys.platform == 'win32':
             pass
 
 
+def _load_fonts(dir_path: str):
+    """Register bundled Noto Sans fonts with Windows before any tkinter window opens."""
+    if sys.platform != 'win32':
+        return
+    import ctypes
+    _FR_PRIVATE = 0x10
+    fonts_dir = os.path.join(dir_path, 'Assets', 'Fonts')
+    for fname in ('NotoSans-Regular.ttf', 'NotoSans-Bold.ttf'):
+        path = os.path.join(fonts_dir, fname)
+        if os.path.isfile(path):
+            result = ctypes.windll.gdi32.AddFontResourceExW(path, _FR_PRIVATE, 0)
+            print(f"[Font] Loaded {fname}: {'OK' if result else 'FAILED'}")
+        else:
+            print(f"[Font] Not found: {path}")
+
+
+def _check_font(family: str, size: int = 16):
+    """Print the font family tkinter actually resolves to for the given request."""
+    import tkinter as tk
+    from tkinter import font as tkfont
+    root = tk.Tk()
+    root.withdraw()
+    f = tkfont.Font(family=family, size=size)
+    actual = f.actual()
+    root.destroy()
+    print(f"[Font] Requested '{family}' → resolved '{actual['family']}' weight={actual['weight']}")
+
 
 from Core.game import Game
 
@@ -141,6 +168,9 @@ def main():
                         help="Path to TLS private key file (--mode dm, overrides auto-generated).")
 
     args = parser.parse_args()
+
+    _load_fonts(args.dir)
+    _check_font('Noto Sans')
 
 
     # DM mode: prompt for password if not provided

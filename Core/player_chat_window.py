@@ -12,7 +12,7 @@ import threading
 import PySimpleGUI as sg
 
 
-_UI_FONT = 'Segoe UI' if sys.platform == 'win32' else 'gothic'
+_UI_FONT = 'Noto Sans' if sys.platform == 'win32' else 'gothic'
 _FONT    = (_UI_FONT, 12)
 
 
