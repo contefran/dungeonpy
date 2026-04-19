@@ -1,6 +1,8 @@
-# DungeonPy 1.1.4
+# DungeonPy
 
 A Dungeon Master toolkit for virtual tabletop D&D sessions. DungeonPy runs two synchronized interfaces — a **combat tracker** and an **interactive 2D map** — and supports a **multiplayer mode** where the DM hosts a server and players connect as clients, each seeing only what their character would see.
+
+> **No Python required.** Download the pre-built binary for your platform from the [Releases](../../releases) page and run it directly.
 
 ---
 
@@ -45,14 +47,31 @@ A Dungeon Master toolkit for virtual tabletop D&D sessions. DungeonPy runs two s
 
 ---
 
-## Requirements
+## Installation
 
-- Python 3.11+
-- Linux or Windows
+### Pre-built Binary (recommended)
 
----
+Download the zip for your platform from the [Releases](../../releases) page. No Python required.
 
-## Installation — From Source
+**Linux**
+```bash
+unzip dungeonpy-linux.zip
+cd dungeonpy
+./dungeonpy --mode dm        # host a session
+./dungeonpy --mode player    # join a session
+```
+
+**Windows** — extract `dungeonpy-windows.zip`, then run from a terminal:
+```
+dungeonpy.exe --mode dm      # host a session
+dungeonpy.exe --mode player  # join a session
+```
+
+Players connecting to a session will see a dialog asking for their name and the DM's address — no command-line flags needed beyond `--mode player`.
+
+### From Source
+
+Requires Python 3.11+ on Linux or Windows.
 
 ```bash
 git clone https://github.com/contefran/DungeonPy.git
@@ -60,7 +79,7 @@ cd DungeonPy
 pip install -r requirements.txt
 ```
 
-Dependencies installed:
+Dependencies:
 
 | Package | Role |
 |---------|------|
@@ -69,23 +88,6 @@ Dependencies installed:
 | `Pillow` | Image loading and scaling |
 | `websockets` | Multiplayer networking |
 | `cryptography` | TLS certificate generation |
-
----
-
-## Installation — Pre-built Binary
-
-Pre-built binaries for Linux and Windows are available on the [Releases](../../releases) page.
-
-**Linux**
-```bash
-unzip dungeonpy-linux.zip
-cd dungeonpy
-chmod +x dm_server.sh player_connect.sh
-```
-
-**Windows** — extract `dungeonpy-windows.zip` and run `dungeonpy.exe` directly, or use the provided `.bat` launchers.
-
-No Python installation required.
 
 ---
 
@@ -136,11 +138,14 @@ python3 run_dnd_py.py --mode map       # map only
 ### Multiplayer — DM
 
 ```bash
+# Binary (Linux)
+./dungeonpy --mode dm
+
+# Binary (Windows)
+dungeonpy.exe --mode dm
+
 # From source
 python3 run_dnd_py.py --mode dm
-
-# Binary
-./dm_server.sh
 ```
 
 You will be prompted for a session password (leave blank to disable). The DM interface includes the full tracker, the map editor, and the chat window.
@@ -157,11 +162,14 @@ Optional flags:
 ### Multiplayer — Player
 
 ```bash
+# Binary (Linux)
+./dungeonpy --mode player
+
+# Binary (Windows)
+dungeonpy.exe --mode player
+
 # From source
 python3 run_dnd_py.py --mode player
-
-# Binary
-./player_connect.sh
 ```
 
 A connection dialog will appear asking for your name and the DM's address. You can also pass them directly:
@@ -189,9 +197,9 @@ Follow these steps the first time you host a multiplayer session.
 ### 1. Start the server
 
 ```bash
-./dm_server.sh        # binary
-# or
-python3 run_dnd_py.py --mode dm
+./dungeonpy --mode dm          # binary (Linux)
+dungeonpy.exe --mode dm        # binary (Windows)
+python3 run_dnd_py.py --mode dm  # from source
 ```
 
 You will be prompted for a session password. Leave it blank for trusted groups.
@@ -245,7 +253,7 @@ Tell your players to connect to:
 <your-ip>:8765
 ```
 
-They enter this in the connection dialog when launching `player_connect.sh`. For LAN sessions the local IP is enough; for internet sessions use the public IP (or your IPv6 if players support it).
+They enter this in the connection dialog when launching with `--mode player`. For LAN sessions the local IP is enough; for internet sessions use the public IP (or your IPv6 if players support it).
 
 ### 6. Load a map and start the session
 
@@ -301,7 +309,7 @@ Conditions with a duration (e.g. Invisible for 2 rounds) expire automatically at
 
 ### Map — Player
 
-When you launch `player_connect.sh`, a dialog asks for your character name and the DM's address. Once connected:
+When you launch with `--mode player`, a dialog asks for your character name and the DM's address. Once connected:
 
 | Action | How |
 |--------|-----|
