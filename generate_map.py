@@ -1,453 +1,580 @@
+#!/usr/bin/env python3
 """
-generate_map.py — Procedural dungeon map generator for DungeonPy.
+generate_map.py — Standalone DungeonPy map creator.
 
-Tile codes (new numbering):
-  0 = void / nothing (exterior)
-  1 = floor
-  2 = wall
-  3 = wooden door
-  4 = iron door
-  5 = secret door (looks like wall until clicked)
-  6 = trap       (looks like floor until clicked)
-
-Usage:
-    python3 generate_map.py [--seed N]
+Paint tiles on a grid and save the result as a .txt file readable by DungeonPy.
+Run from the project root:
+    python3 generate_map.py [existing_map.txt]
 """
 
-import argparse
+import copy
 import os
-import random
 import sys
-from dataclasses import dataclass
+import threading
+
+import pygame
+import tkinter as tk
+from tkinter import filedialog, messagebox, simpledialog
+
+# ── Tile codes (match MapManager.draw_map) ───────────────────────────────────
+VOID        = 0
+FLOOR       = 1
+WALL        = 2
+WOODEN_DOOR = 3
+IRON_DOOR   = 4
+SECRET_DOOR = 5
+TRAP        = 6
+GRASS       = 16   # 'g' in txt
+
+TILE_TO_CHAR = {
+    VOID: '0', FLOOR: '1', WALL: '2', WOODEN_DOOR: '3',
+    IRON_DOOR: '4', SECRET_DOOR: '5', TRAP: '6', GRASS: 'g',
+}
+TILE_LABELS = [
+    (FLOOR,       "Floor"),
+    (WALL,        "Wall"),
+    (VOID,        "Void"),
+    (WOODEN_DOOR, "W.Door"),
+    (IRON_DOOR,   "I.Door"),
+    (SECRET_DOOR, "Secret"),
+    (TRAP,        "Trap"),
+    (GRASS,       "Grass"),
+]
+FALLBACK_COLORS = {
+    VOID: (0, 0, 0), FLOOR: (120, 100, 80), WALL: (60, 60, 70),
+    WOODEN_DOOR: (139, 90, 43), IRON_DOOR: (100, 100, 120),
+    SECRET_DOOR: (60, 60, 70), TRAP: (80, 60, 60), GRASS: (60, 120, 40),
+}
+
+TOOLBAR_W  = 112
+UNDO_LIMIT = 60
+ACTION_BUTTONS = [
+    ("New",     "Ctrl+N"),
+    ("Open",    "Ctrl+O"),
+    ("Save",    "Ctrl+S"),
+    ("Save As", "Ctrl+Shift+S"),
+    ("Undo",    "Ctrl+Z"),
+    ("Redo",    "Ctrl+Y"),
+]
 
 
-# ---------------------------------------------------------------------------
-# Data class
-# ---------------------------------------------------------------------------
+# ── I/O helpers ──────────────────────────────────────────────────────────────
 
-@dataclass
-class Room:
-    x: int   # left column (grid col)
-    y: int   # top row    (grid row)
-    w: int   # width  in tiles
-    h: int   # height in tiles
-    id: int
+def _parse_char(ch):
+    if ch.isdigit():
+        return int(ch)
+    if ch.isalpha():
+        return ord(ch.lower()) - ord('a') + 10
+    return VOID
 
 
-# ---------------------------------------------------------------------------
-# Geometry helpers
-# ---------------------------------------------------------------------------
-
-def room_center(room: Room):
-    return room.x + room.w // 2, room.y + room.h // 2
+def load_txt(path):
+    with open(path) as f:
+        lines = f.readlines()
+    return [[_parse_char(ch) for ch in line.strip()] for line in lines if line.strip()]
 
 
-def room_center_dist(r1: Room, r2: Room) -> int:
-    cx1, cy1 = room_center(r1)
-    cx2, cy2 = room_center(r2)
-    return abs(cx1 - cx2) + abs(cy1 - cy2)
-
-
-def rooms_overlap(r1: Room, r2: Room, gap: int = 1) -> bool:
-    """AABB overlap test with an extra gap on all sides."""
-    return not (
-        r1.x + r1.w + gap <= r2.x or
-        r2.x + r2.w + gap <= r1.x or
-        r1.y + r1.h + gap <= r2.y or
-        r2.y + r2.h + gap <= r1.y
-    )
-
-
-# ---------------------------------------------------------------------------
-# Step 1 — Room placement
-# ---------------------------------------------------------------------------
-
-def place_rooms(width, height, num_rooms,
-                room_min_w=5, room_min_h=5,
-                room_max_w=12, room_max_h=12,
-                max_retries=200):
-    rooms: list[Room] = []
-    room_cells: set[tuple] = set()
-
-    for i in range(num_rooms):
-        placed = False
-        for _ in range(max_retries):
-            rw = random.randint(room_min_w, room_max_w)
-            rh = random.randint(room_min_h, room_max_h)
-            # Keep at least 1 tile of void border on all sides
-            if rw > width - 4 or rh > height - 4:
-                continue
-            x = random.randint(2, width  - rw - 2)
-            y = random.randint(2, height - rh - 2)
-            candidate = Room(x=x, y=y, w=rw, h=rh, id=len(rooms))
-            if any(rooms_overlap(candidate, other) for other in rooms):
-                continue
-            rooms.append(candidate)
-            for row in range(y, y + rh):
-                for col in range(x, x + rw):
-                    room_cells.add((row, col))
-            placed = True
-            break
-
-        if not placed:
-            print(f"  Warning: could only place {len(rooms)} of {num_rooms} rooms "
-                  f"(ran out of space).", file=sys.stderr)
-            break
-
-    return rooms, room_cells
-
-
-# ---------------------------------------------------------------------------
-# Step 2 — Minimum spanning tree (Prim's, Manhattan distance)
-# ---------------------------------------------------------------------------
-
-def build_mst(rooms: list[Room]) -> list[tuple]:
-    if len(rooms) < 2:
-        return []
-    in_tree = {0}
-    edges = []
-    while len(in_tree) < len(rooms):
-        best_dist = float('inf')
-        best_edge = None
-        for a in in_tree:
-            for b in range(len(rooms)):
-                if b in in_tree:
-                    continue
-                d = room_center_dist(rooms[a], rooms[b])
-                if d < best_dist:
-                    best_dist = d
-                    best_edge = (a, b)
-        if best_edge is None:
-            break
-        edges.append(best_edge)
-        in_tree.add(best_edge[1])
-    return edges
-
-
-# ---------------------------------------------------------------------------
-# Step 3 — Corridor carving (L-shaped)
-# ---------------------------------------------------------------------------
-
-def _carve_h(row, col_a, col_b, room_cells, corridor_cells):
-    for col in range(min(col_a, col_b), max(col_a, col_b) + 1):
-        if (row, col) not in room_cells:
-            corridor_cells.add((row, col))
-
-
-def _carve_v(col, row_a, row_b, room_cells, corridor_cells):
-    for row in range(min(row_a, row_b), max(row_a, row_b) + 1):
-        if (row, col) not in room_cells:
-            corridor_cells.add((row, col))
-
-
-def carve_corridors(rooms, mst_edges, room_cells) -> set:
-    corridor_cells: set[tuple] = set()
-    for (a, b) in mst_edges:
-        cx1, cy1 = room_center(rooms[a])
-        cx2, cy2 = room_center(rooms[b])
-        if random.random() < 0.5:
-            _carve_h(cy1, cx1, cx2, room_cells, corridor_cells)
-            _carve_v(cx2, cy1, cy2, room_cells, corridor_cells)
-        else:
-            _carve_v(cx1, cy1, cy2, room_cells, corridor_cells)
-            _carve_h(cy2, cx1, cx2, room_cells, corridor_cells)
-    return corridor_cells
-
-
-# ---------------------------------------------------------------------------
-# Step 4 — Apply floors to grid
-# ---------------------------------------------------------------------------
-
-def apply_floors(grid, room_cells, corridor_cells):
-    for (row, col) in room_cells | corridor_cells:
-        grid[row][col] = 1
-
-
-# ---------------------------------------------------------------------------
-# Step 5 — Wall placement (8-directional neighbour of any floor → wall)
-# ---------------------------------------------------------------------------
-
-def place_walls(grid, width, height):
-    floor_cells = {
-        (r, c)
-        for r in range(height)
-        for c in range(width)
-        if grid[r][c] == 1
-    }
-    for row in range(1, height - 1):
-        for col in range(1, width - 1):
-            if grid[row][col] != 0:
-                continue
-            for dr in (-1, 0, 1):
-                for dc in (-1, 0, 1):
-                    if dr == 0 and dc == 0:
-                        continue
-                    if (row + dr, col + dc) in floor_cells:
-                        grid[row][col] = 2
-                        break
-                else:
-                    continue
-                break
-
-
-# ---------------------------------------------------------------------------
-# Step 6 — Door placement (choke-point detection)
-# ---------------------------------------------------------------------------
-
-def find_doorway_candidates(grid, corridor_cells, room_cells, width, height) -> list:
-    """
-    A doorway candidate is a corridor cell that:
-      - Has the choke-point shape (walls on two opposite sides, floor on the other two)
-      - Is adjacent to at least one room cell (i.e. it's a corridor entrance, not mid-corridor)
-      - Has no adjacent door already
-    """
-    candidates = []
-    for (row, col) in corridor_cells:
-        if grid[row][col] != 1:
-            continue
-
-        # Must be adjacent to a room cell in at least one cardinal direction
-        near_room = any(
-            (row + dr, col + dc) in room_cells
-            for dr, dc in ((-1, 0), (1, 0), (0, -1), (0, 1))
-        )
-        if not near_room:
-            continue
-
-        N = grid[row - 1][col] if row > 0          else 0
-        S = grid[row + 1][col] if row < height - 1 else 0
-        W = grid[row][col - 1] if col > 0          else 0
-        E = grid[row][col + 1] if col < width - 1  else 0
-
-        is_choke = (
-            (N == 2 and S == 2 and E == 1 and W == 1) or
-            (E == 2 and W == 2 and N == 1 and S == 1)
-        )
-        if not is_choke:
-            continue
-
-        # No adjacent door already
-        if any(
-            grid[row + dr][col + dc] in (3, 4, 5)
-            for dr, dc in ((-1, 0), (1, 0), (0, -1), (0, 1))
-            if 0 <= row + dr < height and 0 <= col + dc < width
-        ):
-            continue
-
-        candidates.append((row, col))
-    return candidates
-
-
-def place_doors(grid, candidates, wood_pct=0.60, iron_pct=0.10):
-    random.shuffle(candidates)
-    for (row, col) in candidates:
-        r = random.random()
-        if r < iron_pct:
-            grid[row][col] = 4
-        elif r < iron_pct + wood_pct:
-            grid[row][col] = 3
-
-
-# ---------------------------------------------------------------------------
-# Step 7 — Secret doors
-# ---------------------------------------------------------------------------
-
-def place_secret_doors(grid, width, height, n):
-    candidates = []
-    for row in range(1, height - 1):
-        for col in range(1, width - 1):
-            if grid[row][col] != 2:
-                continue
-            floor_neighbours = sum(
-                1 for dr, dc in ((-1, 0), (1, 0), (0, -1), (0, 1))
-                if grid[row + dr][col + dc] == 1
-            )
-            if floor_neighbours >= 2:
-                candidates.append((row, col))
-
-    random.shuffle(candidates)
-    for row, col in candidates[:n]:
-        grid[row][col] = 5
-
-
-# ---------------------------------------------------------------------------
-# Step 8 — Traps
-# ---------------------------------------------------------------------------
-
-def place_traps(grid, corridor_cells, room_cells, width, height, n):
-    candidates = []
-    for (row, col) in corridor_cells:
-        if grid[row][col] != 1:
-            continue
-        # Not adjacent to a door
-        if any(
-            grid[row + dr][col + dc] in (3, 4, 5)
-            for dr, dc in ((-1, 0), (1, 0), (0, -1), (0, 1))
-            if 0 <= row + dr < height and 0 <= col + dc < width
-        ):
-            continue
-        # Not immediately adjacent to a room cell
-        if any(
-            (row + dr, col + dc) in room_cells
-            for dr, dc in ((-1, 0), (1, 0), (0, -1), (0, 1))
-        ):
-            continue
-        candidates.append((row, col))
-
-    random.shuffle(candidates)
-    for row, col in candidates[:n]:
-        grid[row][col] = 6
-
-
-# ---------------------------------------------------------------------------
-# Step 9 — Output
-# ---------------------------------------------------------------------------
-
-def write_output(grid, path):
-    dir_name = os.path.dirname(path)
-    if dir_name:
-        os.makedirs(dir_name, exist_ok=True)
+def save_txt(map_data, path):
+    rows = [''.join(TILE_TO_CHAR.get(t, '0') for t in row) for row in map_data]
     with open(path, 'w') as f:
-        for row in grid:
-            f.write(''.join(str(cell) for cell in row) + '\n')
+        f.write('\n'.join(rows) + '\n')
 
 
-# ---------------------------------------------------------------------------
-# PNG export
-# ---------------------------------------------------------------------------
-
-def save_png(grid, txt_path, dir_path="./", tile_size=20):
-    """Render the generated map to a PNG using MapManager's drawing code."""
-    import pygame
-    from Core.server import GameServer
-    from Core.map_manager import MapManager
-
-    rows = len(grid)
-    cols = len(grid[0]) if rows else 0
-    width  = cols * tile_size
-    height = rows * tile_size
-
-    pygame.init()
-    screen = pygame.display.set_mode((width, height))
-    pygame.display.set_caption("Generating preview...")
-
-    server = GameServer()
-    mm = MapManager(server=server, dir_path=dir_path, map_data=[row[:] for row in grid])
-    mm.tile_size = tile_size
-    mm.offset_x  = 0
-    mm.offset_y  = 0
-
-    # Load and convert textures now that the display is initialised
-    mm._load_textures()
-    (mm.floor_texture, mm.wall_texture, mm.wooden_door_closed_texture,
-     mm.wooden_door_open_texture, mm.iron_door_closed_texture,
-     mm.iron_door_open_texture, mm.secret_door_texture,
-     mm.trap_texture) = mm.scale_textures(tile_size)
-
-    screen.fill((0, 0, 0))
-    mm.draw_map(screen)
-    mm.draw_grid(screen)
-
-    png_path = os.path.splitext(txt_path)[0] + ".png"
-    pygame.image.save(screen, png_path)
-    pygame.quit()
-    print(f"  PNG preview  : {png_path}")
+def empty_map(cols, rows):
+    return [[VOID] * cols for _ in range(rows)]
 
 
-# ---------------------------------------------------------------------------
-# Step 10 — Stats
-# ---------------------------------------------------------------------------
-
-def print_stats(rooms, room_cells, corridor_cells, grid, width, height, output_path):
-    floor_total = sum(1 for r in range(height) for c in range(width) if grid[r][c] == 1)
-    wall_total  = sum(1 for r in range(height) for c in range(width) if grid[r][c] == 2)
-    wood_doors  = sum(1 for r in range(height) for c in range(width) if grid[r][c] == 3)
-    iron_doors  = sum(1 for r in range(height) for c in range(width) if grid[r][c] == 4)
-    secret      = sum(1 for r in range(height) for c in range(width) if grid[r][c] == 5)
-    traps       = sum(1 for r in range(height) for c in range(width) if grid[r][c] == 6)
-    print(f"\nGenerated dungeon: {width} x {height} tiles")
-    print(f"  Rooms placed : {len(rooms)}")
-    print(f"  Floor cells  : {floor_total}  (room: {len(room_cells)}, corridor: {len(corridor_cells)})")
-    print(f"  Walls        : {wall_total}")
-    print(f"  Doors        : {wood_doors} wooden, {iron_doors} iron")
-    print(f"  Secret doors : {secret}")
-    print(f"  Traps        : {traps}")
-    print(f"  Saved to     : {output_path}")
+def _ask_new_dimensions():
+    """Show tkinter dialogs to get map size. Called before pygame.display.set_mode()
+    so the dialogs are not hidden behind the pygame window."""
+    root = tk.Tk()
+    root.withdraw()
+    root.lift()
+    cols = simpledialog.askinteger("New map", "Width (columns)?",
+                                   initialvalue=20, minvalue=2, maxvalue=300, parent=root)
+    rows = simpledialog.askinteger("New map", "Height (rows)?",
+                                   initialvalue=20, minvalue=2, maxvalue=300, parent=root)
+    root.destroy()
+    return cols, rows
 
 
-# ---------------------------------------------------------------------------
-# CLI / main
-# ---------------------------------------------------------------------------
+# ── Editor ───────────────────────────────────────────────────────────────────
 
-def _prompt_int(label, default):
-    raw = input(f"  {label} [{default}]: ").strip()
-    return int(raw) if raw else default
+class MapEditor:
 
+    def __init__(self, dir_path, initial_file=None):
+        self.dir_path  = dir_path
+        self.tile_size = 40
+        self.offset_x  = TOOLBAR_W
+        self.offset_y  = 0
+        self.map_data  = []
+        self.save_path = None
 
-def _prompt_str(label, default):
-    raw = input(f"  {label} [{default}]: ").strip()
-    return raw if raw else default
+        self._sel_tile   = FLOOR
+        self._paint_mode = 'free'    # 'free' | 'rect'
+        self._painting   = False
+        self._paint_tile = None
+        self._last_cell  = None
+        self._rect_start = None
+        self._rect_end   = None
+        self._panning    = False
+        self._pan_start  = (0, 0)
+        self._undo_stack = []
+        self._redo_stack = []
 
+        # Ask for dimensions BEFORE pygame creates its window so the dialog
+        # is not hidden behind a pygame surface.
+        if initial_file and os.path.isfile(initial_file):
+            init_data      = load_txt(initial_file)
+            self.save_path = initial_file
+        else:
+            cols, rows = _ask_new_dimensions()
+            if not cols or not rows:
+                sys.exit(0)
+            init_data = empty_map(cols, rows)
 
-def parse_args():
-    parser = argparse.ArgumentParser(description="DungeonPy random map generator")
-    parser.add_argument('--seed', type=int, default=None,
-                        help="Random seed for reproducible output")
-    parser.add_argument('--dir', type=str, default='./',
-                        help="Base directory for textures (default: ./)")
-    parser.add_argument('--no-png', action='store_true',
-                        help="Skip PNG preview generation")
-    return parser.parse_args()
+        pygame.init()
+        self._screen = pygame.display.set_mode((1280, 800), pygame.RESIZABLE)
+        pygame.display.set_caption(
+            f"DungeonPy Map Editor — {os.path.basename(self.save_path)}"
+            if self.save_path else "DungeonPy Map Editor — unsaved")
+        self._font = pygame.font.SysFont(None, 19)
+
+        self._tex_orig = {}
+        self._tex      = {}
+        self._load_textures()
+
+        self.map_data = init_data
+        self._center_map()
+
+    # ── Textures ─────────────────────────────────────────────────────────────
+
+    def _load_textures(self):
+        d = self.dir_path
+        def _img(rel, alpha=False):
+            p = os.path.join(d, rel)
+            if not os.path.isfile(p):
+                return None
+            try:
+                s = pygame.image.load(p)
+                return s.convert_alpha() if alpha else s.convert()
+            except Exception:
+                return None
+
+        wall = _img('Assets/Textures/stonefloor4.jpg')
+        self._tex_orig = {
+            FLOOR:       _img('Assets/Textures/stonefloor3.jpg'),
+            WALL:        wall,
+            WOODEN_DOOR: _img('Assets/Textures/Wooden_door_closed.png', alpha=True),
+            IRON_DOOR:   _img('Assets/Textures/Iron_door_closed.png',   alpha=True),
+            SECRET_DOOR: wall,
+            TRAP:        _img('Assets/Textures/trap_pit.jpg', alpha=True),
+            GRASS:       _img('Assets/Textures/grass_4.png'),
+        }
+        self._rescale_textures()
+
+    def _rescale_textures(self):
+        ts = self.tile_size
+        self._tex = {
+            t: pygame.transform.scale(orig, (ts, ts))
+            for t, orig in self._tex_orig.items() if orig is not None
+        }
+
+    # ── Map helpers ───────────────────────────────────────────────────────────
+
+    def _center_map(self):
+        if not self.map_data:
+            return
+        rows = len(self.map_data)
+        cols = len(self.map_data[0])
+        w, h = self._screen.get_size()
+        self.offset_x = TOOLBAR_W + max(0, (w - TOOLBAR_W - cols * self.tile_size) // 2)
+        self.offset_y = max(0, (h - rows * self.tile_size) // 2)
+
+    def _cell(self, px, py):
+        if not self.map_data:
+            return None
+        c = (px - self.offset_x) // self.tile_size
+        r = (py - self.offset_y) // self.tile_size
+        if 0 <= r < len(self.map_data) and 0 <= c < len(self.map_data[0]):
+            return r, c
+        return None
+
+    # ── Undo / redo ───────────────────────────────────────────────────────────
+
+    def _push_undo(self):
+        self._undo_stack.append(copy.deepcopy(self.map_data))
+        if len(self._undo_stack) > UNDO_LIMIT:
+            self._undo_stack.pop(0)
+        self._redo_stack.clear()
+
+    def _undo(self):
+        if not self._undo_stack:
+            return
+        self._redo_stack.append(copy.deepcopy(self.map_data))
+        self.map_data = self._undo_stack.pop()
+
+    def _redo(self):
+        if not self._redo_stack:
+            return
+        self._undo_stack.append(copy.deepcopy(self.map_data))
+        self.map_data = self._redo_stack.pop()
+
+    # ── Dialogs ───────────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _tk():
+        r = tk.Tk()
+        r.withdraw()
+        r.lift()
+        return r
+
+    def _dialog(self, fn):
+        """Run a blocking tkinter dialog fn() while pumping pygame events in the
+        background so the WM doesn't mark the window as 'not responding'."""
+        stop = threading.Event()
+        def _pump():
+            while not stop.is_set():
+                try:
+                    pygame.event.pump()
+                except Exception:
+                    pass
+                pygame.time.wait(50)
+        t = threading.Thread(target=_pump, daemon=True)
+        t.start()
+        try:
+            return fn()
+        finally:
+            stop.set()
+            t.join(timeout=1)
+
+    def _do_new(self):
+        cols, rows = self._dialog(_ask_new_dimensions)
+        if cols and rows:
+            self.map_data  = empty_map(cols, rows)
+            self.save_path = None
+            self._undo_stack.clear()
+            self._redo_stack.clear()
+            pygame.display.set_caption("DungeonPy Map Editor — unsaved")
+            self._center_map()
+
+    def _do_open(self):
+        maps_dir = os.path.join(self.dir_path, 'Maps')
+        root = self._tk()
+        path = self._dialog(lambda: filedialog.askopenfilename(
+            title="Open map",
+            initialdir=maps_dir if os.path.isdir(maps_dir) else self.dir_path,
+            filetypes=[("Map files", "*.txt"), ("All files", "*.*")],
+            parent=root,
+        ))
+        root.destroy()
+        if path:
+            self.map_data  = load_txt(path)
+            self.save_path = path
+            self._undo_stack.clear()
+            self._redo_stack.clear()
+            pygame.display.set_caption(
+                f"DungeonPy Map Editor — {os.path.basename(path)}")
+            self._center_map()
+
+    def _do_save(self, force_dialog=False):
+        if not self.map_data:
+            return
+        if force_dialog or not self.save_path:
+            maps_dir = os.path.join(self.dir_path, 'Maps')
+            root = self._tk()
+            path = self._dialog(lambda: filedialog.asksaveasfilename(
+                title="Save map",
+                initialdir=maps_dir if os.path.isdir(maps_dir) else self.dir_path,
+                defaultextension=".txt",
+                filetypes=[("Map files", "*.txt"), ("All files", "*.*")],
+                parent=root,
+            ))
+            root.destroy()
+            if not path:
+                return
+            self.save_path = path
+        save_txt(self.map_data, self.save_path)
+        pygame.display.set_caption(
+            f"DungeonPy Map Editor — {os.path.basename(self.save_path)}")
+
+    # ── Rendering ─────────────────────────────────────────────────────────────
+
+    def _blit_tile(self, screen, tile, x, y):
+        ts = self.tile_size
+        if tile == VOID:
+            pygame.draw.rect(screen, (0, 0, 0), (x, y, ts, ts))
+            return
+        if tile in (WOODEN_DOOR, IRON_DOOR, SECRET_DOOR, TRAP):
+            if FLOOR in self._tex:
+                screen.blit(self._tex[FLOOR], (x, y))
+            else:
+                pygame.draw.rect(screen, FALLBACK_COLORS[FLOOR], (x, y, ts, ts))
+        if tile in self._tex:
+            screen.blit(self._tex[tile], (x, y))
+        else:
+            pygame.draw.rect(screen, FALLBACK_COLORS.get(tile, (80, 80, 80)), (x, y, ts, ts))
+
+    def _draw_map(self, screen):
+        for r, row in enumerate(self.map_data):
+            for c, tile in enumerate(row):
+                self._blit_tile(screen, tile,
+                                c * self.tile_size + self.offset_x,
+                                r * self.tile_size + self.offset_y)
+
+    def _draw_grid(self, screen):
+        if self.tile_size < 8 or not self.map_data:
+            return
+        rows = len(self.map_data)
+        cols = len(self.map_data[0])
+        color = (55, 55, 55)
+        x0, y0, ts = self.offset_x, self.offset_y, self.tile_size
+        for c in range(cols + 1):
+            x = x0 + c * ts
+            pygame.draw.line(screen, color, (x, y0), (x, y0 + rows * ts))
+        for r in range(rows + 1):
+            y = y0 + r * ts
+            pygame.draw.line(screen, color, (x0, y), (x0 + cols * ts, y))
+
+    def _draw_hover(self, screen):
+        ts = self.tile_size
+        if self._paint_mode == 'rect' and self._rect_start and self._rect_end:
+            r0, c0 = self._rect_start
+            r1, c1 = self._rect_end
+            rmin, rmax = min(r0, r1), max(r0, r1)
+            cmin, cmax = min(c0, c1), max(c0, c1)
+            fill = pygame.Surface((ts, ts), pygame.SRCALPHA)
+            pygame.draw.rect(fill, (255, 255, 255, 55), (0, 0, ts, ts))
+            for rr in range(rmin, rmax + 1):
+                for cc in range(cmin, cmax + 1):
+                    screen.blit(fill, (cc * ts + self.offset_x, rr * ts + self.offset_y))
+            px = cmin * ts + self.offset_x
+            py = rmin * ts + self.offset_y
+            pygame.draw.rect(screen, (255, 220, 80),
+                             (px, py, (cmax - cmin + 1) * ts, (rmax - rmin + 1) * ts), 2)
+        else:
+            mx, my = pygame.mouse.get_pos()
+            cell = self._cell(mx, my)
+            if not cell:
+                return
+            r, c = cell
+            surf = pygame.Surface((ts, ts), pygame.SRCALPHA)
+            pygame.draw.rect(surf, (255, 255, 255, 60), (0, 0, ts, ts))
+            screen.blit(surf, (c * ts + self.offset_x, r * ts + self.offset_y))
+
+    def _draw_toolbar(self, screen):
+        _, h = self._screen.get_size()
+        pygame.draw.rect(screen, (38, 38, 44), (0, 0, TOOLBAR_W, h))
+
+        btn_h  = 42
+        margin = 5
+
+        # ── Tile type buttons ────────────────────────────────────────────────
+        for i, (tile, label) in enumerate(TILE_LABELS):
+            y    = margin + i * (btn_h + margin)
+            rect = pygame.Rect(margin, y, TOOLBAR_W - 2 * margin, btn_h)
+            pygame.draw.rect(screen,
+                             (75, 120, 200) if tile == self._sel_tile else (55, 55, 62),
+                             rect, border_radius=4)
+            sw = 26
+            sx, sy = rect.x + 4, rect.y + (btn_h - sw) // 2
+            pygame.draw.rect(screen, (0, 0, 0), (sx, sy, sw, sw))
+            if tile != VOID and tile in self._tex_orig and self._tex_orig[tile]:
+                screen.blit(pygame.transform.scale(self._tex_orig[tile], (sw, sw)), (sx, sy))
+            lbl = self._font.render(label, True, (215, 215, 215))
+            screen.blit(lbl, (sx + sw + 5, sy + (sw - lbl.get_height()) // 2))
+
+        # ── Separator ────────────────────────────────────────────────────────
+        sep_y = margin + len(TILE_LABELS) * (btn_h + margin) + 6
+        pygame.draw.line(screen, (65, 65, 75), (margin, sep_y), (TOOLBAR_W - margin, sep_y))
+
+        # ── Paint mode toggle ────────────────────────────────────────────────
+        mode_y = sep_y + 8
+        mode_w = (TOOLBAR_W - 2 * margin - 3) // 2
+        for mi, (mode_id, mode_lbl) in enumerate([('free', 'Free'), ('rect', 'Rect')]):
+            mrect = pygame.Rect(margin + mi * (mode_w + 3), mode_y, mode_w, 24)
+            pygame.draw.rect(screen,
+                             (75, 150, 80) if self._paint_mode == mode_id else (52, 52, 60),
+                             mrect, border_radius=3)
+            ms = self._font.render(mode_lbl, True, (220, 220, 220))
+            screen.blit(ms, (mrect.x + (mrect.w - ms.get_width()) // 2,
+                              mrect.y + (mrect.h - ms.get_height()) // 2))
+
+        sep2_y = mode_y + 24 + 6
+        pygame.draw.line(screen, (65, 65, 75), (margin, sep2_y), (TOOLBAR_W - margin, sep2_y))
+
+        # ── Action buttons ───────────────────────────────────────────────────
+        act_h = 25
+        for j, (label, _) in enumerate(ACTION_BUTTONS):
+            y    = sep2_y + 8 + j * (act_h + 3)
+            rect = pygame.Rect(margin, y, TOOLBAR_W - 2 * margin, act_h)
+            pygame.draw.rect(screen, (52, 52, 60), rect, border_radius=3)
+            lbl = self._font.render(label, True, (195, 195, 195))
+            screen.blit(lbl, (rect.x + (rect.w - lbl.get_width()) // 2,
+                               rect.y + (rect.h - lbl.get_height()) // 2))
+
+        # ── Coordinates ──────────────────────────────────────────────────────
+        cell = self._cell(*pygame.mouse.get_pos())
+        if cell:
+            r, c = cell
+            coord = self._font.render(f"col {c}  row {r}", True, (120, 120, 130))
+            screen.blit(coord, (4, h - coord.get_height() - 6))
+
+        pygame.draw.line(screen, (70, 70, 80), (TOOLBAR_W, 0), (TOOLBAR_W, h))
+
+    def _toolbar_hit(self, x, y):
+        if x >= TOOLBAR_W:
+            return False
+
+        btn_h  = 42
+        margin = 5
+
+        for i, (tile, _) in enumerate(TILE_LABELS):
+            ty = margin + i * (btn_h + margin)
+            if ty <= y <= ty + btn_h:
+                self._sel_tile = tile
+                return True
+
+        sep_y  = margin + len(TILE_LABELS) * (btn_h + margin) + 6
+        mode_y = sep_y + 8
+        mode_w = (TOOLBAR_W - 2 * margin - 3) // 2
+        for mi, mode_id in enumerate(['free', 'rect']):
+            mx_ = margin + mi * (mode_w + 3)
+            if mx_ <= x <= mx_ + mode_w and mode_y <= y <= mode_y + 24:
+                self._paint_mode = mode_id
+                return True
+
+        sep2_y = mode_y + 24 + 6
+        act_h  = 25
+        actions = [
+            self._do_new,
+            self._do_open,
+            lambda: self._do_save(False),
+            lambda: self._do_save(True),
+            self._undo,
+            self._redo,
+        ]
+        for j, fn in enumerate(actions):
+            ay = sep2_y + 8 + j * (act_h + 3)
+            if ay <= y <= ay + act_h:
+                fn()
+                return True
+
+        return True
+
+    # ── Main loop ─────────────────────────────────────────────────────────────
+
+    def run(self):
+        clock = pygame.time.Clock()
+
+        while True:
+            for event in pygame.event.get():
+
+                if event.type == pygame.QUIT:
+                    root = self._tk()
+                    if self._dialog(lambda: messagebox.askyesno(
+                            "Quit", "Quit the map editor?", parent=root)):
+                        root.destroy()
+                        pygame.quit()
+                        return
+                    root.destroy()
+
+                elif event.type == pygame.VIDEORESIZE:
+                    self._screen = pygame.display.set_mode(event.size, pygame.RESIZABLE)
+
+                elif event.type == pygame.KEYDOWN:
+                    ctrl  = event.mod & pygame.KMOD_CTRL
+                    shift = event.mod & pygame.KMOD_SHIFT
+                    if ctrl and event.key == pygame.K_z:
+                        self._redo() if shift else self._undo()
+                    elif ctrl and event.key == pygame.K_y:
+                        self._redo()
+                    elif ctrl and event.key == pygame.K_s:
+                        self._do_save(force_dialog=shift)
+                    elif ctrl and event.key == pygame.K_o:
+                        self._do_open()
+                    elif ctrl and event.key == pygame.K_n:
+                        self._do_new()
+
+                elif event.type == pygame.MOUSEBUTTONDOWN:
+                    x, y = event.pos
+                    if event.button == 1:
+                        if not self._toolbar_hit(x, y):
+                            cell = self._cell(x, y)
+                            if cell:
+                                if self._paint_mode == 'rect':
+                                    self._painting   = True
+                                    self._paint_tile = self._sel_tile
+                                    self._rect_start = cell
+                                    self._rect_end   = cell
+                                else:
+                                    self._push_undo()
+                                    self._painting   = True
+                                    self._paint_tile = self._sel_tile
+                                    r, c = cell
+                                    self.map_data[r][c] = self._paint_tile
+                                    self._last_cell = cell
+                    elif event.button == 3:
+                        self._panning   = True
+                        self._pan_start = event.pos
+
+                elif event.type == pygame.MOUSEBUTTONUP:
+                    if event.button == 1:
+                        if self._paint_mode == 'rect' and self._painting and self._rect_start:
+                            self._push_undo()
+                            r0, c0 = self._rect_start
+                            r1, c1 = self._rect_end or self._rect_start
+                            for rr in range(min(r0, r1), max(r0, r1) + 1):
+                                for cc in range(min(c0, c1), max(c0, c1) + 1):
+                                    self.map_data[rr][cc] = self._paint_tile
+                            self._rect_start = None
+                            self._rect_end   = None
+                        self._painting = False
+                    elif event.button == 3:
+                        self._panning = False
+
+                elif event.type == pygame.MOUSEMOTION:
+                    x, y = event.pos
+                    if self._panning:
+                        dx = x - self._pan_start[0]
+                        dy = y - self._pan_start[1]
+                        self.offset_x += dx
+                        self.offset_y += dy
+                        self._pan_start = (x, y)
+                    elif self._painting:
+                        cell = self._cell(x, y)
+                        if cell:
+                            if self._paint_mode == 'rect':
+                                self._rect_end = cell
+                            elif cell != self._last_cell:
+                                r, c = cell
+                                self.map_data[r][c] = self._paint_tile
+                                self._last_cell = cell
+
+                elif event.type == pygame.MOUSEWHEEL:
+                    old = self.tile_size
+                    self.tile_size = max(8, min(120, self.tile_size + event.y * 2))
+                    if self.tile_size != old:
+                        mx, my = pygame.mouse.get_pos()
+                        scale = self.tile_size / old
+                        self.offset_x = int(mx - (mx - self.offset_x) * scale)
+                        self.offset_y = int(my - (my - self.offset_y) * scale)
+                        self._rescale_textures()
+
+            self._screen.fill((18, 18, 22))
+            self._draw_map(self._screen)
+            self._draw_grid(self._screen)
+            self._draw_hover(self._screen)
+            self._draw_toolbar(self._screen)
+            pygame.display.flip()
+            clock.tick(60)
 
 
 def main():
-    args = parse_args()
-
-    print("=== DungeonPy Map Generator ===")
-    width       = _prompt_int("Grid width  (tiles)", 80)
-    height      = _prompt_int("Grid height (tiles)", 60)
-    num_rooms   = _prompt_int("Number of rooms",     8)
-    output_path = _prompt_str("Output file", "Maps/generated_dungeon.txt")
-
-    # Sanity check
-    min_room_w, min_room_h = 5, 5
-    if width < min_room_w + 4 or height < min_room_h + 4:
-        print(f"Error: grid is too small to fit even one room "
-              f"(minimum {min_room_w + 4} x {min_room_h + 4}).", file=sys.stderr)
-        sys.exit(1)
-
-    if args.seed is not None:
-        random.seed(args.seed)
-        print(f"  Using seed: {args.seed}")
-
-    # --- Pipeline ---
-    grid = [[0] * width for _ in range(height)]
-
-    rooms, room_cells = place_rooms(width, height, num_rooms)
-    if not rooms:
-        print("Error: no rooms could be placed.", file=sys.stderr)
-        sys.exit(1)
-
-    mst_edges      = build_mst(rooms)
-    corridor_cells = carve_corridors(rooms, mst_edges, room_cells)
-
-    apply_floors(grid, room_cells, corridor_cells)
-    place_walls(grid, width, height)
-
-    candidates = find_doorway_candidates(grid, corridor_cells, room_cells, width, height)
-    place_doors(grid, candidates)
-
-    n_secret = random.randint(1, 3)
-    n_traps  = random.randint(1, 5)
-    place_secret_doors(grid, width, height, n_secret)
-    place_traps(grid, corridor_cells, room_cells, width, height, n_traps)
-
-    write_output(grid, output_path)
-    print_stats(rooms, room_cells, corridor_cells, grid, width, height, output_path)
-
-    if not args.no_png:
-        save_png(grid, output_path, dir_path=args.dir)
+    dir_path     = os.path.dirname(os.path.abspath(__file__))
+    initial_file = sys.argv[1] if len(sys.argv) > 1 else None
+    MapEditor(dir_path=dir_path, initial_file=initial_file).run()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
