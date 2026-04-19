@@ -25,7 +25,7 @@ from Core.log_utils import log
 from Core.chat_window import ChatWindow
 
 try:
-    from PIL import Image, ImageDraw, ImageFont as PILFont, ImageTk
+    from PIL import Image, ImageTk
     _PIL_OK = True
 except ImportError:
     _PIL_OK = False
@@ -34,7 +34,6 @@ except ImportError:
 # is available via the 'gothic' family alias (fontconfig maps it to Noto Sans).
 _UI_FONT = 'Noto Sans' if sys.platform == 'win32' else 'gothic'
 
-_NOTO_COLOR_EMOJI = "/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf"
 CONDITION_ICON_SIZE = 36 # pixels
 
 _COND_ABBREV = {
@@ -44,25 +43,6 @@ _COND_ABBREV = {
     'See-invisible': 'SeI', 'Stunned': 'Stn', 'Unconscious': 'Unc', 'Dead': 'Ded',
 }
 
-
-def _render_emoji_png(char: str, size: int = 22) -> bytes | None:
-    """Render a single emoji as a colour PNG via NotoColorEmoji. Returns None on failure."""
-    if not _PIL_OK or not os.path.exists(_NOTO_COLOR_EMOJI):
-        return None
-    try:
-        font = PILFont.truetype(_NOTO_COLOR_EMOJI, 109)  # 109 = native bitmap size
-        dummy = Image.new("RGBA", (1, 1))
-        bbox = ImageDraw.Draw(dummy).textbbox((0, 0), char, font=font, embedded_color=True)
-        w = max(1, bbox[2] - bbox[0])
-        h = max(1, bbox[3] - bbox[1])
-        img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
-        ImageDraw.Draw(img).text((-bbox[0], -bbox[1]), char, font=font, embedded_color=True)
-        img = img.resize((size, size), Image.LANCZOS)
-        buf = io.BytesIO()
-        img.save(buf, format="PNG")
-        return buf.getvalue()
-    except Exception:
-        return None
 
 
 class Tracker:
@@ -97,36 +77,13 @@ class Tracker:
         self._chat: ChatWindow | None = None
         self.window = None
 
-        condition_dict = {
-            'Blind': '🙈',
-            'Charmed': '💘',
-            'Deaf': '🙉',
-            'Frightened': '😱',
-            'Grappled': '🤼',
-            'Hidden': '🫥',
-            'Incapacitated': '💤',
-            'Invisible': '👻',
-            'Paralyzed': '🧊',
-            'Petrified': '🗿',
-            'Poisoned': '🩸',
-            'Prone': '🛌',
-            'Restrained': '⛓',
-            'See-invisible': '👁',
-            'Stunned': '😵',
-            'Unconscious': '🛑',
-            'Dead': '💀',
-        }
-        self.condition_list = list(condition_dict.keys())
+        self.condition_list = [
+            'Blind', 'Charmed', 'Deaf', 'Frightened', 'Grappled', 'Hidden',
+            'Incapacitated', 'Invisible', 'Paralyzed', 'Petrified', 'Poisoned',
+            'Prone', 'Restrained', 'See-invisible', 'Stunned', 'Unconscious', 'Dead',
+        ]
 
-        def sanitize_emoji(s: str) -> str:  # remove U+FE0F (variation selector-16)
-            return s.replace('\ufe0f', '')
-
-        if sys.platform.startswith("linux"):
-            self.condition_icons = {k: sanitize_emoji(v) for k, v in condition_dict.items()}
-        else:
-            self.condition_icons = dict(condition_dict)
-
-        # Load condition images: PNG files take priority, emoji rendering is the fallback.
+        # Load condition images from Assets/Conditions/.
         self.condition_images = self._load_condition_images()
         self._table_photos = {}   # keeps ImageTk.PhotoImage refs alive (tkinter GC guard)
 
@@ -138,26 +95,22 @@ class Tracker:
     # ------------------------------------------------------------------
 
     def _load_condition_images(self) -> dict:
-        """
-        Return {condition_name: png_bytes} for each condition.
-        Prefers Icons/Conditions/<name>.png; falls back to emoji rendering.
-        """
+        """Return {condition_name: png_bytes} for each condition found in Assets/Conditions/."""
         images = {}
         for cond in self.condition_list:
             png_path = os.path.join(self.dir_path, 'Assets', 'Conditions', f'{cond}.png')
-            if os.path.isfile(png_path):
-                with open(png_path, 'rb') as f:
-                    raw = f.read()
-                if _PIL_OK:
-                    img = Image.open(io.BytesIO(raw)).convert("RGBA")
-                    img = img.resize((CONDITION_ICON_SIZE, CONDITION_ICON_SIZE), Image.LANCZOS)
-                    buf = io.BytesIO()
-                    img.save(buf, format="PNG")
-                    images[cond] = buf.getvalue()
-                else:
-                    images[cond] = raw
+            if not os.path.isfile(png_path):
+                continue
+            with open(png_path, 'rb') as f:
+                raw = f.read()
+            if _PIL_OK:
+                img = Image.open(io.BytesIO(raw)).convert("RGBA")
+                img = img.resize((CONDITION_ICON_SIZE, CONDITION_ICON_SIZE), Image.LANCZOS)
+                buf = io.BytesIO()
+                img.save(buf, format="PNG")
+                images[cond] = buf.getvalue()
             else:
-                images[cond] = _render_emoji_png(self.condition_icons[cond])
+                images[cond] = raw
         return images
 
     # ------------------------------------------------------------------
@@ -377,14 +330,6 @@ class Tracker:
         def chunk(lst, size):
             return [lst[i:i + size] for i in range(0, len(lst), size)]
 
-        if self.verbose:
-            print(f'Platform: {sys.platform}')
-        if sys.platform == "win32":
-            emoji_font = ("Segoe UI Emoji", 12)
-        elif sys.platform == "darwin":
-            emoji_font = ("Apple Color Emoji", 12)
-        else:
-            emoji_font = ("Noto Emoji", 12)
         table_font = (_UI_FONT, 16)
 
         COND_COL_WIDTH = 15  # fixed chars — wide enough for "See-invisible"
@@ -395,13 +340,8 @@ class Tracker:
                 img_data = self.condition_images.get(cond)
                 if img_data:
                     row_elements.append(sg.Image(data=img_data))
-                    row_elements.append(sg.Checkbox(cond, key=f'-COND_{cond}-', font=table_font,
-                                                    size=(COND_COL_WIDTH, 1), enable_events=True))
-                else:
-                    row_elements.append(sg.Checkbox(
-                        f"{self.condition_icons[cond]} {cond}", key=f'-COND_{cond}-', font=emoji_font,
-                        size=(COND_COL_WIDTH, 1), enable_events=True
-                    ))
+                row_elements.append(sg.Checkbox(cond, key=f'-COND_{cond}-', font=table_font,
+                                                size=(COND_COL_WIDTH, 1), enable_events=True))
             condition_rows.append(row_elements)
 
         layout = [
