@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-map_editor.py — Standalone DungeonPy map editor.
+generate_map.py — Standalone DungeonPy map creator.
 
 Paint tiles on a grid and save the result as a .txt file readable by DungeonPy.
 Run from the project root:
-    python3 map_editor.py [existing_map.txt]
+    python3 generate_map.py [existing_map.txt]
 """
 
 import copy

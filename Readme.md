@@ -45,6 +45,13 @@ A Dungeon Master toolkit for virtual tabletop D&D sessions. DungeonPy runs two s
 - Full save/load of combatants, map state, light sources, and placed objects
 - Autosave on session events
 
+### Map Creator
+- Standalone tile-based map editor — draw rooms, walls, doors, and terrain by hand
+- Freehand paint mode and rectangle-fill mode for fast room layout
+- Zoom (8–120 px per tile), pan, undo/redo (Ctrl+Z / Ctrl+Y)
+- Saves directly to the `.txt` format read by DungeonPy
+- Load and edit existing maps
+
 ---
 
 ## Installation
@@ -137,6 +144,32 @@ python3 run_dnd_py.py --mode player --name "Aeriael" --host 192.168.1.10
 | `--port` | WebSocket port (default: `8765`) |
 | `--color` | Token highlight color (`red`, `blue`, `green`, `purple`, `cyan`, `pink`, `white`) |
 | `--insecure` | Skip TLS certificate verification (for self-signed certs) |
+
+---
+
+## Map Creator
+
+`generate_map.py` is a standalone tool for drawing maps that DungeonPy can load. Run it separately from the main application — no server or session needed.
+
+```bash
+python3 generate_map.py                  # start with a blank map (size dialog appears)
+python3 generate_map.py Maps/dungeon.txt # open and edit an existing map
+```
+
+| Action | How |
+|--------|-----|
+| Paint a tile | Left-click or drag (Free mode) |
+| Fill a rectangle | Switch to **Rect** mode, then click and drag |
+| Select tile type | Click a tile button in the left toolbar |
+| Pan | Right-click drag |
+| Zoom | Scroll wheel |
+| Undo / Redo | Ctrl+Z / Ctrl+Y (or Ctrl+Shift+Z) |
+| Save | Ctrl+S — saves to the current file |
+| Save as new file | Ctrl+Shift+S or **Save As** button |
+| Open existing map | Ctrl+O or **Open** button |
+| New map | Ctrl+N or **New** button |
+
+Maps are saved as `.txt` files in `Maps/` and can be loaded directly into a DungeonPy session via **Load Map** in the tracker.
 
 ---
 
