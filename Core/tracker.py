@@ -733,6 +733,11 @@ class Tracker:
             lambda: self.window.write_event_value('-CLOSE_REQUESTED-', None),
         )
 
+        # Override the ttk Treeview style — the Windows 'vista' theme applies bold
+        # to row text regardless of the font argument passed to the Table element.
+        import tkinter.ttk as ttk
+        ttk.Style().configure('Treeview', font=(_UI_FONT, 16, 'normal'))
+
         tree = self.window['-TABLE-'].Widget
         tree.bind('<Double-Button-1>', self._start_notes_edit)
         if _PIL_OK:
