@@ -368,12 +368,14 @@ class Game:
 
         elif self.mode == 'tracker':
             save_path = self._resolve_load_path()
-            self.server.submit({"action": "load", "path": save_path})
+            if os.path.isfile(save_path):
+                self.server.submit({"action": "load", "path": save_path})
             self.tracker.run_gui(self.dir_path)
 
         elif self.mode in ('both', 'dm'):
             save_path = self._resolve_load_path()
-            self.server.submit({"action": "load", "path": save_path})
+            if os.path.isfile(save_path):
+                self.server.submit({"action": "load", "path": save_path})
             self._start_autosave()
             # Tracker runs on the main thread (blocking until window closes)
             self.tracker.run_gui(self.dir_path)

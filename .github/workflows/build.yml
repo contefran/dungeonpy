@@ -52,6 +52,7 @@ jobs:
           cp -r Assets dist/dungeonpy/
           cp -r Maps   dist/dungeonpy/
           mkdir -p dist/dungeonpy/Savegames
+          cp Savegames/combat_tracker_example.json dist/dungeonpy/Savegames/
           [ -d Data ] && cp -r Data dist/dungeonpy/ || true
 
       # ── Stage external assets (Windows) ───────────────────────────────
@@ -62,6 +63,7 @@ jobs:
           Copy-Item -Recurse -Force Assets dist\dungeonpy\
           Copy-Item -Recurse -Force Maps   dist\dungeonpy\
           New-Item -ItemType Directory -Force dist\dungeonpy\Savegames | Out-Null
+          Copy-Item Savegames\combat_tracker_example.json dist\dungeonpy\Savegames\
           if (Test-Path Data) { Copy-Item -Recurse -Force Data dist\dungeonpy\ }
 
       # ── Package ───────────────────────────────────────────────────────
