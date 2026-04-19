@@ -9,11 +9,14 @@ independently on screen.  Events are handled through sg.read_all_windows()
 in the Tracker's main event loop.
 """
 
+import sys
+
 import PySimpleGUI as sg
 
 
-_FONT      = ('Helvetica', 12)
-_FONT_BOLD = ('Helvetica', 12, 'bold')
+_UI_FONT   = 'Noto Sans' if sys.platform == 'win32' else 'gothic'
+_FONT      = (_UI_FONT, 12)
+_FONT_BOLD = (_UI_FONT, 12, 'bold')
 
 
 class ChatWindow:

@@ -17,6 +17,19 @@ if sys.platform == 'win32':
         except Exception:
             pass
 
+
+def _load_fonts(dir_path: str):
+    """Register bundled Noto Sans fonts with Windows before any tkinter window opens."""
+    if sys.platform != 'win32':
+        return
+    import ctypes
+    _FR_PRIVATE = 0x10
+    fonts_dir = os.path.join(dir_path, 'Assets', 'Fonts')
+    for fname in ('NotoSans-Regular.ttf', 'NotoSans-Bold.ttf'):
+        path = os.path.join(fonts_dir, fname)
+        if os.path.isfile(path):
+            ctypes.windll.gdi32.AddFontResourceExW(path, _FR_PRIVATE, 0)
+
 from Core.game import Game
 
 # When frozen by PyInstaller, default the asset directory to wherever the
@@ -139,6 +152,8 @@ def main():
                         help="Path to TLS private key file (--mode dm, overrides auto-generated).")
 
     args = parser.parse_args()
+
+    _load_fonts(args.dir)
 
     # DM mode: prompt for password if not provided
     if args.mode == "dm" and args.password is None:

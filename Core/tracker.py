@@ -30,6 +30,10 @@ try:
 except ImportError:
     _PIL_OK = False
 
+# On Windows, Noto Sans is loaded from Assets/Fonts/ at startup; on Linux it
+# is available via the 'gothic' family alias (fontconfig maps it to Noto Sans).
+_UI_FONT = 'Noto Sans' if sys.platform == 'win32' else 'gothic'
+
 _NOTO_COLOR_EMOJI = "/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf"
 CONDITION_ICON_SIZE = 36 # pixels
 
@@ -381,7 +385,7 @@ class Tracker:
             emoji_font = ("Apple Color Emoji", 12)
         else:
             emoji_font = ("Noto Emoji", 12)
-        table_font = ("Helvetica", 16)
+        table_font = (_UI_FONT, 16)
 
         COND_COL_WIDTH = 15  # fixed chars — wide enough for "See-invisible"
         condition_rows = []
@@ -438,7 +442,7 @@ class Tracker:
                        font=table_font),
              sg.Text('tiles', font=table_font)],
             [sg.HorizontalSeparator()],
-            [sg.Text('Connected Players', font=('Helvetica', 12, 'bold'))],
+            [sg.Text('Connected Players', font=(_UI_FONT, 12, 'bold'))],
             [sg.Table(
                 values=[],
                 headings=['Player', 'Select', 'Move'],
@@ -448,7 +452,7 @@ class Tracker:
                 col_widths=[14, 7, 7],
                 auto_size_columns=False,
                 num_rows=4,
-                font=('Helvetica', 12),
+                font=(_UI_FONT, 12),
             )],
             [sg.Button('Toggle Selection', key='Toggle Selection'),
              sg.Button('Toggle Movement', key='Toggle Movement')],
@@ -476,7 +480,7 @@ class Tracker:
             self.window['-TABLE-'].update(values=data, select_rows=[])
 
         tree = self.window['-TABLE-'].Widget
-        tree.tag_configure('dead', font=('Helvetica', 16, 'overstrike'))
+        tree.tag_configure('dead', font=(_UI_FONT, 16, 'overstrike'))
         for info in self._connected_players.values():
             c = info.get("color", "white")
             try:
@@ -552,7 +556,7 @@ class Tracker:
                      sg.Input('', key='-ROUNDS-', size=(5, 1))],
                     [sg.Text('Initiative at expiry:', size=(18, 1)),
                      sg.Input(str(sel.initiative), key='-INIT-', size=(5, 1))],
-                    [sg.Text('(leave Rounds blank for permanent)', font=('Helvetica', 10))],
+                    [sg.Text('(leave Rounds blank for permanent)', font=(_UI_FONT, 10))],
                     [sg.Button('OK'), sg.Button('Cancel')],
                 ]
                 popup = sg.Window('Condition Duration', popup_layout,
