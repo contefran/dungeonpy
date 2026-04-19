@@ -1,6 +1,8 @@
-# DungeonPy 1.1.4
+# DungeonPy
 
 A Dungeon Master toolkit for virtual tabletop D&D sessions. DungeonPy runs two synchronized interfaces — a **combat tracker** and an **interactive 2D map** — and supports a **multiplayer mode** where the DM hosts a server and players connect as clients, each seeing only what their character would see.
+
+> **No Python required.** Download the pre-built binary for your platform from the [Releases](../../releases) page and run it directly.
 
 ---
 
@@ -45,14 +47,26 @@ A Dungeon Master toolkit for virtual tabletop D&D sessions. DungeonPy runs two s
 
 ---
 
-## Requirements
+## Installation
 
-- Python 3.11+
-- Linux or Windows
+### Pre-built Binary (recommended)
 
----
+Download the zip for your platform from the [Releases](../../releases) page. No Python required.
 
-## Installation — From Source
+**Linux**
+```bash
+unzip dungeonpy-linux.zip
+cd dungeonpy
+./dungeonpy
+```
+
+**Windows** — extract `dungeonpy-windows.zip` and double-click `dungeonpy.exe`.
+
+A launcher dialog appears asking whether you are the DM or a player, and collects any connection details. No command-line flags needed.
+
+### From Source
+
+Requires Python 3.11+ on Linux or Windows.
 
 ```bash
 git clone https://github.com/contefran/DungeonPy.git
@@ -60,7 +74,7 @@ cd DungeonPy
 pip install -r requirements.txt
 ```
 
-Dependencies installed:
+Dependencies:
 
 | Package | Role |
 |---------|------|
@@ -69,23 +83,6 @@ Dependencies installed:
 | `Pillow` | Image loading and scaling |
 | `websockets` | Multiplayer networking |
 | `cryptography` | TLS certificate generation |
-
----
-
-## Installation — Pre-built Binary
-
-Pre-built binaries for Linux and Windows are available on the [Releases](../../releases) page.
-
-**Linux**
-```bash
-unzip dungeonpy-linux.zip
-cd dungeonpy
-chmod +x dm_server.sh player_connect.sh
-```
-
-**Windows** — extract `dungeonpy-windows.zip` and run `dungeonpy.exe` directly, or use the provided `.bat` launchers.
-
-No Python installation required.
 
 ---
 
@@ -125,52 +122,45 @@ You can also trigger a manual build from the **Actions** tab without creating a 
 
 ## Usage
 
-### Local play (no networking, used for testing and planning sessions)
+### Starting the application
 
+Launch DungeonPy and a startup dialog appears. Select your role:
+
+- **Dungeon Master** — opens the tracker, map editor, and hosts a server that players can connect to.
+  - **Start a new game** — loads the built-in example session so you can start placing combatants immediately.
+  - **Load a previous game** — click **Browse** to pick a save file from `Savegames/` (or anywhere else).
+  - Enter an optional session password (leave blank to allow anyone to join).
+- **Player** — enter your character name and the DM's address, then connect.
+
+**Binary**
 ```bash
-python3 run_dnd_py.py                  # tracker + map
-python3 run_dnd_py.py --mode tracker   # tracker only
-python3 run_dnd_py.py --mode map       # map only
+./dungeonpy          # Linux
+dungeonpy.exe        # Windows (or double-click)
 ```
 
-### Multiplayer — DM
+**From source**
+```bash
+python3 run_dnd_py.py
+```
+
+### Advanced: command-line flags
+
+Power users can skip the launcher by passing flags directly:
 
 ```bash
-# From source
 python3 run_dnd_py.py --mode dm
-
-# Binary
-./dm_server.sh
+python3 run_dnd_py.py --mode player --name "Aeriael" --host 192.168.1.10
 ```
 
-You will be prompted for a session password (leave blank to disable). The DM interface includes the full tracker, the map editor, and the chat window.
-
-Optional flags:
+**DM flags**
 
 | Flag | Description |
 |------|-------------|
-| `--host` | Bind address (default: `0.0.0.0`, all interfaces) |
 | `--port` | WebSocket port (default: `8765`) |
 | `--password` | Session password (prompted if omitted) |
 | `--cert` / `--key` | Paths to a custom TLS certificate and key |
 
-### Multiplayer — Player
-
-```bash
-# From source
-python3 run_dnd_py.py --mode player
-
-# Binary
-./player_connect.sh
-```
-
-A connection dialog will appear asking for your name and the DM's address. You can also pass them directly:
-
-```bash
-python3 run_dnd_py.py --mode player --name "Aeriael" --host 192.168.1.10
-```
-
-Optional flags:
+**Player flags**
 
 | Flag | Description |
 |------|-------------|
@@ -178,7 +168,7 @@ Optional flags:
 | `--host` | DM's IP address or hostname |
 | `--port` | WebSocket port (default: `8765`) |
 | `--color` | Token highlight color (`red`, `blue`, `green`, `purple`, `cyan`, `pink`, `white`) |
-| `--insecure` | Skip TLS certificate verification (see Security below) |
+| `--insecure` | Skip TLS certificate verification (for self-signed certs) |
 
 ---
 
@@ -188,13 +178,7 @@ Follow these steps the first time you host a multiplayer session.
 
 ### 1. Start the server
 
-```bash
-./dm_server.sh        # binary
-# or
-python3 run_dnd_py.py --mode dm
-```
-
-You will be prompted for a session password. Leave it blank for trusted groups.
+Launch DungeonPy, select **Dungeon Master**, choose **Start a new game** or **Load a previous game**, enter an optional password, and click **Launch**. The tracker and map windows open and the server starts listening for players immediately.
 
 ### 2. TLS certificate (first run only)
 
@@ -245,7 +229,9 @@ Tell your players to connect to:
 <your-ip>:8765
 ```
 
-They enter this in the connection dialog when launching `player_connect.sh`. For LAN sessions the local IP is enough; for internet sessions use the public IP (or your IPv6 if players support it).
+They enter this in the **DM address** field of the Player connection dialog. For LAN sessions the local IP is enough; for internet sessions use the public IP (or IPv6 wrapped in square brackets).
+
+> **Testing on the same machine?** Use `127.0.0.1` as the DM address. Run DungeonPy twice — once as DM, once as Player — in two separate terminals or by double-clicking the binary twice.
 
 ### 6. Load a map and start the session
 
@@ -301,7 +287,7 @@ Conditions with a duration (e.g. Invisible for 2 rounds) expire automatically at
 
 ### Map — Player
 
-When you launch `player_connect.sh`, a dialog asks for your character name and the DM's address. Once connected:
+When you launch DungeonPy and select **Player**, a dialog asks for your character name and the DM's address. Once connected:
 
 | Action | How |
 |--------|-----|

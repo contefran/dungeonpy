@@ -7,13 +7,9 @@ to the appropriate blocking entry point.
 
 Run modes
 ---------
-both / map / tracker
-    Local play — no networking.  Tracker and map share the same GameServer
-    object directly; a lightweight in-process WSBridge serialises concurrent
-    submits without TCP overhead.
 dm
-    Full DM interface + TLS WebSocket server.  Remote players connect as
-    clients and receive a fog-of-war filtered view of the map.
+    Full DM interface (tracker + map) + TLS WebSocket server.  Remote players
+    connect as clients and receive a fog-of-war filtered view of the map.
 player
     Remote client only — map window + chat window.  All state is received
     from the DM server; no local files are needed.
@@ -30,7 +26,6 @@ from Core.map_manager import MapManager
 from Core.tracker import Tracker
 from Core.log_utils import log_msg
 
-DEFAULT_MAP_PATH  = 'Maps/sample_dungeon_matrix_with_voids.txt'
 DEFAULT_SAVE_FILE = 'Savegames/combat_tracker_example.json'
 AUTOSAVE_INTERVAL = 120   # seconds between autosaves
 AUTOSAVE_SLOTS    = 4     # number of rotating autosave files
@@ -41,7 +36,7 @@ class Game:
 
     Args:
         dir_path: Base directory for ``Assets/``, ``Maps/``, ``Data/``, etc.
-        mode: One of ``both``, ``map``, ``tracker``, ``dm``, or ``player``.
+        mode: One of ``dm`` or ``player``.
         verbose: Enable timestamped event logging.
         super_verbose: Enable per-combatant comparison logs (very noisy).
         host: Bind address for DM mode, or DM's IP/hostname for player mode.
@@ -54,14 +49,15 @@ class Game:
         key: Path to the matching TLS private key for DM mode.
     """
 
-    def __init__(self, dir_path, mode='both', verbose=False, super_verbose=False,
+    def __init__(self, dir_path, mode='dm', verbose=False, super_verbose=False,
                  host=None, port=8765, player_name=None, player_color='white',
-                 password=None, insecure=False, cert=None, key=None):
+                 password=None, insecure=False, cert=None, key=None, load_path=None):
         self.mode = mode
         self.dir_path = dir_path
         self.verbose = verbose
         self.super_verbose = super_verbose
 
+        self.load_path = load_path
         self.server = None
         self.bridge = None
         self.tracker = None
@@ -75,56 +71,12 @@ class Game:
 
         if mode == 'player':
             self._init_player(host, port, player_name, player_color, insecure)
-        elif mode == 'dm':
-            self._init_dm(host, port, password, cert, key)
         else:
-            self._init_local(mode)
+            self._init_dm(host, port, password, cert, key)
 
     # ------------------------------------------------------------------
     # Mode initialisers
     # ------------------------------------------------------------------
-
-    def _init_local(self, mode):
-        """--mode both / map / tracker — local play."""
-        self.server = GameServer()
-        self.bridge = WSBridge(self.server)
-        self.bridge.start()
-
-        if self.verbose:
-            log_msg(f"[Game] WebSocket bridge on ws://{self.bridge.host}:{self.bridge.port}")
-
-        if mode != 'map':
-            self.tracker = Tracker(
-                server=self.server,
-                submit=self.bridge.submit,
-                dir_path=self.dir_path,
-                verbose=self.verbose,
-                super_verbose=self.super_verbose,
-            )
-
-        map_path = DEFAULT_MAP_PATH if mode == 'map' else None
-        self.map_manager = MapManager(
-            server=self.server,
-            dir_path=self.dir_path,
-            map_path=map_path,
-            submit=self.bridge.submit,
-            verbose=self.verbose,
-            super_verbose=self.super_verbose,
-        )
-        if mode == 'both':
-            self.map_manager._window_title = "D&D Map Grid — DM"
-
-        self.server.subscribe(self.map_manager.handle_server_event)
-        if self.tracker:
-            self.server.subscribe(self.tracker.handle_server_event)
-        self.server.subscribe(self._handle_map_events)
-
-        if self.tracker and self.tracker._chat:
-            mm = self.map_manager
-            self.tracker._chat._ping_fn = lambda: mm._ping_sound and mm._ping_sound.play()
-
-        if self.verbose:
-            log_msg(f"[Game] Initialized in mode: {mode}")
 
     def _init_dm(self, host, port, password, cert, key):
         """--mode dm — full DM GUI + TLS WebSocket server for remote players."""
@@ -259,7 +211,7 @@ class Game:
             # User closed the pygame window manually
             if self.mode == 'player':
                 self._quit_event.set()   # causes chat window loop to exit too
-            elif self.mode in ('dm', 'both'):
+            else:
                 # Treat window close as toggling the map off for everyone
                 self.bridge.submit({"action": "set_map_visible", "visible": False})
         self._programmatic_map_close = False
@@ -333,22 +285,8 @@ class Game:
     # ------------------------------------------------------------------
 
     def _resolve_load_path(self) -> str:
-        """Return the most recent autosave if it is newer than the default save file."""
-        default = os.path.join(self.dir_path, DEFAULT_SAVE_FILE)
-        savegames_dir = os.path.join(self.dir_path, 'Savegames')
-        candidates = [
-            os.path.join(savegames_dir, f'autosave_{i}.json')
-            for i in range(1, AUTOSAVE_SLOTS + 1)
-        ]
-        existing = [p for p in candidates if os.path.isfile(p)]
-        if not existing:
-            return default
-        newest = max(existing, key=os.path.getmtime)
-        default_mtime = os.path.getmtime(default) if os.path.isfile(default) else 0
-        if os.path.getmtime(newest) > default_mtime:
-            print(f"[DungeonPy] Loading autosave: {os.path.basename(newest)}")
-            return newest
-        return default
+        """Return the default example save path."""
+        return os.path.join(self.dir_path, DEFAULT_SAVE_FILE)
 
     # ------------------------------------------------------------------
     # Run
@@ -362,22 +300,11 @@ class Game:
         if self.mode == 'player':
             self._player_chat.run(self._quit_event)  # blocks until chat window closes
 
-        elif self.mode == 'map':
-            screen = self.map_manager.init_pygame()
-            self.map_manager.run_loop(screen)
-
-        elif self.mode == 'tracker':
-            save_path = self._resolve_load_path()
-            if os.path.isfile(save_path):
-                self.server.submit({"action": "load", "path": save_path})
-            self.tracker.run_gui(self.dir_path)
-
-        elif self.mode in ('both', 'dm'):
-            save_path = self._resolve_load_path()
+        else:  # dm
+            save_path = self.load_path or self._resolve_load_path()
             if os.path.isfile(save_path):
                 self.server.submit({"action": "load", "path": save_path})
             self._start_autosave()
-            # Tracker runs on the main thread (blocking until window closes)
             self.tracker.run_gui(self.dir_path)
 
         self.shutdown()

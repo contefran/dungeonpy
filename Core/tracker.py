@@ -395,7 +395,9 @@ class Tracker:
             [sg.Button('Toggle Selection', key='Toggle Selection'),
              sg.Button('Toggle Movement', key='Toggle Movement')],
         ]
-        return layout
+        scrollable = sg.Column(layout, scrollable=True, vertical_scroll_only=True,
+                               expand_x=True, expand_y=True)
+        return [[scrollable]]
 
     def refresh_table(self, selected_index=None):
         data = [['', '', '', '']]  # blank row for deselection
@@ -666,9 +668,11 @@ class Tracker:
                                   "lock_type": "move", "locked": not current})
 
         elif event == 'Load Map':
+            maps_dir = os.path.join(self.dir_path, 'Maps')
             path = sg.popup_get_file(
                 'Select dungeon map file',
                 file_types=(('Map Files', '*.txt'),),
+                initial_folder=maps_dir if os.path.isdir(maps_dir) else self.dir_path,
                 keep_on_top=True,
             )
             if path:
