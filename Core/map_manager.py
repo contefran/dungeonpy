@@ -64,6 +64,16 @@ def _aoe_remove_rect(aoe: dict, ts: int, ox: int, oy: int) -> "pygame.Rect":
     ac, ar = aoe["anchor"]
     return pygame.Rect(int(ac * ts + ox) - 8, int(ar * ts + oy) - 8, 16, 16)
 
+
+def _aoe_rotate_rect(aoe: dict, ts: int, ox: int, oy: int) -> "pygame.Rect":
+    """Return the screen rect of the rotation handle at the tip of cone/line AoEs."""
+    ac, ar = aoe["anchor"]
+    angle  = aoe.get("angle", 0)
+    size   = aoe["size"]
+    tx = int(ac * ts + ox + math.cos(math.radians(angle)) * size * ts)
+    ty = int(ar * ts + oy + math.sin(math.radians(angle)) * size * ts)
+    return pygame.Rect(tx - 8, ty - 8, 16, 16)
+
 class MapManager:
 
     def __init__(self, server, dir_path, submit=None,
@@ -106,6 +116,10 @@ class MapManager:
         self._dragging_aoe_offset: tuple = (0.0, 0.0)   # px offset from anchor to mouse at drag start
         self._dragging_aoe_committed: bool = False       # True once mouse moved past threshold
         self._dragging_aoe_anchor: list = [0.0, 0.0]    # current preview anchor during drag
+        self._rotating_aoe: dict | None = None          # AoE being rotation-dragged
+        self._rotating_aoe_start: tuple = (0, 0)        # mouse px position at rotation drag start
+        self._rotating_aoe_committed: bool = False       # True once mouse moved past threshold
+        self._rotating_aoe_angle: float = 0.0           # current preview angle during rotation drag
         self.unplaced = []
         self.selected_token = None
         self._remote_selections: dict = {}  # selector_name → (token_name, color_name)
@@ -711,26 +725,36 @@ class MapManager:
             for (c, r) in _aoe_tiles(aoe_dict, rows, cols):
                 screen.blit(surf, (c * ts + ox, r * ts + oy))
 
-        dragging_id = self._dragging_aoe["id"] if self._dragging_aoe else None
+        dragging_id  = self._dragging_aoe["id"]  if self._dragging_aoe  else None
+        rotating_id  = self._rotating_aoe["id"]  if self._rotating_aoe  else None
         for aoe in self.server.aoe_areas:
             if aoe["id"] == dragging_id and self._dragging_aoe_committed:
-                continue  # show preview instead
+                continue  # anchor-drag preview painted below
+            if aoe["id"] == rotating_id and self._rotating_aoe_committed:
+                continue  # rotation-drag preview painted below
             _paint(aoe)
 
-        # Live preview while dragging an anchor
+        # Live preview while dragging anchor
         if self._dragging_aoe is not None and self._dragging_aoe_committed:
             _paint(dict(self._dragging_aoe, anchor=list(self._dragging_aoe_anchor)))
 
-        # Live preview in aoe_rotate mode
+        # Live preview while rotating
+        if self._rotating_aoe is not None and self._rotating_aoe_committed:
+            _paint(dict(self._rotating_aoe, angle=self._rotating_aoe_angle))
+
+        # Live preview in aoe_rotate mode (placement)
         if self.active_tool == "aoe_rotate" and self._pending_aoe and self._aoe_anchor:
             preview = dict(self._pending_aoe,
                            anchor=list(self._aoe_anchor),
                            angle=self._aoe_preview_angle)
             _paint(preview)
 
-        # DM only: per-AoE "×" drag handles
+        # DM only: per-AoE widgets
         if self._player_name is None and self.active_tool not in ("aoe_place", "aoe_anchor", "aoe_rotate"):
             for aoe in self.server.aoe_areas:
+                rgb = self._AOE_COLORS.get(aoe.get("color", "red"), (220, 40, 40))
+
+                # Anchor widget (×) — always red
                 anchor = (list(self._dragging_aoe_anchor)
                           if (self._dragging_aoe_committed and aoe["id"] == dragging_id)
                           else aoe["anchor"])
@@ -739,6 +763,28 @@ class MapManager:
                 if self._toolbar_font:
                     lbl = self._toolbar_font.render("\u00d7", True, (255, 255, 255))
                     screen.blit(lbl, lbl.get_rect(center=btn.center))
+
+                # Rotation widget (↺) for cone/line — AoE color
+                if aoe["shape"] != "sphere":
+                    angle = (self._rotating_aoe_angle
+                             if (self._rotating_aoe_committed and aoe["id"] == rotating_id)
+                             else aoe["angle"])
+                    rbtn = _aoe_rotate_rect({"anchor": anchor, "angle": angle, "size": aoe["size"]},
+                                            ts, ox, oy)
+                    pygame.draw.circle(screen, rgb, rbtn.center, rbtn.width // 2)
+                    # Draw rotation arc + arrowhead in white
+                    cx2, cy2 = rbtn.center
+                    pygame.draw.arc(screen, (255, 255, 255),
+                                    pygame.Rect(cx2 - 4, cy2 - 4, 8, 8),
+                                    math.radians(30), math.radians(330), 2)
+                    # Arrowhead at ~30° end of the arc
+                    tip_x = cx2 + round(4 * math.cos(math.radians(30)))
+                    tip_y = cy2 - round(4 * math.sin(math.radians(30)))
+                    pygame.draw.polygon(screen, (255, 255, 255), [
+                        (tip_x, tip_y),
+                        (tip_x - 3, tip_y - 2),
+                        (tip_x + 1, tip_y - 3),
+                    ])
 
     def is_tile_occupied(self, col, row, ignore_token=None):
         for c in self.server.combatants:
@@ -1704,7 +1750,22 @@ class MapManager:
 
                 elif event.type == pygame.MOUSEBUTTONUP:
                     if event.button == 1:
-                        if self._dragging_aoe is not None:
+                        if self._rotating_aoe is not None:
+                            if self._rotating_aoe_committed:
+                                p = self._rotating_aoe
+                                self._submit({"action": "aoe_remove", "id": p["id"]})
+                                self._submit({
+                                    "action":   "aoe_add",
+                                    "anchor":   p["anchor"],
+                                    "shape":    p["shape"],
+                                    "size":     p["size"],
+                                    "angle":    round(self._rotating_aoe_angle, 2),
+                                    "aperture": p["aperture"],
+                                    "color":    p["color"],
+                                })
+                            self._rotating_aoe = None
+                            self._rotating_aoe_committed = False
+                        elif self._dragging_aoe is not None:
                             if self._dragging_aoe_committed:
                                 p = self._dragging_aoe
                                 self._submit({"action": "aoe_remove", "id": p["id"]})
@@ -1747,6 +1808,17 @@ class MapManager:
                                 (mx - ax_off - self.offset_x) / ts,
                                 (my - ay_off - self.offset_y) / ts,
                             ]
+                    if self._rotating_aoe is not None:
+                        if not self._rotating_aoe_committed:
+                            sx, sy = self._rotating_aoe_start
+                            if math.hypot(mx - sx, my - sy) > 4:
+                                self._rotating_aoe_committed = True
+                        if self._rotating_aoe_committed:
+                            ax, ay = self._rotating_aoe["anchor"]
+                            ts = self.tile_size
+                            cx = ax * ts + self.offset_x
+                            cy = ay * ts + self.offset_y
+                            self._rotating_aoe_angle = math.degrees(math.atan2(my - cy, mx - cx))
 
                 elif event.type == pygame.MOUSEWHEEL:
                     self.handle_zoom(event)
@@ -1815,12 +1887,20 @@ class MapManager:
         col = (mx - self.offset_x) // self.tile_size
         row = (my - self.offset_y) // self.tile_size
 
-        # AoE remove widget — click starts a drag; commit on release
+        # AoE widgets — anchor drag and rotation drag; commit on release
         if button == 1 and self._player_name is None and self.active_tool not in (
                 "aoe_place", "aoe_anchor", "aoe_rotate"):
             ts = self.tile_size
             ox, oy = self.offset_x, self.offset_y
             for aoe in self.server.aoe_areas:
+                # Rotation handle (cone/line only) — check before anchor so tip doesn't get masked
+                if aoe["shape"] != "sphere" and _aoe_rotate_rect(aoe, ts, ox, oy).collidepoint(mx, my):
+                    self._rotating_aoe = aoe
+                    self._rotating_aoe_start = (mx, my)
+                    self._rotating_aoe_committed = False
+                    self._rotating_aoe_angle = aoe["angle"]
+                    return
+                # Anchor drag / delete handle
                 if _aoe_remove_rect(aoe, ts, ox, oy).collidepoint(mx, my):
                     ax, ay = aoe["anchor"]
                     self._dragging_aoe = aoe
