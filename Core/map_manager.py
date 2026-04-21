@@ -62,7 +62,7 @@ def _aoe_tiles(aoe: dict, grid_rows: int, grid_cols: int) -> set:
 def _aoe_remove_rect(aoe: dict, ts: int, ox: int, oy: int) -> "pygame.Rect":
     """Return the screen rect of the "×" remove button for *aoe*."""
     ac, ar = aoe["anchor"]
-    return pygame.Rect(ac * ts + ox + ts - 10, ar * ts + oy - 2, 16, 16)
+    return pygame.Rect(ac * ts + ox - 8, ar * ts + oy - 8, 16, 16)
 
 class MapManager:
 
