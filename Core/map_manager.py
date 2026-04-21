@@ -62,7 +62,7 @@ def _aoe_tiles(aoe: dict, grid_rows: int, grid_cols: int) -> set:
 def _aoe_remove_rect(aoe: dict, ts: int, ox: int, oy: int) -> "pygame.Rect":
     """Return the screen rect of the "×" remove button for *aoe*."""
     ac, ar = aoe["anchor"]
-    return pygame.Rect(ac * ts + ox - 8, ar * ts + oy - 8, 16, 16)
+    return pygame.Rect(int(ac * ts + ox) - 8, int(ar * ts + oy) - 8, 16, 16)
 
 class MapManager:
 
@@ -99,8 +99,13 @@ class MapManager:
         self._picking_light: bool = False               # True while the light picker subprocess runs
         self._pending_aoe: dict | None = None           # {shape, size, aperture, color} while placing AoE
         self._picking_aoe: bool = False                 # True while the AoE picker subprocess runs
-        self._aoe_anchor: tuple | None = None           # (col, row) anchor for line/cone AoE
+        self._aoe_anchor: tuple | None = None           # float (ax, ay) anchor for line/cone AoE
         self._aoe_preview_angle: float = 0.0            # live direction angle while in aoe_rotate mode
+        self._dragging_aoe: dict | None = None          # AoE being drag-repositioned
+        self._dragging_aoe_start: tuple = (0, 0)        # mouse px position at drag start
+        self._dragging_aoe_offset: tuple = (0.0, 0.0)   # px offset from anchor to mouse at drag start
+        self._dragging_aoe_committed: bool = False       # True once mouse moved past threshold
+        self._dragging_aoe_anchor: list = [0.0, 0.0]    # current preview anchor during drag
         self.unplaced = []
         self.selected_token = None
         self._remote_selections: dict = {}  # selector_name → (token_name, color_name)
@@ -623,12 +628,12 @@ class MapManager:
 
         threading.Thread(target=_worker, daemon=True).start()
 
-    def _submit_aoe(self, col: int, row: int, angle: float):
+    def _submit_aoe(self, ax: float, ay: float, angle: float):
         """Build and submit an aoe_add intent from the pending AoE params."""
         p = self._pending_aoe
         self._submit({
             "action":   "aoe_add",
-            "anchor":   [col, row],
+            "anchor":   [round(ax, 3), round(ay, 3)],
             "shape":    p["shape"],
             "size":     p["size"],
             "angle":    round(angle, 2),
@@ -706,8 +711,15 @@ class MapManager:
             for (c, r) in _aoe_tiles(aoe_dict, rows, cols):
                 screen.blit(surf, (c * ts + ox, r * ts + oy))
 
+        dragging_id = self._dragging_aoe["id"] if self._dragging_aoe else None
         for aoe in self.server.aoe_areas:
+            if aoe["id"] == dragging_id and self._dragging_aoe_committed:
+                continue  # show preview instead
             _paint(aoe)
+
+        # Live preview while dragging an anchor
+        if self._dragging_aoe is not None and self._dragging_aoe_committed:
+            _paint(dict(self._dragging_aoe, anchor=list(self._dragging_aoe_anchor)))
 
         # Live preview in aoe_rotate mode
         if self.active_tool == "aoe_rotate" and self._pending_aoe and self._aoe_anchor:
@@ -716,10 +728,13 @@ class MapManager:
                            angle=self._aoe_preview_angle)
             _paint(preview)
 
-        # DM only: per-AoE "×" remove buttons
+        # DM only: per-AoE "×" drag handles
         if self._player_name is None and self.active_tool not in ("aoe_place", "aoe_anchor", "aoe_rotate"):
             for aoe in self.server.aoe_areas:
-                btn = _aoe_remove_rect(aoe, ts, ox, oy)
+                anchor = (list(self._dragging_aoe_anchor)
+                          if (self._dragging_aoe_committed and aoe["id"] == dragging_id)
+                          else aoe["anchor"])
+                btn = _aoe_remove_rect({"anchor": anchor}, ts, ox, oy)
                 pygame.draw.circle(screen, (200, 60, 60), btn.center, btn.width // 2)
                 if self._toolbar_font:
                     lbl = self._toolbar_font.render("\u00d7", True, (255, 255, 255))
@@ -1689,19 +1704,49 @@ class MapManager:
 
                 elif event.type == pygame.MOUSEBUTTONUP:
                     if event.button == 1:
-                        self.drop_token(*event.pos)
+                        if self._dragging_aoe is not None:
+                            if self._dragging_aoe_committed:
+                                p = self._dragging_aoe
+                                self._submit({"action": "aoe_remove", "id": p["id"]})
+                                self._submit({
+                                    "action":   "aoe_add",
+                                    "anchor":   [round(v, 3) for v in self._dragging_aoe_anchor],
+                                    "shape":    p["shape"],
+                                    "size":     p["size"],
+                                    "angle":    p["angle"],
+                                    "aperture": p["aperture"],
+                                    "color":    p["color"],
+                                })
+                            else:
+                                self._submit({"action": "aoe_remove", "id": self._dragging_aoe["id"]})
+                            self._dragging_aoe = None
+                            self._dragging_aoe_committed = False
+                        else:
+                            self.drop_token(*event.pos)
                     elif event.button == 3:
                         self.stop_panning()
 
                 elif event.type == pygame.MOUSEMOTION:
                     self.update_panning(event.pos)
                     self.drag_token(*event.pos)
+                    mx, my = event.pos
                     if self.active_tool == "aoe_rotate" and self._aoe_anchor:
-                        mx, my = event.pos
                         ac, ar = self._aoe_anchor
-                        cx = ac * self.tile_size + self.offset_x + self.tile_size // 2
-                        cy = ar * self.tile_size + self.offset_y + self.tile_size // 2
+                        cx = ac * self.tile_size + self.offset_x
+                        cy = ar * self.tile_size + self.offset_y
                         self._aoe_preview_angle = math.degrees(math.atan2(my - cy, mx - cx))
+                    if self._dragging_aoe is not None:
+                        if not self._dragging_aoe_committed:
+                            sx, sy = self._dragging_aoe_start
+                            if math.hypot(mx - sx, my - sy) > 4:
+                                self._dragging_aoe_committed = True
+                        if self._dragging_aoe_committed:
+                            ax_off, ay_off = self._dragging_aoe_offset
+                            ts = self.tile_size
+                            self._dragging_aoe_anchor = [
+                                (mx - ax_off - self.offset_x) / ts,
+                                (my - ay_off - self.offset_y) / ts,
+                            ]
 
                 elif event.type == pygame.MOUSEWHEEL:
                     self.handle_zoom(event)
@@ -1770,25 +1815,36 @@ class MapManager:
         col = (mx - self.offset_x) // self.tile_size
         row = (my - self.offset_y) // self.tile_size
 
-        # AoE remove widget — DM clicks "×" to remove an AoE
+        # AoE remove widget — click starts a drag; commit on release
         if button == 1 and self._player_name is None and self.active_tool not in (
                 "aoe_place", "aoe_anchor", "aoe_rotate"):
+            ts = self.tile_size
+            ox, oy = self.offset_x, self.offset_y
             for aoe in self.server.aoe_areas:
-                if _aoe_remove_rect(aoe, self.tile_size, self.offset_x, self.offset_y).collidepoint(mx, my):
-                    self._submit({"action": "aoe_remove", "id": aoe["id"]})
+                if _aoe_remove_rect(aoe, ts, ox, oy).collidepoint(mx, my):
+                    ax, ay = aoe["anchor"]
+                    self._dragging_aoe = aoe
+                    self._dragging_aoe_start = (mx, my)
+                    self._dragging_aoe_offset = (mx - (ax * ts + ox), my - (ay * ts + oy))
+                    self._dragging_aoe_committed = False
+                    self._dragging_aoe_anchor = list(aoe["anchor"])
                     return
 
         # AoE placement tools
         if button == 1 and self.active_tool == "aoe_place":
-            if self._pending_aoe and 0 <= row < len(self.map_data) and 0 <= col < len(self.map_data[0]):
-                self._submit_aoe(col, row, angle=0.0)
+            if self._pending_aoe:
+                ax = (mx - self.offset_x) / self.tile_size
+                ay = (my - self.offset_y) / self.tile_size
+                self._submit_aoe(ax, ay, angle=0.0)
             self.active_tool = "select"
             return
 
         if button == 1 and self.active_tool == "aoe_anchor":
-            if 0 <= row < len(self.map_data) and 0 <= col < len(self.map_data[0]):
-                self._aoe_anchor = (col, row)
-                self.active_tool = "aoe_rotate"
+            self._aoe_anchor = (
+                (mx - self.offset_x) / self.tile_size,
+                (my - self.offset_y) / self.tile_size,
+            )
+            self.active_tool = "aoe_rotate"
             return
 
         if button == 1 and self.active_tool == "aoe_rotate":
