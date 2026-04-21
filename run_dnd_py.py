@@ -81,44 +81,85 @@ def _run_picker_mode(argv):
 
     elif kind == "aoe":
         root = tk.Tk()
-        root.withdraw()
+        root.title("Add AoE")
+        root.resizable(False, False)
         root.lift()
-        dlg = tk.Toplevel(root)
-        dlg.title("AoE type")
-        dlg.resizable(False, False)
-        shape_var = tk.StringVar(value="sphere")
-        for s in ("sphere", "cone", "line"):
-            tk.Radiobutton(dlg, text=s.capitalize(), variable=shape_var, value=s).pack(anchor="w", padx=20)
-        tk.Button(dlg, text="Next \u2192", command=dlg.destroy).pack(pady=8)
-        dlg.grab_set()
-        root.wait_window(dlg)
-        shape = shape_var.get()
-        prompt = "Radius in tiles:" if shape == "sphere" else "Length in tiles:"
-        size = simpledialog.askinteger("AoE size", prompt,
-                                       initialvalue=3, minvalue=1, maxvalue=30, parent=root)
-        if not size:
+
+        shape_var  = tk.StringVar(value="sphere")
+        size_var   = tk.IntVar(value=3)
+        ap_var     = tk.DoubleVar(value=53.0)
+        color_var  = tk.StringVar(value="red")
+
+        # Shape
+        tk.Label(root, text="Shape:", font=("Arial", 10, "bold")).grid(
+            row=0, column=0, columnspan=2, sticky="w", padx=14, pady=(12, 2))
+        for i, s in enumerate(("sphere", "cone", "line")):
+            tk.Radiobutton(root, text=s.capitalize(), variable=shape_var, value=s,
+                           command=lambda: _aoe_update()).grid(
+                row=1 + i, column=0, columnspan=2, sticky="w", padx=28)
+
+        # Size
+        size_lbl = tk.Label(root, text="Radius (tiles):")
+        size_lbl.grid(row=4, column=0, sticky="w", padx=14, pady=(8, 2))
+        tk.Spinbox(root, from_=1, to=30, textvariable=size_var, width=5).grid(
+            row=4, column=1, sticky="w", padx=4, pady=(8, 2))
+
+        # Aperture (cone only)
+        ap_lbl   = tk.Label(root, text="Aperture (°):")
+        ap_spin  = tk.Spinbox(root, from_=5, to=180, textvariable=ap_var,
+                              format="%.1f", increment=1.0, width=6)
+
+        def _aoe_update():
+            s = shape_var.get()
+            size_lbl.config(text="Radius (tiles):" if s == "sphere" else "Length (tiles):")
+            if s == "cone":
+                ap_lbl.grid( row=5, column=0, sticky="w", padx=14, pady=(4, 2))
+                ap_spin.grid(row=5, column=1, sticky="w", padx=4,  pady=(4, 2))
+            else:
+                ap_lbl.grid_remove()
+                ap_spin.grid_remove()
+
+        _aoe_update()
+
+        # Color
+        tk.Label(root, text="Color:", font=("Arial", 10, "bold")).grid(
+            row=6, column=0, columnspan=2, sticky="w", padx=14, pady=(10, 2))
+        for i, c in enumerate(("warm", "cool", "white", "red", "green", "blue", "black")):
+            tk.Radiobutton(root, text=c, variable=color_var, value=c).grid(
+                row=7 + i, column=0, columnspan=2, sticky="w", padx=28)
+
+        result = {}
+
+        def _ok():
+            try:
+                sz = int(size_var.get())
+            except (tk.TclError, ValueError):
+                sz = 3
+            sz = max(1, min(30, sz))
+            ap = 0.0
+            if shape_var.get() == "cone":
+                try:
+                    ap = float(ap_var.get())
+                except (tk.TclError, ValueError):
+                    ap = 53.0
+                ap = max(5.0, min(180.0, ap))
+            result["shape"]    = shape_var.get()
+            result["size"]     = sz
+            result["aperture"] = ap
+            result["color"]    = color_var.get()
             root.destroy()
+
+        tk.Button(root, text="Place", width=10, command=_ok).grid(
+            row=14, column=0, columnspan=2, pady=(10, 12))
+
+        root.bind("<Return>", lambda e: _ok())
+        root.mainloop()
+        if not result:
             return
-        aperture = 0.0
-        if shape == "cone":
-            aperture = simpledialog.askfloat("Cone aperture",
-                                             "Aperture in degrees?\n(53\u00b0 = standard D&D cone)",
-                                             initialvalue=53.0, minvalue=5.0, maxvalue=180.0,
-                                             parent=root) or 53.0
-        dlg = tk.Toplevel(root)
-        dlg.title("AoE color")
-        dlg.resizable(False, False)
-        color_var = tk.StringVar(value="red")
-        for c in ("warm", "cool", "white", "red", "green", "blue", "black"):
-            tk.Radiobutton(dlg, text=c, variable=color_var, value=c).pack(anchor="w", padx=20)
-        tk.Button(dlg, text="OK", command=dlg.destroy).pack(pady=8)
-        dlg.grab_set()
-        root.wait_window(dlg)
-        root.destroy()
-        print(shape)
-        print(size)
-        print(aperture)
-        print(color_var.get())
+        print(result["shape"])
+        print(result["size"])
+        print(result["aperture"])
+        print(result["color"])
 
     elif kind == "light":
         root = tk.Tk()
