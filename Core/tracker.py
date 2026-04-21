@@ -32,6 +32,19 @@ except ImportError:
 
 _UI_FONT = 'Noto Sans' if sys.platform == 'win32' else 'gothic'
 
+_PLAYER_COLOR_RGB = {
+    "red":    (215,  40,  40),
+    "orange": (230, 110,  15),
+    "amber":  (195, 155,  10),
+    "lime":   ( 90, 200,  20),
+    "green":  ( 30, 175,  50),
+    "teal":   ( 15, 170, 150),
+    "sky":    ( 45, 155, 230),
+    "blue":   ( 35,  55, 210),
+    "purple": (135,  35, 205),
+    "pink":   (215,  45, 140),
+}
+
 CONDITION_ICON_SIZE = 36 # pixels
 
 _COND_ABBREV = {
@@ -424,13 +437,12 @@ class Tracker:
         tree = self.window['-TABLE-'].Widget
         tree.tag_configure('dead', font=(_UI_FONT, 16, 'overstrike'))
         for info in self._connected_players.values():
-            c = info.get("color", "white")
-            try:
-                r, g, b = (v >> 8 for v in tree.winfo_rgb(c))
+            c = info.get("color", "red")
+            rgb = _PLAYER_COLOR_RGB.get(c)
+            if rgb:
+                r, g, b = rgb
                 dimmed = f'#{(r + 255) // 2:02x}{(g + 255) // 2:02x}{(b + 255) // 2:02x}'
-            except Exception:
-                dimmed = c
-            tree.tag_configure(f'pc_{c}', background=dimmed, foreground='black')
+                tree.tag_configure(f'pc_{c}', background=dimmed, foreground='black')
         new_photos = {}
         for item_id, conditions, cname in zip(tree.get_children(), row_conditions, row_names):
             connected = self._connected_players.get(cname)

@@ -50,7 +50,7 @@ class Game:
     """
 
     def __init__(self, dir_path, mode='dm', verbose=False, super_verbose=False,
-                 host=None, port=8765, player_name=None, player_color='white',
+                 host=None, port=8765, player_name=None, player_color='red',
                  password=None, insecure=False, cert=None, key=None, load_path=None):
         self.mode = mode
         self.dir_path = dir_path

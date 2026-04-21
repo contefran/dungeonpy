@@ -23,7 +23,7 @@ from Core.combatant import Combatant
 class PlayerClient:
 
     def __init__(self, server, host: str, port: int, name: str,
-                 color: str = "white", ssl_context=None):
+                 color: str = "red", ssl_context=None):
         self.server = server          # local GameServer mirror (read by MapManager)
         self.host = host
         self.port = port
@@ -88,6 +88,9 @@ class PlayerClient:
                         self._running = False
                         break
 
+                    if "color" in ack and ack["color"] != self.color:
+                        print(f"[PlayerClient] Color '{self.color}' was taken; assigned '{ack['color']}'.")
+                        self.color = ack["color"]
                     print(f"[PlayerClient] Connected as '{self.name}'.")
                     if first:
                         ready.set()

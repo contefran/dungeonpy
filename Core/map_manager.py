@@ -6,13 +6,16 @@ from Core.los import compute_los
 import math
 
 PLAYER_COLORS = {
-    "red":    (220,  50,  50),
-    "blue":   ( 50, 100, 220),
-    "green":  ( 50, 200,  50),
-    "purple": (150,  50, 200),
-    "cyan":   ( 30, 200, 220),
-    "pink":   (220,  80, 180),
-    "white":  (230, 230, 230),
+    "red":    (215,  40,  40),
+    "orange": (230, 110,  15),
+    "amber":  (195, 155,  10),
+    "lime":   ( 90, 200,  20),
+    "green":  ( 30, 175,  50),
+    "teal":   ( 15, 170, 150),
+    "sky":    ( 45, 155, 230),
+    "blue":   ( 35,  55, 210),
+    "purple": (135,  35, 205),
+    "pink":   (215,  45, 140),
 }
 
 # Gold is reserved for the DM (active-turn glow, selection, highlights).
@@ -533,15 +536,7 @@ class MapManager:
     # AoE picker
     # ------------------------------------------------------------------
 
-    _AOE_COLORS = {
-        "red":   (220,  40,  40),
-        "warm":  (255, 160,  60),
-        "cool":  ( 80, 140, 255),
-        "white": (255, 255, 255),
-        "green": ( 60, 200,  60),
-        "blue":  ( 40,  80, 220),
-        "black": ( 20,  20,  20),
-    }
+    _AOE_COLORS = PLAYER_COLORS
     _AOE_ALPHA = 55
 
     def _run_aoe_picker_subprocess(self) -> dict | None:
@@ -549,7 +544,8 @@ class MapManager:
         When frozen by PyInstaller, re-invokes the executable with --_picker instead of -c."""
         import subprocess, sys
         _shapes = ("sphere", "cone", "line")
-        _colors = ("warm", "cool", "white", "red", "green", "blue", "black")
+        _colors = ("red", "orange", "amber", "lime", "green",
+                   "teal", "sky", "blue", "purple", "pink")
         if getattr(sys, 'frozen', False):
             try:
                 result = subprocess.run(
@@ -596,7 +592,7 @@ class MapManager:
             "    else:\n"
             "        ap_lbl.grid_remove(); ap_spin.grid_remove()\n"
             "tk.Label(root,text='Color:',font=('Arial',10,'bold')).grid(row=6,column=0,columnspan=2,sticky='w',padx=14,pady=(10,2))\n"
-            "for i,c in enumerate(('warm','cool','white','red','green','blue','black')):\n"
+            "for i,c in enumerate(('red','orange','amber','lime','green','teal','sky','blue','purple','pink')):\n"
             "    tk.Radiobutton(root,text=c,variable=color_var,value=c).grid(row=7+i,column=0,columnspan=2,sticky='w',padx=28)\n"
             "result=[]\n"
             "def _ok():\n"
@@ -608,7 +604,7 @@ class MapManager:
             "        except: ap=53.0\n"
             "    result.append(shape_var.get()); result.append(sz); result.append(ap); result.append(color_var.get())\n"
             "    root.destroy()\n"
-            "tk.Button(root,text='Place',width=10,command=_ok).grid(row=14,column=0,columnspan=2,pady=(10,12))\n"
+            "tk.Button(root,text='Place',width=10,command=_ok).grid(row=17,column=0,columnspan=2,pady=(10,12))\n"
             "root.bind('<Return>',lambda e:_ok())\n"
             "root.mainloop()\n"
             "if not result: sys.exit(0)\n"

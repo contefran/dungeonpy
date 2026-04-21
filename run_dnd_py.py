@@ -41,8 +41,8 @@ else:
     _DEFAULT_DIR = "./"
 
 _PLAYER_COLORS = [
-    "red", "blue", "green", "purple",
-    "cyan", "pink", "white",
+    "red", "orange", "amber", "lime", "green",
+    "teal", "sky", "blue", "purple", "pink",
 ]
 
 
@@ -124,7 +124,8 @@ def _run_picker_mode(argv):
         # Color
         tk.Label(root, text="Color:", font=("Arial", 10, "bold")).grid(
             row=6, column=0, columnspan=2, sticky="w", padx=14, pady=(10, 2))
-        for i, c in enumerate(("warm", "cool", "white", "red", "green", "blue", "black")):
+        for i, c in enumerate(("red", "orange", "amber", "lime", "green",
+                               "teal", "sky", "blue", "purple", "pink")):
             tk.Radiobutton(root, text=c, variable=color_var, value=c).grid(
                 row=7 + i, column=0, columnspan=2, sticky="w", padx=28)
 
@@ -150,7 +151,7 @@ def _run_picker_mode(argv):
             root.destroy()
 
         tk.Button(root, text="Place", width=10, command=_ok).grid(
-            row=14, column=0, columnspan=2, pady=(10, 12))
+            row=17, column=0, columnspan=2, pady=(10, 12))
 
         root.bind("<Return>", lambda e: _ok())
         root.mainloop()
@@ -419,7 +420,7 @@ def main():
         host=args.host,
         port=args.port,
         player_name=args.name,
-        player_color=args.color or 'white',
+        player_color=args.color or 'red',
         password=args.password,
         insecure=args.insecure,
         cert=args.cert,
