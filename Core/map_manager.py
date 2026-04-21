@@ -1653,12 +1653,12 @@ class MapManager:
         while self.running:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
-                    if self._confirm_quit():
+                    if self._player_name is None or self._confirm_quit():
                         self.running = False
 
                 elif event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_ESCAPE:
-                        if self._confirm_quit():
+                        if self._player_name is None or self._confirm_quit():
                             self.running = False
 
                 elif event.type == pygame.MOUSEBUTTONDOWN:
