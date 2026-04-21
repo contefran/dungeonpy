@@ -123,6 +123,15 @@ class WSBridge:
                     {"type": "hello_ack", "ok": False,
                      "reason": f"name '{name}' is already connected"}))
                 return
+            color_taken = any(
+                c["role"] == "player" and c["color"] == color
+                for c in self._clients.values()
+            )
+            if color_taken:
+                await ws.send(json.dumps(
+                    {"type": "hello_ack", "ok": False,
+                     "reason": f"color '{color}' is already taken by another player"}))
+                return
         else:
             await ws.send(json.dumps(
                 {"type": "hello_ack", "ok": False,
