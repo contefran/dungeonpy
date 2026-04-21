@@ -18,10 +18,10 @@ A Dungeon Master toolkit for virtual tabletop D&D sessions. DungeonPy runs two s
 
 ### Combat Tracker
 - Initiative-ordered combatant table with HP, turn tracking, and round counter
-- 16 standard D&D conditions displayed as icons (Blinded, Charmed, Frightened, Invisible, Hidden, etc.)
+- Standard D&D conditions displayed as icons (Blinded, Charmed, Frightened, Invisible, Hidden, etc.)
 - Add, remove, and edit combatants mid-session
 - Load and save sessions as JSON files
-- Chat system: the DM has one tab the playerl per-tab read notifications
+- Chat system: the DM has one tab the player, per-tab read notifications
 
 ### 2D Map
 - Tile-based grid renderer (floor, wall, void, door, secret door)

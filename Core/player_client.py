@@ -23,7 +23,7 @@ from Core.combatant import Combatant
 class PlayerClient:
 
     def __init__(self, server, host: str, port: int, name: str,
-                 color: str = "white", ssl_context=None):
+                 color: str = "red", ssl_context=None):
         self.server = server          # local GameServer mirror (read by MapManager)
         self.host = host
         self.port = port
@@ -88,6 +88,9 @@ class PlayerClient:
                         self._running = False
                         break
 
+                    if "color" in ack and ack["color"] != self.color:
+                        print(f"[PlayerClient] Color '{self.color}' was taken; assigned '{ack['color']}'.")
+                        self.color = ack["color"]
                     print(f"[PlayerClient] Connected as '{self.name}'.")
                     if first:
                         ready.set()
@@ -154,6 +157,8 @@ class PlayerClient:
         self.server.tile_highlights = list(state.get("tile_highlights", []))
         self.server.map_objects = list(state.get("map_objects", []))
         self.server.light_sources = list(state.get("light_sources", []))
+        self.server.aoe_areas = list(state.get("aoe_areas", []))
+        self.server.player_aoe_locks = dict(state.get("player_aoe_locks", {}))
         self.server.visibility_radius = state.get("visibility_radius", 10)
         self.server.explored_tiles = {
             self.name: {tuple(t) for t in state.get("explored_tiles", [])}
@@ -225,8 +230,19 @@ class PlayerClient:
             lock_type = event.get("lock_type", "move")
             if lock_type == "select":
                 self.server.player_selection_locks[event["name"]] = event["locked"]
+            elif lock_type == "aoe":
+                self.server.player_aoe_locks[event["name"]] = event["locked"]
             else:
                 self.server.player_move_locks[event["name"]] = event["locked"]
+
+        elif action == "aoe_added":
+            aoe = event.get("aoe")
+            if aoe:
+                self.server.aoe_areas.append(aoe)
+
+        elif action == "aoe_removed":
+            aoe_id = event.get("id")
+            self.server.aoe_areas = [a for a in self.server.aoe_areas if a["id"] != aoe_id]
 
         elif action == "map_visibility_changed":
             self.server.map_visible = event.get("visible", False)

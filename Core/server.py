@@ -73,9 +73,12 @@ class GameServer:
         self.trap_states: dict[tuple, str] = {}          # (row, col) → 'open'|'closed'  tile 6 trap
         self.player_selection_locks: dict[str, bool] = {}  # player name → allowed to select
         self.player_move_locks: dict[str, bool] = {}       # player name → allowed to move token
+        self.player_aoe_locks: dict[str, bool] = {}        # player name → allowed to place AoEs
         self.tile_highlights: list[dict] = []              # [{"pos":[c,r],"color":"gold","owner":"DM"}, ...]
         self.map_objects: list[dict] = []                  # [{"pos":[c,r],"icon":"chest.png","width":1,"height":1}, ...]
         self.light_sources: list[dict] = []               # [{"pos":[c,r],"radius":4,"color":"warm"}, ...]
+        self.aoe_areas: list[dict] = []                  # [{"id":int,"shape":str,"anchor":[c,r],...}, ...]
+        self._aoe_id_seq: int = 0
         self.map_grid: list | None = None                # 2-D tile grid; included in snapshots
         self.map_path: str | None = None                 # absolute path to the loaded .txt map file
         self.map_visible: bool = False                   # whether the map window is shown to everyone
@@ -174,12 +177,14 @@ class GameServer:
             "trap_states": {f"{r},{c}": v for (r, c), v in self.trap_states.items()},
             "player_selection_locks": dict(self.player_selection_locks),
             "player_move_locks": dict(self.player_move_locks),
+            "player_aoe_locks": dict(self.player_aoe_locks),
             "map_grid": self.map_grid,
             "map_path": self.map_path,
             "map_visible": self.map_visible,
             "tile_highlights": list(self.tile_highlights),
             "map_objects": list(self.map_objects),
             "light_sources": list(self.light_sources),
+            "aoe_areas": list(self.aoe_areas),
             "visibility_radius": self.visibility_radius,
             "explored_tiles": [list(t) for t in self.explored_tiles.get(player_name, set())]
                                if player_name else {},
@@ -261,6 +266,8 @@ class GameServer:
         self.visibility_radius = data.get("visibility_radius", 10)
         self.map_objects = list(data.get("map_objects", []))
         self.light_sources = list(data.get("light_sources", []))
+        self.aoe_areas = list(data.get("aoe_areas", []))
+        self._aoe_id_seq = max((a["id"] for a in self.aoe_areas), default=0)
         self.explored_tiles = {
             name: {tuple(t) for t in tiles}
             for name, tiles in data.get("explored_tiles", {}).items()
@@ -284,6 +291,7 @@ class GameServer:
             "visibility_radius": self.visibility_radius,
             "map_objects": list(self.map_objects),
             "light_sources": list(self.light_sources),
+            "aoe_areas": list(self.aoe_areas),
             "explored_tiles": {
                 name: [list(t) for t in tiles]
                 for name, tiles in self.explored_tiles.items()
@@ -508,6 +516,10 @@ class GameServer:
                     events.append({"type": "event", "action": "highlights_changed",
                                    "highlights": list(self.tile_highlights)})
                 return events
+            elif lock_type == "aoe":
+                self.player_aoe_locks[name] = locked
+                return [{"type": "event", "action": "player_lock_changed",
+                         "name": name, "lock_type": "aoe", "locked": locked}]
             else:
                 self.player_move_locks[name] = locked
                 return [{"type": "event", "action": "player_lock_changed",
@@ -518,12 +530,14 @@ class GameServer:
             color = intent.get("color", "white")
             self.player_selection_locks.setdefault(name, False)
             self.player_move_locks.setdefault(name, False)
+            self.player_aoe_locks.setdefault(name, False)
             return [{"type": "event", "action": "player_connected", "name": name, "color": color}]
 
         if action == "player_disconnected":
             name = intent.get("name")
             self.player_selection_locks.pop(name, None)
             self.player_move_locks.pop(name, None)
+            self.player_aoe_locks.pop(name, None)
             return [{"type": "event", "action": "player_disconnected", "name": name}]
 
         # --- Map lifecycle ---
@@ -547,6 +561,7 @@ class GameServer:
             self.tile_highlights = []
             self.map_objects = []
             self.light_sources = []
+            self.aoe_areas = []
             self.explored_tiles = {}
             self.map_visible = True  # auto-open so DM can place tokens
             return [
@@ -615,6 +630,30 @@ class GameServer:
             self.light_sources = [ls for ls in self.light_sources if ls["pos"] != pos]
             if len(self.light_sources) < before:
                 return [{"type": "event", "action": "light_source_removed", "pos": pos}]
+            return []
+
+        if action == "aoe_add":
+            self._aoe_id_seq += 1
+            aoe = {
+                "id":       self._aoe_id_seq,
+                "shape":    intent.get("shape", "sphere"),
+                "anchor":   intent["anchor"],
+                "size":     max(1, int(intent.get("size", 3))),
+                "angle":    float(intent.get("angle", 0)),
+                "aperture": float(intent.get("aperture", 53)),
+                "color":    intent.get("color", "red"),
+                "owner":    intent.get("owner"),       # None = DM, str = player name
+                "hidden":   bool(intent.get("hidden", False)),
+            }
+            self.aoe_areas.append(aoe)
+            return [{"type": "event", "action": "aoe_added", "aoe": aoe}]
+
+        if action == "aoe_remove":
+            aoe_id = intent.get("id")
+            before = len(self.aoe_areas)
+            self.aoe_areas = [a for a in self.aoe_areas if a["id"] != aoe_id]
+            if len(self.aoe_areas) < before:
+                return [{"type": "event", "action": "aoe_removed", "id": aoe_id}]
             return []
 
         if action == "recenter_all":

@@ -24,6 +24,7 @@ Queue items are (ws, intent) tuples.  ws=None means in-process (always allowed).
 
 import asyncio
 import json
+import random
 import threading
 
 import websockets
@@ -105,7 +106,7 @@ class WSBridge:
 
         role = hello.get("role", "player")
         name = hello.get("name", "Unknown")
-        color = hello.get("color", "white")
+        color = hello.get("color", "red")
 
         # Step 2: validate
         if role == "dm":
@@ -123,6 +124,12 @@ class WSBridge:
                     {"type": "hello_ack", "ok": False,
                      "reason": f"name '{name}' is already connected"}))
                 return
+            used_colors = {c["color"] for c in self._clients.values() if c["role"] == "player"}
+            if color in used_colors:
+                _ALL_COLORS = ["red", "orange", "amber", "lime", "green",
+                               "teal", "sky", "blue", "purple", "pink"]
+                free = [c for c in _ALL_COLORS if c not in used_colors]
+                color = random.choice(free) if free else color
         else:
             await ws.send(json.dumps(
                 {"type": "hello_ack", "ok": False,
@@ -132,7 +139,7 @@ class WSBridge:
         # Step 3: register + greet
         self._clients[ws] = {"role": role, "name": name, "color": color}
         self._connections.add(ws)
-        await ws.send(json.dumps({"type": "hello_ack", "ok": True, "role": role}))
+        await ws.send(json.dumps({"type": "hello_ack", "ok": True, "role": role, "color": color}))
         # Players get a personalised snapshot (fog-of-war filtered)
         snap = self.server.get_snapshot(player_name=name if role == "player" else None)
         await ws.send(json.dumps(snap))
@@ -177,7 +184,7 @@ class WSBridge:
         # Player rules
         action = intent.get("action")
         _PLAYER_ALLOWED = {"select", "clear_selection", "move_token", "chat_message",
-                           "highlight_tile", "clear_highlights"}
+                           "highlight_tile", "clear_highlights", "aoe_add", "aoe_remove"}
         if action not in _PLAYER_ALLOWED:
             return False, f"action '{action}' not permitted for players"
         if action in ("select", "highlight_tile"):
@@ -188,6 +195,14 @@ class WSBridge:
                 return False, "players may only move their own token"
             if not self.server.player_move_locks.get(client["name"]):
                 return False, "movement not currently allowed — wait for the DM to enable you"
+        if action == "aoe_add":
+            if not self.server.player_aoe_locks.get(client["name"]):
+                return False, "AoE placement not currently allowed — wait for the DM to enable you"
+        if action == "aoe_remove":
+            aoe_id = intent.get("id")
+            aoe = next((a for a in self.server.aoe_areas if a["id"] == aoe_id), None)
+            if aoe is None or aoe.get("owner") != client["name"]:
+                return False, "players may only remove their own AoEs"
         return True, None
 
     # ------------------------------------------------------------------
@@ -214,11 +229,11 @@ class WSBridge:
                     if intent.get("action") in ("select", "clear_selection"):
                         intent = dict(intent)
                         intent["selector"] = client["name"]
-                        intent["color"] = client.get("color", "white")
+                        intent["color"] = client.get("color", "red")
                     elif intent.get("action") in ("highlight_tile", "clear_highlights"):
                         intent = dict(intent)
                         intent["owner"] = client["name"]
-                        intent["color"] = client.get("color", "white")
+                        intent["color"] = client.get("color", "red")
                     elif intent.get("action") == "chat_message":
                         intent = dict(intent)
                         intent["from"] = client["name"]

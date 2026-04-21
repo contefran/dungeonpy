@@ -6,13 +6,16 @@ from Core.los import compute_los
 import math
 
 PLAYER_COLORS = {
-    "red":    (220,  50,  50),
-    "blue":   ( 50, 100, 220),
-    "green":  ( 50, 200,  50),
-    "purple": (150,  50, 200),
-    "cyan":   ( 30, 200, 220),
-    "pink":   (220,  80, 180),
-    "white":  (230, 230, 230),
+    "red":    (215,  40,  40),
+    "orange": (230, 110,  15),
+    "amber":  (195, 155,  10),
+    "lime":   ( 90, 200,  20),
+    "green":  ( 30, 175,  50),
+    "teal":   ( 15, 170, 150),
+    "sky":    ( 45, 155, 230),
+    "blue":   ( 35,  55, 210),
+    "purple": (135,  35, 205),
+    "pink":   (215,  45, 140),
 }
 
 # Gold is reserved for the DM (active-turn glow, selection, highlights).
@@ -24,6 +27,63 @@ DM_COLOR_NAME = "gold"
 _ALL_COLORS = {**PLAYER_COLORS, DM_COLOR_NAME: DM_COLOR}
 
 TOOLBAR_WIDTH = 60   # pixel width of the right-side tool panel
+
+
+def _aoe_tiles(aoe: dict, grid_rows: int, grid_cols: int, map_data=None) -> set:
+    """Return the set of (col, row) tile coords covered by *aoe*, excluding walls and voids."""
+    ac, ar   = aoe["anchor"]
+    size     = aoe["size"]
+    shape    = aoe["shape"]
+    angle    = aoe.get("angle", 0)
+    half_ap  = aoe.get("aperture", 53) / 2
+
+    tiles = set()
+    for r in range(grid_rows):
+        for c in range(grid_cols):
+            if map_data is not None and map_data[r][c] in (0, 2):  # void, wall
+                continue
+            dc = c - ac + 0.5   # vector from anchor to tile centre
+            dr = r - ar + 0.5
+            dist = math.sqrt(dc * dc + dr * dr)
+            if shape == "sphere":
+                if dist <= size + 0.5:
+                    tiles.add((c, r))
+            elif shape == "cone":
+                if dist <= size + 0.5:
+                    ta   = math.degrees(math.atan2(dr, dc))
+                    diff = (ta - angle + 180) % 360 - 180
+                    if abs(diff) <= half_ap:
+                        tiles.add((c, r))
+            elif shape == "line":
+                dx   = math.cos(math.radians(angle))
+                dy   = math.sin(math.radians(angle))
+                proj = dc * dx + dr * dy
+                perp = abs(dc * (-dy) + dr * dx)
+                if 0 <= proj <= size + 0.5 and perp <= 0.5:
+                    tiles.add((c, r))
+    return tiles
+
+
+def _aoe_remove_rect(aoe: dict, ts: int, ox: int, oy: int) -> "pygame.Rect":
+    """Return the screen rect of the "×" remove button for *aoe*."""
+    ac, ar = aoe["anchor"]
+    return pygame.Rect(int(ac * ts + ox) - 8, int(ar * ts + oy) - 8, 16, 16)
+
+
+def _aoe_hide_rect(aoe: dict, ts: int, ox: int, oy: int) -> "pygame.Rect":
+    """Return the screen rect of the eye (hide/show) toggle button for *aoe* — DM only."""
+    rm = _aoe_remove_rect(aoe, ts, ox, oy)
+    return pygame.Rect(rm.right + 2, rm.top, 16, 16)
+
+
+def _aoe_rotate_rect(aoe: dict, ts: int, ox: int, oy: int) -> "pygame.Rect":
+    """Return the screen rect of the rotation handle at the tip of cone/line AoEs."""
+    ac, ar = aoe["anchor"]
+    angle  = aoe.get("angle", 0)
+    size   = aoe["size"]
+    tx = int(ac * ts + ox + math.cos(math.radians(angle)) * size * ts)
+    ty = int(ar * ts + oy + math.sin(math.radians(angle)) * size * ts)
+    return pygame.Rect(tx - 8, ty - 8, 16, 16)
 
 class MapManager:
 
@@ -58,6 +118,19 @@ class MapManager:
         self._picking_object: bool = False              # True while the file-picker subprocess runs
         self._pending_light: tuple | None = None        # (radius, color_name) while add_light active
         self._picking_light: bool = False               # True while the light picker subprocess runs
+        self._pending_aoe: dict | None = None           # {shape, size, aperture, color} while placing AoE
+        self._picking_aoe: bool = False                 # True while the AoE picker subprocess runs
+        self._aoe_anchor: tuple | None = None           # float (ax, ay) anchor for line/cone AoE
+        self._aoe_preview_angle: float = 0.0            # live direction angle while in aoe_rotate mode
+        self._dragging_aoe: dict | None = None          # AoE being drag-repositioned
+        self._dragging_aoe_start: tuple = (0, 0)        # mouse px position at drag start
+        self._dragging_aoe_offset: tuple = (0.0, 0.0)   # px offset from anchor to mouse at drag start
+        self._dragging_aoe_committed: bool = False       # True once mouse moved past threshold
+        self._dragging_aoe_anchor: list = [0.0, 0.0]    # current preview anchor during drag
+        self._rotating_aoe: dict | None = None          # AoE being rotation-dragged
+        self._rotating_aoe_start: tuple = (0, 0)        # mouse px position at rotation drag start
+        self._rotating_aoe_committed: bool = False       # True once mouse moved past threshold
+        self._rotating_aoe_angle: float = 0.0           # current preview angle during rotation drag
         self.unplaced = []
         self.selected_token = None
         self._remote_selections: dict = {}  # selector_name → (token_name, color_name)
@@ -235,6 +308,7 @@ class MapManager:
         self.draw_map(screen)
         self.draw_objects(screen)
         self.draw_lights(screen)
+        self.draw_aoes(screen)
         if self._player_name:
             self._update_los()
             self._draw_fog(screen)
@@ -242,6 +316,7 @@ class MapManager:
         self._draw_highlights(screen)
         mx, my = pygame.mouse.get_pos()
         self.draw_tokens(screen, self.selected_token, self.server.get_active(), (mx, my))
+        self.draw_aoe_widgets(screen)
         self.draw_minimap(screen)
         if self.unplaced and self.ui_font:
             label = f"Click to place: {self.unplaced[0].name}"
@@ -457,6 +532,136 @@ class MapManager:
 
         threading.Thread(target=_worker, daemon=True).start()
 
+    # ------------------------------------------------------------------
+    # AoE picker
+    # ------------------------------------------------------------------
+
+    _AOE_COLORS = PLAYER_COLORS
+    _AOE_ALPHA = 55
+
+    def _run_aoe_picker_subprocess(self) -> dict | None:
+        """Blocking: ask shape/size/aperture/color via subprocess tkinter.
+        When frozen by PyInstaller, re-invokes the executable with --_picker instead of -c."""
+        import subprocess, sys
+        _shapes = ("sphere", "cone", "line")
+        _colors = ("red", "orange", "amber", "lime", "green",
+                   "teal", "sky", "blue", "purple", "pink")
+        if getattr(sys, 'frozen', False):
+            try:
+                result = subprocess.run(
+                    [sys.executable, "--_picker", "aoe"],
+                    capture_output=True, text=True, timeout=300,
+                )
+                lines = result.stdout.strip().splitlines()
+                if len(lines) < 4 or lines[0] not in _shapes:
+                    return None
+                return {
+                    "shape":    lines[0],
+                    "size":     int(lines[1]),
+                    "aperture": float(lines[2]),
+                    "color":    lines[3] if lines[3] in _colors else "red",
+                }
+            except Exception as e:
+                print(f"[Map] AoE picker failed: {e}")
+                return None
+        script = (
+            "import tkinter as tk\n"
+            "import sys\n"
+            "root = tk.Tk()\n"
+            "root.title('Add AoE')\n"
+            "root.resizable(False, False)\n"
+            "root.lift()\n"
+            "shape_var = tk.StringVar(value='sphere')\n"
+            "size_var  = tk.IntVar(value=3)\n"
+            "ap_var    = tk.DoubleVar(value=53.0)\n"
+            "color_var = tk.StringVar(value='red')\n"
+            "tk.Label(root,text='Shape:',font=('Arial',10,'bold')).grid(row=0,column=0,columnspan=2,sticky='w',padx=14,pady=(12,2))\n"
+            "for i,s in enumerate(('sphere','cone','line')):\n"
+            "    tk.Radiobutton(root,text=s.capitalize(),variable=shape_var,value=s,command=lambda:_upd()).grid(row=1+i,column=0,columnspan=2,sticky='w',padx=28)\n"
+            "size_lbl=tk.Label(root,text='Radius (tiles):')\n"
+            "size_lbl.grid(row=4,column=0,sticky='w',padx=14,pady=(8,2))\n"
+            "tk.Spinbox(root,from_=1,to=30,textvariable=size_var,width=5).grid(row=4,column=1,sticky='w',padx=4,pady=(8,2))\n"
+            "ap_lbl=tk.Label(root,text='Aperture (deg):')\n"
+            "ap_spin=tk.Spinbox(root,from_=5,to=180,textvariable=ap_var,format='%.1f',increment=1.0,width=6)\n"
+            "def _upd():\n"
+            "    s=shape_var.get()\n"
+            "    size_lbl.config(text='Radius (tiles):' if s=='sphere' else 'Length (tiles):')\n"
+            "    if s=='cone':\n"
+            "        ap_lbl.grid(row=5,column=0,sticky='w',padx=14,pady=(4,2))\n"
+            "        ap_spin.grid(row=5,column=1,sticky='w',padx=4,pady=(4,2))\n"
+            "    else:\n"
+            "        ap_lbl.grid_remove(); ap_spin.grid_remove()\n"
+            "tk.Label(root,text='Color:',font=('Arial',10,'bold')).grid(row=6,column=0,columnspan=2,sticky='w',padx=14,pady=(10,2))\n"
+            "for i,c in enumerate(('red','orange','amber','lime','green','teal','sky','blue','purple','pink')):\n"
+            "    tk.Radiobutton(root,text=c,variable=color_var,value=c).grid(row=7+i,column=0,columnspan=2,sticky='w',padx=28)\n"
+            "result=[]\n"
+            "def _ok():\n"
+            "    try: sz=max(1,min(30,int(size_var.get())))\n"
+            "    except: sz=3\n"
+            "    ap=0.0\n"
+            "    if shape_var.get()=='cone':\n"
+            "        try: ap=max(5.0,min(180.0,float(ap_var.get())))\n"
+            "        except: ap=53.0\n"
+            "    result.append(shape_var.get()); result.append(sz); result.append(ap); result.append(color_var.get())\n"
+            "    root.destroy()\n"
+            "tk.Button(root,text='Place',width=10,command=_ok).grid(row=17,column=0,columnspan=2,pady=(10,12))\n"
+            "root.bind('<Return>',lambda e:_ok())\n"
+            "root.mainloop()\n"
+            "if not result: sys.exit(0)\n"
+            "print(result[0]); print(result[1]); print(result[2]); print(result[3])\n"
+        )
+        try:
+            result = subprocess.run(
+                [sys.executable, "-c", script],
+                capture_output=True, text=True, timeout=300,
+            )
+            lines = result.stdout.strip().splitlines()
+            if len(lines) < 4 or lines[0] not in _shapes:
+                return None
+            return {
+                "shape":    lines[0],
+                "size":     int(lines[1]),
+                "aperture": float(lines[2]),
+                "color":    lines[3] if lines[3] in _colors else "red",
+            }
+        except Exception as e:
+            print(f"[Map] AoE picker failed: {e}")
+            return None
+
+    def _start_aoe_picker(self):
+        """Non-blocking: run the AoE picker in a background thread."""
+        import threading
+        self._picking_aoe = True
+
+        def _worker():
+            params = self._run_aoe_picker_subprocess()
+            self._picking_aoe = False
+            if params:
+                self._pending_aoe = params
+                if params["shape"] == "sphere":
+                    self.active_tool = "aoe_place"
+                else:
+                    self.active_tool = "aoe_anchor"
+            else:
+                self.active_tool = "select"
+
+        threading.Thread(target=_worker, daemon=True).start()
+
+    def _submit_aoe(self, ax: float, ay: float, angle: float):
+        """Build and submit an aoe_add intent from the pending AoE params."""
+        p = self._pending_aoe
+        self._submit({
+            "action":   "aoe_add",
+            "anchor":   [round(ax, 3), round(ay, 3)],
+            "shape":    p["shape"],
+            "size":     p["size"],
+            "angle":    round(angle, 2),
+            "aperture": p.get("aperture", 53.0),
+            "color":    p["color"],
+            "owner":    self._player_name,   # None for DM
+            "hidden":   True,  # all AoEs hidden by default; owner/DM makes them visible
+        })
+
     def draw_lights(self, screen):
         """Draw LOS-aware tile-based light glows above the map, below fog.
         Uses compute_los so walls and corners block the light correctly.
@@ -510,6 +715,106 @@ class MapManager:
                     b = rgb[2] * alpha // 255
                     tile_surf.fill((r, g, b, 255))
                     screen.blit(tile_surf, (x, y), special_flags=pygame.BLEND_RGBA_ADD)
+
+    def draw_aoes(self, screen):
+        """Draw AoE tile overlays (before fog). Widgets are drawn separately by draw_aoe_widgets."""
+        if not self.map_data:
+            return
+        ts    = self.tile_size
+        rows  = len(self.map_data)
+        cols  = len(self.map_data[0])
+        ox, oy = self.offset_x, self.offset_y
+        is_dm = self._player_name is None
+
+        def _paint(aoe_dict, alpha_override=None):
+            rgb  = self._AOE_COLORS.get(aoe_dict.get("color", "red"), (220, 40, 40))
+            alpha = alpha_override if alpha_override is not None else self._AOE_ALPHA
+            surf = pygame.Surface((ts, ts), pygame.SRCALPHA)
+            surf.fill((*rgb, alpha))
+            for (c, r) in _aoe_tiles(aoe_dict, rows, cols, self.map_data):
+                screen.blit(surf, (c * ts + ox, r * ts + oy))
+
+        dragging_id = self._dragging_aoe["id"] if self._dragging_aoe else None
+        rotating_id = self._rotating_aoe["id"] if self._rotating_aoe else None
+        for aoe in self.server.aoe_areas:
+            if aoe["id"] == dragging_id and self._dragging_aoe_committed:
+                continue
+            if aoe["id"] == rotating_id and self._rotating_aoe_committed:
+                continue
+            hidden = aoe.get("hidden", False)
+            if hidden and not is_dm and aoe.get("owner") != self._player_name:
+                continue  # hidden AoEs invisible to players who don't own them
+            _paint(aoe, alpha_override=self._AOE_ALPHA // 2 if hidden else None)
+
+        if self._dragging_aoe is not None and self._dragging_aoe_committed:
+            _paint(dict(self._dragging_aoe, anchor=list(self._dragging_aoe_anchor)))
+        if self._rotating_aoe is not None and self._rotating_aoe_committed:
+            _paint(dict(self._rotating_aoe, angle=self._rotating_aoe_angle))
+        if self.active_tool == "aoe_rotate" and self._pending_aoe and self._aoe_anchor:
+            _paint(dict(self._pending_aoe, anchor=list(self._aoe_anchor),
+                        angle=self._aoe_preview_angle))
+
+    def draw_aoe_widgets(self, screen):
+        """Draw per-AoE control widgets (×, eye, ↺) on top of tokens."""
+        if not self.map_data or self.active_tool in ("aoe_place", "aoe_anchor", "aoe_rotate"):
+            return
+        ts    = self.tile_size
+        ox, oy = self.offset_x, self.offset_y
+        is_dm = self._player_name is None
+        dragging_id = self._dragging_aoe["id"] if self._dragging_aoe else None
+        rotating_id = self._rotating_aoe["id"] if self._rotating_aoe else None
+
+        for aoe in self.server.aoe_areas:
+            owner = aoe.get("owner")
+            is_own = is_dm or owner == self._player_name
+            if not is_own:
+                continue
+            rgb = self._AOE_COLORS.get(aoe.get("color", "red"), (220, 40, 40))
+            hidden = aoe.get("hidden", False)
+
+            anchor = (list(self._dragging_aoe_anchor)
+                      if (self._dragging_aoe_committed and aoe["id"] == dragging_id)
+                      else aoe["anchor"])
+
+            # Anchor widget (×) — move/delete
+            btn = _aoe_remove_rect({"anchor": anchor}, ts, ox, oy)
+            pygame.draw.circle(screen, (200, 60, 60), btn.center, btn.width // 2)
+            if self._toolbar_font:
+                lbl = self._toolbar_font.render("\u00d7", True, (255, 255, 255))
+                screen.blit(lbl, lbl.get_rect(center=btn.center))
+
+            # Eye widget — DM always; player if they own the AoE and have aoe permission
+            if is_dm or (is_own and self._can_place_aoe()):
+                ebtn = _aoe_hide_rect({"anchor": anchor}, ts, ox, oy)
+                eye_col = (90, 90, 110) if hidden else (60, 160, 60)
+                pygame.draw.circle(screen, eye_col, ebtn.center, ebtn.width // 2)
+                ecx, ecy = ebtn.center
+                pygame.draw.ellipse(screen, (255, 255, 255),
+                                    pygame.Rect(ecx - 4, ecy - 2, 8, 5), 1)
+                pygame.draw.circle(screen, (255, 255, 255), (ecx, ecy), 2)
+                if hidden:
+                    pygame.draw.line(screen, (255, 80, 80),
+                                     (ecx - 4, ecy - 3), (ecx + 4, ecy + 3), 2)
+
+            # Rotation widget (↺) for cone/line
+            if aoe["shape"] != "sphere":
+                angle = (self._rotating_aoe_angle
+                         if (self._rotating_aoe_committed and aoe["id"] == rotating_id)
+                         else aoe["angle"])
+                rbtn = _aoe_rotate_rect({"anchor": anchor, "angle": angle, "size": aoe["size"]},
+                                        ts, ox, oy)
+                pygame.draw.circle(screen, rgb, rbtn.center, rbtn.width // 2)
+                cx2, cy2 = rbtn.center
+                pygame.draw.arc(screen, (255, 255, 255),
+                                pygame.Rect(cx2 - 4, cy2 - 4, 8, 8),
+                                math.radians(30), math.radians(330), 2)
+                tip_x = cx2 + round(4 * math.cos(math.radians(30)))
+                tip_y = cy2 - round(4 * math.sin(math.radians(30)))
+                pygame.draw.polygon(screen, (255, 255, 255), [
+                    (tip_x, tip_y),
+                    (tip_x - 3, tip_y - 2),
+                    (tip_x + 1, tip_y - 3),
+                ])
 
     def is_tile_occupied(self, col, row, ignore_token=None):
         for c in self.server.combatants:
@@ -626,6 +931,12 @@ class MapManager:
         elif action == "light_source_removed":
             pass  # server.light_sources already updated; rendering picks up on next frame
 
+        elif action == "aoe_added":
+            pass  # server.aoe_areas already updated; draw_aoes picks up on next frame
+
+        elif action == "aoe_removed":
+            pass  # server.aoe_areas already updated; draw_aoes picks up on next frame
+
         elif action == "chat_message":
             if self._chat_toggle_fn is not None:
                 self._chat_unread = True
@@ -701,6 +1012,12 @@ class MapManager:
             return True
         return bool(self.server.player_selection_locks.get(self._player_name))
 
+    def _can_place_aoe(self) -> bool:
+        """DM can always place AoEs; players only when their aoe lock is on."""
+        if self._player_name is None:
+            return True
+        return bool(self.server.player_aoe_locks.get(self._player_name))
+
     def _toolbar_button_rects(self, screen_w: int) -> dict:
         """Compute toolbar button rects from current screen width."""
         x0 = screen_w - TOOLBAR_WIDTH + 8
@@ -714,12 +1031,14 @@ class MapManager:
         if self._player_name is not None:
             chat_bottom = rects["chat"].bottom if "chat" in rects else rects["clear"].bottom
             rects["recenter"] = pygame.Rect(x0, chat_bottom + 8, 44, 44)
+            rects["add_aoe"] = pygame.Rect(x0, rects["recenter"].bottom + 16, 44, 44)
         if self._player_name is None:
             rects["recenter_all"]  = pygame.Rect(x0, rects["clear"].bottom + 16, 44, 44)
             rects["add_object"]    = pygame.Rect(x0, rects["recenter_all"].bottom + 16, 44, 44)
             rects["remove_object"] = pygame.Rect(x0, rects["add_object"].bottom + 8, 44, 44)
             rects["add_light"]     = pygame.Rect(x0, rects["remove_object"].bottom + 16, 44, 44)
             rects["remove_light"]  = pygame.Rect(x0, rects["add_light"].bottom + 8, 44, 44)
+            rects["add_aoe"]       = pygame.Rect(x0, rects["remove_light"].bottom + 16, 44, 44)
         return rects
 
     def _handle_toolbar_click(self, mx, my):
@@ -763,6 +1082,16 @@ class MapManager:
                 self._start_light_picker()
         elif rects.get("remove_light") and rects["remove_light"].collidepoint(mx, my):
             self.active_tool = "select" if self.active_tool == "remove_light" else "remove_light"
+        elif rects.get("add_aoe") and rects["add_aoe"].collidepoint(mx, my):
+            if not self._can_place_aoe():
+                return
+            if self.active_tool in ("aoe_place", "aoe_anchor", "aoe_rotate") or self._picking_aoe:
+                self.active_tool = "select"
+                self._pending_aoe = None
+                self._aoe_anchor = None
+                self._picking_aoe = False
+            elif not self._picking_aoe:
+                self._start_aoe_picker()
 
     def _draw_toolbar(self, screen):
         sw, sh = screen.get_size()
@@ -916,6 +1245,34 @@ class MapManager:
             pygame.draw.circle(screen, ic, (cx, cy), 7, 2)
             pygame.draw.line(screen, ic, (cx - 5, cy - 5), (cx + 5, cy + 5), 2)
 
+        # --- Add AoE button (DM always; player always visible, greyed when no permission) ---
+        if rects.get("add_aoe"):
+            is_aoe = self.active_tool in ("aoe_place", "aoe_anchor", "aoe_rotate")
+            is_pick_aoe = self._picking_aoe
+            can_aoe = self._can_place_aoe()
+            pygame.draw.line(screen, (55, 55, 70),
+                             (x0 + 8, rects["add_aoe"].top - 8),
+                             (sw - 8, rects["add_aoe"].top - 8), 1)
+            bg = (70, 30, 30) if is_aoe else ((60, 40, 30) if is_pick_aoe else _BG_INACTIVE)
+            pygame.draw.rect(screen, bg, rects["add_aoe"], border_radius=4)
+            pygame.draw.rect(screen, _BORDER, rects["add_aoe"], 1, border_radius=4)
+            cx, cy = rects["add_aoe"].centerx, rects["add_aoe"].centery - 6
+            if not can_aoe:
+                ic = (60, 60, 70)   # greyed out — no permission
+            elif is_aoe or is_pick_aoe:
+                ic = (220, 80, 80)
+            else:
+                ic = _ICON
+            # Circle with blast lines to suggest an explosion
+            pygame.draw.circle(screen, ic, (cx, cy), 7, 2)
+            for angle_deg in (0, 60, 120, 180, 240, 300):
+                angle_r = math.radians(angle_deg)
+                x1 = int(cx + 9  * math.cos(angle_r))
+                y1 = int(cy + 9  * math.sin(angle_r))
+                x2 = int(cx + 13 * math.cos(angle_r))
+                y2 = int(cy + 13 * math.sin(angle_r))
+                pygame.draw.line(screen, ic, (x1, y1), (x2, y2), 1)
+
         # --- Recenter button (player mode only) ---
         if rects.get("recenter"):
             pygame.draw.line(screen, (55, 55, 70),
@@ -986,6 +1343,14 @@ class MapManager:
                 ic = (200, 160, 60) if is_rem_light else _ICON
                 surf = self._toolbar_font.render("LIT-", True, ic)
                 r = rects["remove_light"]
+                screen.blit(surf, (r.x + (r.width - surf.get_width()) // 2, r.bottom - 13))
+            if rects.get("add_aoe"):
+                is_aoe = self.active_tool in ("aoe_place", "aoe_anchor", "aoe_rotate")
+                is_pick_aoe = self._picking_aoe
+                ic = (220, 80, 80) if (is_aoe or is_pick_aoe) else _ICON
+                label = "..." if is_pick_aoe else "AOE"
+                surf = self._toolbar_font.render(label, True, ic)
+                r = rects["add_aoe"]
                 screen.blit(surf, (r.x + (r.width - surf.get_width()) // 2, r.bottom - 13))
 
     # ------------------------------------------------------------------
@@ -1413,30 +1778,97 @@ class MapManager:
         while self.running:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
-                    if self._confirm_quit():
+                    if self._player_name is None or self._confirm_quit():
                         self.running = False
 
                 elif event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_ESCAPE:
-                        if self._confirm_quit():
+                        if self._player_name is None or self._confirm_quit():
                             self.running = False
 
                 elif event.type == pygame.MOUSEBUTTONDOWN:
                     if event.button == 1:
                         self.handle_click(event.pos, 1)
-                        self.start_drag(*event.pos)
+                        if self._dragging_aoe is None and self._rotating_aoe is None:
+                            self.start_drag(*event.pos)
                     elif event.button == 3:
                         self.start_panning(event.pos)
 
                 elif event.type == pygame.MOUSEBUTTONUP:
                     if event.button == 1:
-                        self.drop_token(*event.pos)
+                        if self._rotating_aoe is not None:
+                            if self._rotating_aoe_committed:
+                                p = self._rotating_aoe
+                                self._submit({"action": "aoe_remove", "id": p["id"]})
+                                self._submit({
+                                    "action":   "aoe_add",
+                                    "anchor":   p["anchor"],
+                                    "shape":    p["shape"],
+                                    "size":     p["size"],
+                                    "angle":    round(self._rotating_aoe_angle, 2),
+                                    "aperture": p["aperture"],
+                                    "color":    p["color"],
+                                    "owner":    p.get("owner"),
+                                    "hidden":   p.get("hidden", False),
+                                })
+                            self._rotating_aoe = None
+                            self._rotating_aoe_committed = False
+                        elif self._dragging_aoe is not None:
+                            if self._dragging_aoe_committed:
+                                p = self._dragging_aoe
+                                self._submit({"action": "aoe_remove", "id": p["id"]})
+                                self._submit({
+                                    "action":   "aoe_add",
+                                    "anchor":   [round(v, 3) for v in self._dragging_aoe_anchor],
+                                    "shape":    p["shape"],
+                                    "size":     p["size"],
+                                    "angle":    p["angle"],
+                                    "aperture": p["aperture"],
+                                    "color":    p["color"],
+                                    "owner":    p.get("owner"),
+                                    "hidden":   p.get("hidden", False),
+                                })
+                            else:
+                                self._submit({"action": "aoe_remove", "id": self._dragging_aoe["id"]})
+                            self._dragging_aoe = None
+                            self._dragging_aoe_committed = False
+                        else:
+                            self.drop_token(*event.pos)
                     elif event.button == 3:
                         self.stop_panning()
 
                 elif event.type == pygame.MOUSEMOTION:
                     self.update_panning(event.pos)
                     self.drag_token(*event.pos)
+                    mx, my = event.pos
+                    if self.active_tool == "aoe_rotate" and self._aoe_anchor:
+                        ac, ar = self._aoe_anchor
+                        cx = ac * self.tile_size + self.offset_x
+                        cy = ar * self.tile_size + self.offset_y
+                        self._aoe_preview_angle = math.degrees(math.atan2(my - cy, mx - cx))
+                    if self._dragging_aoe is not None:
+                        if not self._dragging_aoe_committed:
+                            sx, sy = self._dragging_aoe_start
+                            if math.hypot(mx - sx, my - sy) > 4:
+                                self._dragging_aoe_committed = True
+                        if self._dragging_aoe_committed:
+                            ax_off, ay_off = self._dragging_aoe_offset
+                            ts = self.tile_size
+                            self._dragging_aoe_anchor = [
+                                (mx - ax_off - self.offset_x) / ts,
+                                (my - ay_off - self.offset_y) / ts,
+                            ]
+                    if self._rotating_aoe is not None:
+                        if not self._rotating_aoe_committed:
+                            sx, sy = self._rotating_aoe_start
+                            if math.hypot(mx - sx, my - sy) > 4:
+                                self._rotating_aoe_committed = True
+                        if self._rotating_aoe_committed:
+                            ax, ay = self._rotating_aoe["anchor"]
+                            ts = self.tile_size
+                            cx = ax * ts + self.offset_x
+                            cy = ay * ts + self.offset_y
+                            self._rotating_aoe_angle = math.degrees(math.atan2(my - cy, mx - cx))
 
                 elif event.type == pygame.MOUSEWHEEL:
                     self.handle_zoom(event)
@@ -1504,6 +1936,62 @@ class MapManager:
 
         col = (mx - self.offset_x) // self.tile_size
         row = (my - self.offset_y) // self.tile_size
+
+        # AoE widgets — eye toggle (DM), anchor drag, rotation drag; commit on release
+        if button == 1 and self.active_tool not in ("aoe_place", "aoe_anchor", "aoe_rotate"):
+            ts = self.tile_size
+            ox, oy = self.offset_x, self.offset_y
+            is_dm = self._player_name is None
+            for aoe in self.server.aoe_areas:
+                owner = aoe.get("owner")
+                is_own = is_dm or owner == self._player_name
+                if not is_own:
+                    continue
+                # Eye widget — DM always; player if they own the AoE and have aoe permission
+                if (is_dm or (is_own and self._can_place_aoe())) and _aoe_hide_rect(aoe, ts, ox, oy).collidepoint(mx, my):
+                    self._submit({"action": "aoe_remove", "id": aoe["id"]})
+                    self._submit({**aoe, "action": "aoe_add", "hidden": not aoe.get("hidden", False)})
+                    return
+                # Rotation handle (cone/line only)
+                if aoe["shape"] != "sphere" and _aoe_rotate_rect(aoe, ts, ox, oy).collidepoint(mx, my):
+                    self._rotating_aoe = aoe
+                    self._rotating_aoe_start = (mx, my)
+                    self._rotating_aoe_committed = False
+                    self._rotating_aoe_angle = aoe["angle"]
+                    return
+                # Anchor drag / delete handle
+                if _aoe_remove_rect(aoe, ts, ox, oy).collidepoint(mx, my):
+                    ax, ay = aoe["anchor"]
+                    self._dragging_aoe = aoe
+                    self._dragging_aoe_start = (mx, my)
+                    self._dragging_aoe_offset = (mx - (ax * ts + ox), my - (ay * ts + oy))
+                    self._dragging_aoe_committed = False
+                    self._dragging_aoe_anchor = list(aoe["anchor"])
+                    return
+
+        # AoE placement tools
+        if button == 1 and self.active_tool == "aoe_place":
+            if self._pending_aoe:
+                ax = (mx - self.offset_x) / self.tile_size
+                ay = (my - self.offset_y) / self.tile_size
+                self._submit_aoe(ax, ay, angle=0.0)
+            self.active_tool = "select"
+            return
+
+        if button == 1 and self.active_tool == "aoe_anchor":
+            self._aoe_anchor = (
+                (mx - self.offset_x) / self.tile_size,
+                (my - self.offset_y) / self.tile_size,
+            )
+            self.active_tool = "aoe_rotate"
+            return
+
+        if button == 1 and self.active_tool == "aoe_rotate":
+            if self._aoe_anchor:
+                self._submit_aoe(*self._aoe_anchor, angle=self._aoe_preview_angle)
+            self._aoe_anchor = None
+            self.active_tool = "select"
+            return
 
         # Recenter-pick mode — DM clicks a tile to recenter all players there
         if button == 1 and self.active_tool == "recenter_pick":
