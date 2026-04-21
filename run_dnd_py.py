@@ -268,7 +268,7 @@ def _run_launcher() -> argparse.Namespace | None:
                 'Select save file',
                 file_types=(('Save Files', '*.json'), ('All files', '*.*')),
                 initial_folder=savegames_dir if os.path.isdir(savegames_dir) else _DEFAULT_DIR,
-                keep_on_top=True,
+                no_window=True,
             )
             if path:
                 window['-LOAD_PATH-'].update(path)
