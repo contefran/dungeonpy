@@ -43,6 +43,8 @@ INTENTS: dict[str, list[str]] = {
     "remove_map_object":    ["pos"],                  # DM only — pos is the object's top-left
     "add_light_source":     ["pos", "radius", "color"],  # DM only
     "remove_light_source":  ["pos"],                  # DM only
+    "aoe_add":    ["anchor", "shape", "size", "angle", "aperture", "color"],  # DM only
+    "aoe_remove": ["id"],                             # DM only
 }
 
 

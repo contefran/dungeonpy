@@ -79,6 +79,47 @@ def _run_picker_mode(argv):
         print(w or 1)
         print(h or 1)
 
+    elif kind == "aoe":
+        root = tk.Tk()
+        root.withdraw()
+        root.lift()
+        dlg = tk.Toplevel(root)
+        dlg.title("AoE type")
+        dlg.resizable(False, False)
+        shape_var = tk.StringVar(value="sphere")
+        for s in ("sphere", "cone", "line"):
+            tk.Radiobutton(dlg, text=s.capitalize(), variable=shape_var, value=s).pack(anchor="w", padx=20)
+        tk.Button(dlg, text="Next \u2192", command=dlg.destroy).pack(pady=8)
+        dlg.grab_set()
+        root.wait_window(dlg)
+        shape = shape_var.get()
+        prompt = "Radius in tiles:" if shape == "sphere" else "Length in tiles:"
+        size = simpledialog.askinteger("AoE size", prompt,
+                                       initialvalue=3, minvalue=1, maxvalue=30, parent=root)
+        if not size:
+            root.destroy()
+            return
+        aperture = 0.0
+        if shape == "cone":
+            aperture = simpledialog.askfloat("Cone aperture",
+                                             "Aperture in degrees?\n(53\u00b0 = standard D&D cone)",
+                                             initialvalue=53.0, minvalue=5.0, maxvalue=180.0,
+                                             parent=root) or 53.0
+        dlg = tk.Toplevel(root)
+        dlg.title("AoE color")
+        dlg.resizable(False, False)
+        color_var = tk.StringVar(value="red")
+        for c in ("warm", "cool", "white", "red", "green", "blue", "black"):
+            tk.Radiobutton(dlg, text=c, variable=color_var, value=c).pack(anchor="w", padx=20)
+        tk.Button(dlg, text="OK", command=dlg.destroy).pack(pady=8)
+        dlg.grab_set()
+        root.wait_window(dlg)
+        root.destroy()
+        print(shape)
+        print(size)
+        print(aperture)
+        print(color_var.get())
+
     elif kind == "light":
         root = tk.Tk()
         root.withdraw()
