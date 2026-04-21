@@ -177,7 +177,7 @@ class WSBridge:
         # Player rules
         action = intent.get("action")
         _PLAYER_ALLOWED = {"select", "clear_selection", "move_token", "chat_message",
-                           "highlight_tile", "clear_highlights"}
+                           "highlight_tile", "clear_highlights", "aoe_add", "aoe_remove"}
         if action not in _PLAYER_ALLOWED:
             return False, f"action '{action}' not permitted for players"
         if action in ("select", "highlight_tile"):
@@ -188,6 +188,14 @@ class WSBridge:
                 return False, "players may only move their own token"
             if not self.server.player_move_locks.get(client["name"]):
                 return False, "movement not currently allowed — wait for the DM to enable you"
+        if action == "aoe_add":
+            if not self.server.player_aoe_locks.get(client["name"]):
+                return False, "AoE placement not currently allowed — wait for the DM to enable you"
+        if action == "aoe_remove":
+            aoe_id = intent.get("id")
+            aoe = next((a for a in self.server.aoe_areas if a["id"] == aoe_id), None)
+            if aoe is None or aoe.get("owner") != client["name"]:
+                return False, "players may only remove their own AoEs"
         return True, None
 
     # ------------------------------------------------------------------

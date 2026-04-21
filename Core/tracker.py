@@ -68,7 +68,7 @@ class Tracker:
         self._squelch_table_event = 0   # counter: suppress this many upcoming TABLE events
         self._selected_index = None
         self._pending_timers = {}   # condition → expiry turn, set during the current edit session
-        self._connected_players: dict[str, dict] = {}  # name → {"select": bool, "move": bool, "color": str}
+        self._connected_players: dict[str, dict] = {}  # name → {"select": bool, "move": bool, "aoe": bool, "color": str}
         self._known_players: dict[str, str] = {}       # name → color; persists across disconnects
         self._map_path: str | None = None
         self._map_visible: bool = False
@@ -180,7 +180,7 @@ class Tracker:
         elif action == "player_connected":
             color = event.get("color", "white")
             self._connected_players[event["name"]] = {
-                "select": False, "move": False, "color": color,
+                "select": False, "move": False, "aoe": False, "color": color,
             }
             self._known_players[event["name"]] = color
             self._refresh_players_table()
@@ -229,7 +229,8 @@ class Tracker:
         rows = [
             [name,
              "✓" if state["select"] else "✗",
-             "✓" if state["move"] else "✗"]
+             "✓" if state["move"] else "✗",
+             "✓" if state.get("aoe") else "✗"]
             for name, state in self._connected_players.items()
         ]
         self.window['-PLAYERS-'].update(values=rows)
@@ -383,17 +384,18 @@ class Tracker:
             [sg.Text('Connected Players', font=(_UI_FONT, 12, 'bold'))],
             [sg.Table(
                 values=[],
-                headings=['Player', 'Select', 'Move'],
+                headings=['Player', 'Select', 'Move', 'AoE'],
                 key='-PLAYERS-',
                 enable_events=True,
                 select_mode=sg.TABLE_SELECT_MODE_BROWSE,
-                col_widths=[14, 7, 7],
+                col_widths=[14, 7, 7, 7],
                 auto_size_columns=False,
-                num_rows=4,
+                num_rows=max(1, len(self.server.combatants) + 1),
                 font=(_UI_FONT, 12),
             )],
             [sg.Button('Toggle Selection', key='Toggle Selection'),
-             sg.Button('Toggle Movement', key='Toggle Movement')],
+             sg.Button('Toggle Movement', key='Toggle Movement'),
+             sg.Button('Toggle AoE', key='Toggle AoE')],
         ]
         scrollable = sg.Column(layout, scrollable=True, vertical_scroll_only=True,
                                expand_x=True, expand_y=True)
@@ -666,6 +668,17 @@ class Tracker:
                     current = self._connected_players[name]["move"]
                     self._submit({"action": "set_player_lock", "name": name,
                                   "lock_type": "move", "locked": not current})
+
+        elif event == 'Toggle AoE':
+            sel = values.get('-PLAYERS-')
+            if sel:
+                player_names = list(self._connected_players.keys())
+                idx = sel[0]
+                if 0 <= idx < len(player_names):
+                    name = player_names[idx]
+                    current = self._connected_players[name].get("aoe", False)
+                    self._submit({"action": "set_player_lock", "name": name,
+                                  "lock_type": "aoe", "locked": not current})
 
         elif event == 'Load Map':
             maps_dir = os.path.join(self.dir_path, 'Maps')

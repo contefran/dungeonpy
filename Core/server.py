@@ -73,6 +73,7 @@ class GameServer:
         self.trap_states: dict[tuple, str] = {}          # (row, col) → 'open'|'closed'  tile 6 trap
         self.player_selection_locks: dict[str, bool] = {}  # player name → allowed to select
         self.player_move_locks: dict[str, bool] = {}       # player name → allowed to move token
+        self.player_aoe_locks: dict[str, bool] = {}        # player name → allowed to place AoEs
         self.tile_highlights: list[dict] = []              # [{"pos":[c,r],"color":"gold","owner":"DM"}, ...]
         self.map_objects: list[dict] = []                  # [{"pos":[c,r],"icon":"chest.png","width":1,"height":1}, ...]
         self.light_sources: list[dict] = []               # [{"pos":[c,r],"radius":4,"color":"warm"}, ...]
@@ -176,6 +177,7 @@ class GameServer:
             "trap_states": {f"{r},{c}": v for (r, c), v in self.trap_states.items()},
             "player_selection_locks": dict(self.player_selection_locks),
             "player_move_locks": dict(self.player_move_locks),
+            "player_aoe_locks": dict(self.player_aoe_locks),
             "map_grid": self.map_grid,
             "map_path": self.map_path,
             "map_visible": self.map_visible,
@@ -514,6 +516,10 @@ class GameServer:
                     events.append({"type": "event", "action": "highlights_changed",
                                    "highlights": list(self.tile_highlights)})
                 return events
+            elif lock_type == "aoe":
+                self.player_aoe_locks[name] = locked
+                return [{"type": "event", "action": "player_lock_changed",
+                         "name": name, "lock_type": "aoe", "locked": locked}]
             else:
                 self.player_move_locks[name] = locked
                 return [{"type": "event", "action": "player_lock_changed",
@@ -524,12 +530,14 @@ class GameServer:
             color = intent.get("color", "white")
             self.player_selection_locks.setdefault(name, False)
             self.player_move_locks.setdefault(name, False)
+            self.player_aoe_locks.setdefault(name, False)
             return [{"type": "event", "action": "player_connected", "name": name, "color": color}]
 
         if action == "player_disconnected":
             name = intent.get("name")
             self.player_selection_locks.pop(name, None)
             self.player_move_locks.pop(name, None)
+            self.player_aoe_locks.pop(name, None)
             return [{"type": "event", "action": "player_disconnected", "name": name}]
 
         # --- Map lifecycle ---
@@ -634,6 +642,8 @@ class GameServer:
                 "angle":    float(intent.get("angle", 0)),
                 "aperture": float(intent.get("aperture", 53)),
                 "color":    intent.get("color", "red"),
+                "owner":    intent.get("owner"),       # None = DM, str = player name
+                "hidden":   bool(intent.get("hidden", False)),
             }
             self.aoe_areas.append(aoe)
             return [{"type": "event", "action": "aoe_added", "aoe": aoe}]

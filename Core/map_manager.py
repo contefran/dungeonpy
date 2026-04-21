@@ -26,8 +26,8 @@ _ALL_COLORS = {**PLAYER_COLORS, DM_COLOR_NAME: DM_COLOR}
 TOOLBAR_WIDTH = 60   # pixel width of the right-side tool panel
 
 
-def _aoe_tiles(aoe: dict, grid_rows: int, grid_cols: int) -> set:
-    """Return the set of (col, row) tile coords covered by *aoe*."""
+def _aoe_tiles(aoe: dict, grid_rows: int, grid_cols: int, map_data=None) -> set:
+    """Return the set of (col, row) tile coords covered by *aoe*, excluding walls and voids."""
     ac, ar   = aoe["anchor"]
     size     = aoe["size"]
     shape    = aoe["shape"]
@@ -37,6 +37,8 @@ def _aoe_tiles(aoe: dict, grid_rows: int, grid_cols: int) -> set:
     tiles = set()
     for r in range(grid_rows):
         for c in range(grid_cols):
+            if map_data is not None and map_data[r][c] in (0, 2):  # void, wall
+                continue
             dc = c - ac + 0.5   # vector from anchor to tile centre
             dr = r - ar + 0.5
             dist = math.sqrt(dc * dc + dr * dr)
@@ -63,6 +65,12 @@ def _aoe_remove_rect(aoe: dict, ts: int, ox: int, oy: int) -> "pygame.Rect":
     """Return the screen rect of the "×" remove button for *aoe*."""
     ac, ar = aoe["anchor"]
     return pygame.Rect(int(ac * ts + ox) - 8, int(ar * ts + oy) - 8, 16, 16)
+
+
+def _aoe_hide_rect(aoe: dict, ts: int, ox: int, oy: int) -> "pygame.Rect":
+    """Return the screen rect of the eye (hide/show) toggle button for *aoe* — DM only."""
+    rm = _aoe_remove_rect(aoe, ts, ox, oy)
+    return pygame.Rect(rm.right + 2, rm.top, 16, 16)
 
 
 def _aoe_rotate_rect(aoe: dict, ts: int, ox: int, oy: int) -> "pygame.Rect":
@@ -297,14 +305,15 @@ class MapManager:
         self.draw_map(screen)
         self.draw_objects(screen)
         self.draw_lights(screen)
+        self.draw_aoes(screen)
         if self._player_name:
             self._update_los()
             self._draw_fog(screen)
-        self.draw_aoes(screen)
         self.draw_grid(screen)
         self._draw_highlights(screen)
         mx, my = pygame.mouse.get_pos()
         self.draw_tokens(screen, self.selected_token, self.server.get_active(), (mx, my))
+        self.draw_aoe_widgets(screen)
         self.draw_minimap(screen)
         if self.unplaced and self.ui_font:
             label = f"Click to place: {self.unplaced[0].name}"
@@ -653,6 +662,8 @@ class MapManager:
             "angle":    round(angle, 2),
             "aperture": p.get("aperture", 53.0),
             "color":    p["color"],
+            "owner":    self._player_name,   # None for DM
+            "hidden":   True,  # all AoEs hidden by default; owner/DM makes them visible
         })
 
     def draw_lights(self, screen):
@@ -710,81 +721,104 @@ class MapManager:
                     screen.blit(tile_surf, (x, y), special_flags=pygame.BLEND_RGBA_ADD)
 
     def draw_aoes(self, screen):
-        """Draw AoE overlays and remove buttons above fog, below grid."""
+        """Draw AoE tile overlays (before fog). Widgets are drawn separately by draw_aoe_widgets."""
         if not self.map_data:
             return
         ts    = self.tile_size
         rows  = len(self.map_data)
         cols  = len(self.map_data[0])
         ox, oy = self.offset_x, self.offset_y
+        is_dm = self._player_name is None
 
-        def _paint(aoe_dict):
+        def _paint(aoe_dict, alpha_override=None):
             rgb  = self._AOE_COLORS.get(aoe_dict.get("color", "red"), (220, 40, 40))
+            alpha = alpha_override if alpha_override is not None else self._AOE_ALPHA
             surf = pygame.Surface((ts, ts), pygame.SRCALPHA)
-            surf.fill((*rgb, self._AOE_ALPHA))
-            for (c, r) in _aoe_tiles(aoe_dict, rows, cols):
+            surf.fill((*rgb, alpha))
+            for (c, r) in _aoe_tiles(aoe_dict, rows, cols, self.map_data):
                 screen.blit(surf, (c * ts + ox, r * ts + oy))
 
-        dragging_id  = self._dragging_aoe["id"]  if self._dragging_aoe  else None
-        rotating_id  = self._rotating_aoe["id"]  if self._rotating_aoe  else None
+        dragging_id = self._dragging_aoe["id"] if self._dragging_aoe else None
+        rotating_id = self._rotating_aoe["id"] if self._rotating_aoe else None
         for aoe in self.server.aoe_areas:
             if aoe["id"] == dragging_id and self._dragging_aoe_committed:
-                continue  # anchor-drag preview painted below
+                continue
             if aoe["id"] == rotating_id and self._rotating_aoe_committed:
-                continue  # rotation-drag preview painted below
-            _paint(aoe)
+                continue
+            hidden = aoe.get("hidden", False)
+            if hidden and not is_dm and aoe.get("owner") != self._player_name:
+                continue  # hidden AoEs invisible to players who don't own them
+            _paint(aoe, alpha_override=self._AOE_ALPHA // 2 if hidden else None)
 
-        # Live preview while dragging anchor
         if self._dragging_aoe is not None and self._dragging_aoe_committed:
             _paint(dict(self._dragging_aoe, anchor=list(self._dragging_aoe_anchor)))
-
-        # Live preview while rotating
         if self._rotating_aoe is not None and self._rotating_aoe_committed:
             _paint(dict(self._rotating_aoe, angle=self._rotating_aoe_angle))
-
-        # Live preview in aoe_rotate mode (placement)
         if self.active_tool == "aoe_rotate" and self._pending_aoe and self._aoe_anchor:
-            preview = dict(self._pending_aoe,
-                           anchor=list(self._aoe_anchor),
-                           angle=self._aoe_preview_angle)
-            _paint(preview)
+            _paint(dict(self._pending_aoe, anchor=list(self._aoe_anchor),
+                        angle=self._aoe_preview_angle))
 
-        # DM only: per-AoE widgets
-        if self._player_name is None and self.active_tool not in ("aoe_place", "aoe_anchor", "aoe_rotate"):
-            for aoe in self.server.aoe_areas:
-                rgb = self._AOE_COLORS.get(aoe.get("color", "red"), (220, 40, 40))
+    def draw_aoe_widgets(self, screen):
+        """Draw per-AoE control widgets (×, eye, ↺) on top of tokens."""
+        if not self.map_data or self.active_tool in ("aoe_place", "aoe_anchor", "aoe_rotate"):
+            return
+        ts    = self.tile_size
+        ox, oy = self.offset_x, self.offset_y
+        is_dm = self._player_name is None
+        dragging_id = self._dragging_aoe["id"] if self._dragging_aoe else None
+        rotating_id = self._rotating_aoe["id"] if self._rotating_aoe else None
 
-                # Anchor widget (×) — always red
-                anchor = (list(self._dragging_aoe_anchor)
-                          if (self._dragging_aoe_committed and aoe["id"] == dragging_id)
-                          else aoe["anchor"])
-                btn = _aoe_remove_rect({"anchor": anchor}, ts, ox, oy)
-                pygame.draw.circle(screen, (200, 60, 60), btn.center, btn.width // 2)
-                if self._toolbar_font:
-                    lbl = self._toolbar_font.render("\u00d7", True, (255, 255, 255))
-                    screen.blit(lbl, lbl.get_rect(center=btn.center))
+        for aoe in self.server.aoe_areas:
+            owner = aoe.get("owner")
+            is_own = is_dm or owner == self._player_name
+            if not is_own:
+                continue
+            rgb = self._AOE_COLORS.get(aoe.get("color", "red"), (220, 40, 40))
+            hidden = aoe.get("hidden", False)
 
-                # Rotation widget (↺) for cone/line — AoE color
-                if aoe["shape"] != "sphere":
-                    angle = (self._rotating_aoe_angle
-                             if (self._rotating_aoe_committed and aoe["id"] == rotating_id)
-                             else aoe["angle"])
-                    rbtn = _aoe_rotate_rect({"anchor": anchor, "angle": angle, "size": aoe["size"]},
-                                            ts, ox, oy)
-                    pygame.draw.circle(screen, rgb, rbtn.center, rbtn.width // 2)
-                    # Draw rotation arc + arrowhead in white
-                    cx2, cy2 = rbtn.center
-                    pygame.draw.arc(screen, (255, 255, 255),
-                                    pygame.Rect(cx2 - 4, cy2 - 4, 8, 8),
-                                    math.radians(30), math.radians(330), 2)
-                    # Arrowhead at ~30° end of the arc
-                    tip_x = cx2 + round(4 * math.cos(math.radians(30)))
-                    tip_y = cy2 - round(4 * math.sin(math.radians(30)))
-                    pygame.draw.polygon(screen, (255, 255, 255), [
-                        (tip_x, tip_y),
-                        (tip_x - 3, tip_y - 2),
-                        (tip_x + 1, tip_y - 3),
-                    ])
+            anchor = (list(self._dragging_aoe_anchor)
+                      if (self._dragging_aoe_committed and aoe["id"] == dragging_id)
+                      else aoe["anchor"])
+
+            # Anchor widget (×) — move/delete
+            btn = _aoe_remove_rect({"anchor": anchor}, ts, ox, oy)
+            pygame.draw.circle(screen, (200, 60, 60), btn.center, btn.width // 2)
+            if self._toolbar_font:
+                lbl = self._toolbar_font.render("\u00d7", True, (255, 255, 255))
+                screen.blit(lbl, lbl.get_rect(center=btn.center))
+
+            # Eye widget — DM always; player if they own the AoE and have aoe permission
+            if is_dm or (is_own and self._can_place_aoe()):
+                ebtn = _aoe_hide_rect({"anchor": anchor}, ts, ox, oy)
+                eye_col = (90, 90, 110) if hidden else (60, 160, 60)
+                pygame.draw.circle(screen, eye_col, ebtn.center, ebtn.width // 2)
+                ecx, ecy = ebtn.center
+                pygame.draw.ellipse(screen, (255, 255, 255),
+                                    pygame.Rect(ecx - 4, ecy - 2, 8, 5), 1)
+                pygame.draw.circle(screen, (255, 255, 255), (ecx, ecy), 2)
+                if hidden:
+                    pygame.draw.line(screen, (255, 80, 80),
+                                     (ecx - 4, ecy - 3), (ecx + 4, ecy + 3), 2)
+
+            # Rotation widget (↺) for cone/line
+            if aoe["shape"] != "sphere":
+                angle = (self._rotating_aoe_angle
+                         if (self._rotating_aoe_committed and aoe["id"] == rotating_id)
+                         else aoe["angle"])
+                rbtn = _aoe_rotate_rect({"anchor": anchor, "angle": angle, "size": aoe["size"]},
+                                        ts, ox, oy)
+                pygame.draw.circle(screen, rgb, rbtn.center, rbtn.width // 2)
+                cx2, cy2 = rbtn.center
+                pygame.draw.arc(screen, (255, 255, 255),
+                                pygame.Rect(cx2 - 4, cy2 - 4, 8, 8),
+                                math.radians(30), math.radians(330), 2)
+                tip_x = cx2 + round(4 * math.cos(math.radians(30)))
+                tip_y = cy2 - round(4 * math.sin(math.radians(30)))
+                pygame.draw.polygon(screen, (255, 255, 255), [
+                    (tip_x, tip_y),
+                    (tip_x - 3, tip_y - 2),
+                    (tip_x + 1, tip_y - 3),
+                ])
 
     def is_tile_occupied(self, col, row, ignore_token=None):
         for c in self.server.combatants:
@@ -982,6 +1016,12 @@ class MapManager:
             return True
         return bool(self.server.player_selection_locks.get(self._player_name))
 
+    def _can_place_aoe(self) -> bool:
+        """DM can always place AoEs; players only when their aoe lock is on."""
+        if self._player_name is None:
+            return True
+        return bool(self.server.player_aoe_locks.get(self._player_name))
+
     def _toolbar_button_rects(self, screen_w: int) -> dict:
         """Compute toolbar button rects from current screen width."""
         x0 = screen_w - TOOLBAR_WIDTH + 8
@@ -995,6 +1035,7 @@ class MapManager:
         if self._player_name is not None:
             chat_bottom = rects["chat"].bottom if "chat" in rects else rects["clear"].bottom
             rects["recenter"] = pygame.Rect(x0, chat_bottom + 8, 44, 44)
+            rects["add_aoe"] = pygame.Rect(x0, rects["recenter"].bottom + 16, 44, 44)
         if self._player_name is None:
             rects["recenter_all"]  = pygame.Rect(x0, rects["clear"].bottom + 16, 44, 44)
             rects["add_object"]    = pygame.Rect(x0, rects["recenter_all"].bottom + 16, 44, 44)
@@ -1046,6 +1087,8 @@ class MapManager:
         elif rects.get("remove_light") and rects["remove_light"].collidepoint(mx, my):
             self.active_tool = "select" if self.active_tool == "remove_light" else "remove_light"
         elif rects.get("add_aoe") and rects["add_aoe"].collidepoint(mx, my):
+            if not self._can_place_aoe():
+                return
             if self.active_tool in ("aoe_place", "aoe_anchor", "aoe_rotate") or self._picking_aoe:
                 self.active_tool = "select"
                 self._pending_aoe = None
@@ -1206,10 +1249,11 @@ class MapManager:
             pygame.draw.circle(screen, ic, (cx, cy), 7, 2)
             pygame.draw.line(screen, ic, (cx - 5, cy - 5), (cx + 5, cy + 5), 2)
 
-        # --- Add AoE button (DM only) ---
+        # --- Add AoE button (DM always; player always visible, greyed when no permission) ---
         if rects.get("add_aoe"):
             is_aoe = self.active_tool in ("aoe_place", "aoe_anchor", "aoe_rotate")
             is_pick_aoe = self._picking_aoe
+            can_aoe = self._can_place_aoe()
             pygame.draw.line(screen, (55, 55, 70),
                              (x0 + 8, rects["add_aoe"].top - 8),
                              (sw - 8, rects["add_aoe"].top - 8), 1)
@@ -1217,7 +1261,12 @@ class MapManager:
             pygame.draw.rect(screen, bg, rects["add_aoe"], border_radius=4)
             pygame.draw.rect(screen, _BORDER, rects["add_aoe"], 1, border_radius=4)
             cx, cy = rects["add_aoe"].centerx, rects["add_aoe"].centery - 6
-            ic = (220, 80, 80) if (is_aoe or is_pick_aoe) else _ICON
+            if not can_aoe:
+                ic = (60, 60, 70)   # greyed out — no permission
+            elif is_aoe or is_pick_aoe:
+                ic = (220, 80, 80)
+            else:
+                ic = _ICON
             # Circle with blast lines to suggest an explosion
             pygame.draw.circle(screen, ic, (cx, cy), 7, 2)
             for angle_deg in (0, 60, 120, 180, 240, 300):
@@ -1744,7 +1793,8 @@ class MapManager:
                 elif event.type == pygame.MOUSEBUTTONDOWN:
                     if event.button == 1:
                         self.handle_click(event.pos, 1)
-                        self.start_drag(*event.pos)
+                        if self._dragging_aoe is None and self._rotating_aoe is None:
+                            self.start_drag(*event.pos)
                     elif event.button == 3:
                         self.start_panning(event.pos)
 
@@ -1762,6 +1812,8 @@ class MapManager:
                                     "angle":    round(self._rotating_aoe_angle, 2),
                                     "aperture": p["aperture"],
                                     "color":    p["color"],
+                                    "owner":    p.get("owner"),
+                                    "hidden":   p.get("hidden", False),
                                 })
                             self._rotating_aoe = None
                             self._rotating_aoe_committed = False
@@ -1777,6 +1829,8 @@ class MapManager:
                                     "angle":    p["angle"],
                                     "aperture": p["aperture"],
                                     "color":    p["color"],
+                                    "owner":    p.get("owner"),
+                                    "hidden":   p.get("hidden", False),
                                 })
                             else:
                                 self._submit({"action": "aoe_remove", "id": self._dragging_aoe["id"]})
@@ -1887,13 +1941,22 @@ class MapManager:
         col = (mx - self.offset_x) // self.tile_size
         row = (my - self.offset_y) // self.tile_size
 
-        # AoE widgets — anchor drag and rotation drag; commit on release
-        if button == 1 and self._player_name is None and self.active_tool not in (
-                "aoe_place", "aoe_anchor", "aoe_rotate"):
+        # AoE widgets — eye toggle (DM), anchor drag, rotation drag; commit on release
+        if button == 1 and self.active_tool not in ("aoe_place", "aoe_anchor", "aoe_rotate"):
             ts = self.tile_size
             ox, oy = self.offset_x, self.offset_y
+            is_dm = self._player_name is None
             for aoe in self.server.aoe_areas:
-                # Rotation handle (cone/line only) — check before anchor so tip doesn't get masked
+                owner = aoe.get("owner")
+                is_own = is_dm or owner == self._player_name
+                if not is_own:
+                    continue
+                # Eye widget — DM always; player if they own the AoE and have aoe permission
+                if (is_dm or (is_own and self._can_place_aoe())) and _aoe_hide_rect(aoe, ts, ox, oy).collidepoint(mx, my):
+                    self._submit({"action": "aoe_remove", "id": aoe["id"]})
+                    self._submit({**aoe, "action": "aoe_add", "hidden": not aoe.get("hidden", False)})
+                    return
+                # Rotation handle (cone/line only)
                 if aoe["shape"] != "sphere" and _aoe_rotate_rect(aoe, ts, ox, oy).collidepoint(mx, my):
                     self._rotating_aoe = aoe
                     self._rotating_aoe_start = (mx, my)
