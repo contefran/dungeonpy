@@ -2,21 +2,29 @@
 los.py — Line-of-sight computation for DungeonPy.
 
 compute_los(map_grid, pos, radius, door_states, iron_door_states, secret_door_states)
-    → frozenset of (col, row) tuples the origin can see.
+    → set of (col, row) tuples the origin can see.
 
-Algorithm: for every tile within the circular radius, walk a Bresenham line
-from the origin and mark it visible only if the path is unobstructed.
-At radius ≤ 20 this is fast enough to run every frame in pure Python.
+Algorithm:
+  Pass 1 — standard Bresenham LOS for every tile within the circular radius.
+  Pass 2 — reveal opaque boundary tiles (walls, closed doors) that have at
+            least one visible transparent (floor/trap) neighbour.  This fixes
+            Bresenham corner-clipping that can hide nearby room walls, and also
+            extends wall visibility up to WALL_BONUS tiles beyond the radius so
+            that room boundaries never disappear just past the sight circle.
+            Because pass 2 only ever adds opaque tiles it cannot cause
+            see-through artefacts.
 
 Tile opacity rules  (must match draw_map numbering):
-  0  void/outside — opaque  (black empty space outside the dungeon)
+  0  void/outside — opaque
   1  floor        — transparent
   2  wall         — opaque
   3  wooden door  — opaque when closed, transparent when open
   4  iron door    — opaque when closed, transparent when open
-  5  secret door  — opaque when closed, transparent when open (fog-gated per player)
+  5  secret door  — opaque when closed, transparent when open
   6  trap         — transparent (floor-like)
 """
+
+WALL_BONUS = 2   # extra tiles of radius granted to opaque boundary tiles
 
 
 def compute_los(map_grid, pos, radius,
@@ -33,7 +41,7 @@ def compute_los(map_grid, pos, radius,
     pos : (int, int)
         (col, row) of the viewer.
     radius : int
-        Maximum sight distance in tiles.
+        Maximum sight distance in tiles (floor tiles beyond this are hidden).
     door_states / iron_door_states / secret_door_states : dict | None
         {(row, col): "open"|"closed"} — current door states.
     """
@@ -42,23 +50,26 @@ def compute_los(map_grid, pos, radius,
 
     n_rows = len(map_grid)
     n_cols = len(map_grid[0]) if n_rows else 0
-    ox, oy = pos          # origin col, row
+    ox, oy = pos
     ds  = door_states        or {}
     ids = iron_door_states   or {}
     sds = secret_door_states or {}
 
     def is_opaque(c, r):
         if not (0 <= r < n_rows and 0 <= c < n_cols):
-            return True   # out of bounds treated as solid
+            return True
         t = map_grid[r][c]
-        if t == 0:        return True    # void/outside — opaque
-        if t in (1, 6):   return False   # floor, trap — transparent
-        if t == 2:        return True    # wall — opaque
+        if t == 0:        return True
+        if t in (1, 6):   return False
+        if t == 2:        return True
         if t == 3:        return ds.get((r, c), "closed") != "open"
         if t == 4:        return ids.get((r, c), "closed") != "open"
         if t == 5:        return sds.get((r, c), "closed") != "open"
         return False
 
+    # ------------------------------------------------------------------
+    # Pass 1: standard Bresenham LOS within normal radius
+    # ------------------------------------------------------------------
     visible = set()
     r2 = radius * radius
 
@@ -71,6 +82,33 @@ def compute_los(map_grid, pos, radius,
                 continue
             if _clear_line(ox, oy, tc, tr, is_opaque):
                 visible.add((tc, tr))
+
+    # ------------------------------------------------------------------
+    # Pass 2: reveal opaque boundary tiles with a visible floor neighbour.
+    # Covers both the corner-clipping fix and the wall-radius bonus.
+    # ------------------------------------------------------------------
+    r2_wall = (radius + WALL_BONUS) * (radius + WALL_BONUS)
+
+    for dc in range(-(radius + WALL_BONUS), (radius + WALL_BONUS) + 1):
+        for dr in range(-(radius + WALL_BONUS), (radius + WALL_BONUS) + 1):
+            if dc * dc + dr * dr > r2_wall:
+                continue
+            tc, tr = ox + dc, oy + dr
+            if (tc, tr) in visible:
+                continue
+            if not (0 <= tr < n_rows and 0 <= tc < n_cols):
+                continue
+            # Only walls and closed doors qualify — not void, floor, or open doors
+            tile_type = map_grid[tr][tc]
+            if tile_type not in (2, 3, 4, 5):
+                continue
+            if not is_opaque(tc, tr):
+                continue  # open door is transparent; skip
+            # Visible if any cardinal neighbour is a currently-visible floor tile
+            for nc, nr in ((tc + 1, tr), (tc - 1, tr), (tc, tr + 1), (tc, tr - 1)):
+                if (nc, nr) in visible and not is_opaque(nc, nr):
+                    visible.add((tc, tr))
+                    break
 
     return visible
 
@@ -97,6 +135,6 @@ def _clear_line(x0, y0, x1, y1, is_opaque):
             err += dx
             cy += sy
         if cx == x1 and cy == y1:
-            return True          # reached destination — always add it (see the wall)
+            return True          # reached destination — always visible
         if is_opaque(cx, cy):
-            return False         # path blocked before reaching destination
+            return False         # path blocked
