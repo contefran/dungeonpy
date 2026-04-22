@@ -604,7 +604,6 @@ class MapManager:
                     capture_output=True, text=True, timeout=300,
                 )
                 all_lines = result.stdout.strip().splitlines()
-                # Skip pygame startup banner (printed on import in frozen builds)
                 idx = next((i for i, l in enumerate(all_lines)
                             if l.strip() in _shapes), None)
                 if idx is None or idx + 3 >= len(all_lines):
