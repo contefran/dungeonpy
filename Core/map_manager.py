@@ -424,7 +424,10 @@ class MapManager:
                     [sys.executable, "--_picker", "object", objects_dir],
                     capture_output=True, text=True, timeout=300,
                 )
-                lines = result.stdout.strip().splitlines()
+                all_lines = result.stdout.strip().splitlines()
+                # Skip pygame startup banner in frozen builds
+                lines = [l for l in all_lines if l.strip() and not l.startswith("pygame")
+                         and "pygame community" not in l]
                 if not lines or not lines[0]:
                     return None, 1, 1
                 icon   = lines[0]
@@ -511,7 +514,10 @@ class MapManager:
                     [sys.executable, "--_picker", "light"],
                     capture_output=True, text=True, timeout=300,
                 )
-                lines = result.stdout.strip().splitlines()
+                all_lines = result.stdout.strip().splitlines()
+                # Skip pygame startup banner in frozen builds
+                lines = [l for l in all_lines if l.strip() and not l.startswith("pygame")
+                         and "pygame community" not in l]
                 if not lines or not lines[0].isdigit():
                     return None, "warm", 60
                 radius = int(lines[0])
@@ -597,11 +603,13 @@ class MapManager:
                     [sys.executable, "--_picker", "aoe"],
                     capture_output=True, text=True, timeout=300,
                 )
-                print(f"[Map] AoE picker rc={result.returncode} "
-                      f"stdout={result.stdout!r} stderr={result.stderr!r}")
-                lines = result.stdout.strip().splitlines()
-                if len(lines) < 4 or lines[0] not in _shapes:
+                all_lines = result.stdout.strip().splitlines()
+                # Skip pygame startup banner (printed on import in frozen builds)
+                idx = next((i for i, l in enumerate(all_lines)
+                            if l.strip() in _shapes), None)
+                if idx is None or idx + 3 >= len(all_lines):
                     return None
+                lines = all_lines[idx:idx + 4]
                 return {
                     "shape":    lines[0],
                     "size":     int(lines[1]),
