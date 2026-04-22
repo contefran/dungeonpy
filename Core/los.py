@@ -24,7 +24,7 @@ Tile opacity rules  (must match draw_map numbering):
   6  trap         — transparent (floor-like)
 """
 
-WALL_BONUS = 2   # extra tiles of radius granted to opaque boundary tiles
+WALL_BONUS = 4   # extra tiles of radius granted to opaque boundary tiles
 
 
 def compute_los(map_grid, pos, radius,
@@ -84,31 +84,53 @@ def compute_los(map_grid, pos, radius,
                 visible.add((tc, tr))
 
     # ------------------------------------------------------------------
-    # Pass 2: reveal opaque boundary tiles with a visible floor neighbour.
-    # Covers both the corner-clipping fix and the wall-radius bonus.
+    # Pass 2: clipping fix — reveal walls/closed-doors within the normal
+    # radius whose Bresenham ray was blocked by an adjacent void tile.
+    # A wall is revealed if any cardinal floor neighbour is already visible.
+    # (Safe: only adds opaque tiles, so no see-through is possible.)
     # ------------------------------------------------------------------
-    r2_wall = (radius + WALL_BONUS) * (radius + WALL_BONUS)
-
-    for dc in range(-(radius + WALL_BONUS), (radius + WALL_BONUS) + 1):
-        for dr in range(-(radius + WALL_BONUS), (radius + WALL_BONUS) + 1):
-            if dc * dc + dr * dr > r2_wall:
+    for dc in range(-radius, radius + 1):
+        for dr in range(-radius, radius + 1):
+            if dc * dc + dr * dr > r2:
                 continue
             tc, tr = ox + dc, oy + dr
             if (tc, tr) in visible:
                 continue
             if not (0 <= tr < n_rows and 0 <= tc < n_cols):
                 continue
-            # Only walls and closed doors qualify — not void, floor, or open doors
             tile_type = map_grid[tr][tc]
             if tile_type not in (2, 3, 4, 5):
                 continue
             if not is_opaque(tc, tr):
-                continue  # open door is transparent; skip
-            # Visible if any cardinal neighbour is a currently-visible floor tile
+                continue  # open door
             for nc, nr in ((tc + 1, tr), (tc - 1, tr), (tc, tr + 1), (tc, tr - 1)):
                 if (nc, nr) in visible and not is_opaque(nc, nr):
                     visible.add((tc, tr))
                     break
+
+    # ------------------------------------------------------------------
+    # Pass 3: wall-radius bonus — walls/closed-doors beyond the normal
+    # radius (up to +WALL_BONUS) that have a clear line of sight.
+    # ------------------------------------------------------------------
+    r2_wall = (radius + WALL_BONUS) * (radius + WALL_BONUS)
+
+    for dc in range(-(radius + WALL_BONUS), (radius + WALL_BONUS) + 1):
+        for dr in range(-(radius + WALL_BONUS), (radius + WALL_BONUS) + 1):
+            dist2 = dc * dc + dr * dr
+            if dist2 <= r2 or dist2 > r2_wall:
+                continue
+            tc, tr = ox + dc, oy + dr
+            if (tc, tr) in visible:
+                continue
+            if not (0 <= tr < n_rows and 0 <= tc < n_cols):
+                continue
+            tile_type = map_grid[tr][tc]
+            if tile_type not in (2, 3, 4, 5):
+                continue
+            if not is_opaque(tc, tr):
+                continue  # open door
+            if _clear_line(ox, oy, tc, tr, is_opaque):
+                visible.add((tc, tr))
 
     return visible
 
