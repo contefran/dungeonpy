@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=42"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dungeonpy"
+version = "4.4.1"
+requires-python = ">=3.11"
+license = { text = "GPL-3.0-or-later" }
+authors = [{ name = "Francesco Conte", email = "contefrances@gmail.com" }]
+dependencies = [
+    "pygame==2.6.1",
+    "PySimpleGUI==4.60.5.1",
+    "Pillow>=9.2.0",
+    "websockets>=12.0",
+    "cryptography>=42.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0", "ruff"]
+
+[project.scripts]
+dungeonpy = "run_dnd_py:main"
+
+[tool.setuptools.packages.find]
+include = ["Core*"]
+
+[tool.setuptools]
+py-modules = ["run_dnd_py"]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W"]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.15.11",
+]

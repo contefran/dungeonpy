@@ -15,7 +15,6 @@ Tests for GameServer map-related features:
 
 import pytest
 from Core.server import GameServer
-from Core.combatant import Combatant
 
 
 @pytest.fixture
@@ -24,15 +23,23 @@ def server():
 
 
 def add(server, name, initiative, hp=10, is_pc=False):
-    server.process_intent({
-        "action": "add_combatant",
-        "combatant": {"name": name, "initiative": initiative, "hp": hp, "is_pc": is_pc},
-    })
+    server.process_intent(
+        {
+            "action": "add_combatant",
+            "combatant": {
+                "name": name,
+                "initiative": initiative,
+                "hp": hp,
+                "is_pc": is_pc,
+            },
+        }
+    )
 
 
 # ---------------------------------------------------------------------------
 # Token placement
 # ---------------------------------------------------------------------------
+
 
 def test_place_token_sets_pos(server):
     add(server, "A", 10)
@@ -42,14 +49,18 @@ def test_place_token_sets_pos(server):
 
 def test_place_token_emits_event(server):
     add(server, "A", 10)
-    events = server.process_intent({"action": "place_token", "name": "A", "pos": [3, 4]})
+    events = server.process_intent(
+        {"action": "place_token", "name": "A", "pos": [3, 4]}
+    )
     assert events[0]["action"] == "token_placed"
     assert events[0]["name"] == "A"
     assert events[0]["pos"] == [3, 4]
 
 
 def test_place_token_unknown_name_no_event(server):
-    events = server.process_intent({"action": "place_token", "name": "Ghost", "pos": [1, 1]})
+    events = server.process_intent(
+        {"action": "place_token", "name": "Ghost", "pos": [1, 1]}
+    )
     assert events == []
 
 
@@ -71,6 +82,7 @@ def test_move_token_emits_event(server):
 # ---------------------------------------------------------------------------
 # Fog of war — explored tiles
 # ---------------------------------------------------------------------------
+
 
 def test_place_token_updates_explored_tiles(server, tmp_path):
     map_file = tmp_path / "map.txt"
@@ -96,14 +108,14 @@ def test_move_token_extends_explored_tiles(server, tmp_path):
 def test_snapshot_explored_tiles_filtered_per_player(server):
     server.explored_tiles = {
         "Alice": {(1, 1), (2, 2)},
-        "Bob":   {(3, 3), (4, 4)},
+        "Bob": {(3, 3), (4, 4)},
     }
     alice_state = server.get_snapshot(player_name="Alice")["state"]
-    bob_state   = server.get_snapshot(player_name="Bob")["state"]
-    dm_state    = server.get_snapshot()["state"]
+    bob_state = server.get_snapshot(player_name="Bob")["state"]
+    dm_state = server.get_snapshot()["state"]
 
     alice_tiles = {tuple(t) for t in alice_state["explored_tiles"]}
-    bob_tiles   = {tuple(t) for t in bob_state["explored_tiles"]}
+    bob_tiles = {tuple(t) for t in bob_state["explored_tiles"]}
 
     assert (1, 1) in alice_tiles
     assert (3, 3) not in alice_tiles
@@ -123,6 +135,7 @@ def test_load_map_resets_explored_tiles(server, tmp_path):
 # ---------------------------------------------------------------------------
 # Door toggling
 # ---------------------------------------------------------------------------
+
 
 def test_toggle_wooden_door_opens(server):
     server.process_intent({"action": "toggle_door", "x": 2, "y": 1})
@@ -158,7 +171,9 @@ def test_toggle_trap(server):
 
 
 def test_toggle_door_event_includes_tile_type(server):
-    events = server.process_intent({"action": "toggle_door", "x": 1, "y": 1, "tile_type": 4})
+    events = server.process_intent(
+        {"action": "toggle_door", "x": 1, "y": 1, "tile_type": 4}
+    )
     assert events[0]["tile_type"] == 4
 
 
@@ -166,47 +181,78 @@ def test_toggle_door_event_includes_tile_type(server):
 # Map objects
 # ---------------------------------------------------------------------------
 
+
 def test_add_map_object_stores_it(server):
-    server.process_intent({
-        "action": "add_map_object", "pos": [2, 3],
-        "icon": "chest.png", "width": 1, "height": 1,
-    })
+    server.process_intent(
+        {
+            "action": "add_map_object",
+            "pos": [2, 3],
+            "icon": "chest.png",
+            "width": 1,
+            "height": 1,
+        }
+    )
     assert len(server.map_objects) == 1
-    assert server.map_objects[0] == {"pos": [2, 3], "icon": "chest.png", "width": 1, "height": 1}
+    assert server.map_objects[0] == {
+        "pos": [2, 3],
+        "icon": "chest.png",
+        "width": 1,
+        "height": 1,
+    }
 
 
 def test_add_map_object_emits_event(server):
-    events = server.process_intent({
-        "action": "add_map_object", "pos": [2, 3],
-        "icon": "chest.png", "width": 1, "height": 1,
-    })
+    events = server.process_intent(
+        {
+            "action": "add_map_object",
+            "pos": [2, 3],
+            "icon": "chest.png",
+            "width": 1,
+            "height": 1,
+        }
+    )
     assert events[0]["action"] == "map_object_added"
     assert events[0]["object"]["icon"] == "chest.png"
 
 
 def test_add_map_object_width_height(server):
-    server.process_intent({
-        "action": "add_map_object", "pos": [1, 1],
-        "icon": "table.png", "width": 2, "height": 1,
-    })
+    server.process_intent(
+        {
+            "action": "add_map_object",
+            "pos": [1, 1],
+            "icon": "table.png",
+            "width": 2,
+            "height": 1,
+        }
+    )
     assert server.map_objects[0]["width"] == 2
     assert server.map_objects[0]["height"] == 1
 
 
 def test_add_map_object_minimum_size_one(server):
-    server.process_intent({
-        "action": "add_map_object", "pos": [0, 0],
-        "icon": "rock.png", "width": 0, "height": -1,
-    })
+    server.process_intent(
+        {
+            "action": "add_map_object",
+            "pos": [0, 0],
+            "icon": "rock.png",
+            "width": 0,
+            "height": -1,
+        }
+    )
     assert server.map_objects[0]["width"] == 1
     assert server.map_objects[0]["height"] == 1
 
 
 def test_remove_map_object(server):
-    server.process_intent({
-        "action": "add_map_object", "pos": [2, 3],
-        "icon": "chest.png", "width": 1, "height": 1,
-    })
+    server.process_intent(
+        {
+            "action": "add_map_object",
+            "pos": [2, 3],
+            "icon": "chest.png",
+            "width": 1,
+            "height": 1,
+        }
+    )
     events = server.process_intent({"action": "remove_map_object", "pos": [2, 3]})
     assert len(server.map_objects) == 0
     assert events[0]["action"] == "map_object_removed"
@@ -219,10 +265,15 @@ def test_remove_nonexistent_object_returns_no_event(server):
 
 
 def test_map_objects_in_snapshot(server):
-    server.process_intent({
-        "action": "add_map_object", "pos": [1, 2],
-        "icon": "barrel.png", "width": 1, "height": 1,
-    })
+    server.process_intent(
+        {
+            "action": "add_map_object",
+            "pos": [1, 2],
+            "icon": "barrel.png",
+            "width": 1,
+            "height": 1,
+        }
+    )
     state = server.get_snapshot()["state"]
     assert len(state["map_objects"]) == 1
     assert state["map_objects"][0]["icon"] == "barrel.png"
@@ -240,10 +291,16 @@ def test_load_map_clears_objects(server, tmp_path):
 # Light sources
 # ---------------------------------------------------------------------------
 
+
 def test_add_light_source_stores_it(server):
-    server.process_intent({
-        "action": "add_light_source", "pos": [3, 4], "radius": 5, "color": "warm",
-    })
+    server.process_intent(
+        {
+            "action": "add_light_source",
+            "pos": [3, 4],
+            "radius": 5,
+            "color": "warm",
+        }
+    )
     assert len(server.light_sources) == 1
     ls = server.light_sources[0]
     assert ls["pos"] == [3, 4]
@@ -252,38 +309,65 @@ def test_add_light_source_stores_it(server):
 
 
 def test_add_light_source_emits_event(server):
-    events = server.process_intent({
-        "action": "add_light_source", "pos": [3, 4], "radius": 5, "color": "warm",
-    })
+    events = server.process_intent(
+        {
+            "action": "add_light_source",
+            "pos": [3, 4],
+            "radius": 5,
+            "color": "warm",
+        }
+    )
     assert events[0]["action"] == "light_source_added"
     assert events[0]["light"]["color"] == "warm"
 
 
 def test_add_light_source_alpha_clamped_high(server):
-    server.process_intent({
-        "action": "add_light_source", "pos": [0, 0], "radius": 3, "color": "white", "alpha": 300,
-    })
+    server.process_intent(
+        {
+            "action": "add_light_source",
+            "pos": [0, 0],
+            "radius": 3,
+            "color": "white",
+            "alpha": 300,
+        }
+    )
     assert server.light_sources[0]["alpha"] == 255
 
 
 def test_add_light_source_alpha_clamped_low(server):
-    server.process_intent({
-        "action": "add_light_source", "pos": [0, 0], "radius": 3, "color": "white", "alpha": -10,
-    })
+    server.process_intent(
+        {
+            "action": "add_light_source",
+            "pos": [0, 0],
+            "radius": 3,
+            "color": "white",
+            "alpha": -10,
+        }
+    )
     assert server.light_sources[0]["alpha"] == 0
 
 
 def test_add_light_source_radius_minimum_one(server):
-    server.process_intent({
-        "action": "add_light_source", "pos": [0, 0], "radius": 0, "color": "warm",
-    })
+    server.process_intent(
+        {
+            "action": "add_light_source",
+            "pos": [0, 0],
+            "radius": 0,
+            "color": "warm",
+        }
+    )
     assert server.light_sources[0]["radius"] == 1
 
 
 def test_remove_light_source(server):
-    server.process_intent({
-        "action": "add_light_source", "pos": [3, 4], "radius": 5, "color": "warm",
-    })
+    server.process_intent(
+        {
+            "action": "add_light_source",
+            "pos": [3, 4],
+            "radius": 5,
+            "color": "warm",
+        }
+    )
     events = server.process_intent({"action": "remove_light_source", "pos": [3, 4]})
     assert len(server.light_sources) == 0
     assert events[0]["action"] == "light_source_removed"
@@ -296,9 +380,14 @@ def test_remove_nonexistent_light_returns_no_event(server):
 
 
 def test_light_sources_in_snapshot(server):
-    server.process_intent({
-        "action": "add_light_source", "pos": [1, 2], "radius": 3, "color": "cool",
-    })
+    server.process_intent(
+        {
+            "action": "add_light_source",
+            "pos": [1, 2],
+            "radius": 3,
+            "color": "cool",
+        }
+    )
     state = server.get_snapshot()["state"]
     assert len(state["light_sources"]) == 1
 
@@ -315,10 +404,16 @@ def test_load_map_clears_light_sources(server, tmp_path):
 # Chat
 # ---------------------------------------------------------------------------
 
+
 def test_chat_message_emits_event(server):
-    events = server.process_intent({
-        "action": "chat_message", "text": "hello", "from": "Alice", "to": "DM",
-    })
+    events = server.process_intent(
+        {
+            "action": "chat_message",
+            "text": "hello",
+            "from": "Alice",
+            "to": "DM",
+        }
+    )
     assert len(events) == 1
     e = events[0]
     assert e["action"] == "chat_message"
@@ -332,9 +427,13 @@ def test_chat_empty_text_produces_no_event(server):
 
 
 def test_chat_dm_to_player_has_to_field(server):
-    events = server.process_intent({
-        "action": "chat_message", "text": "Watch out!", "to": "Alice",
-    })
+    events = server.process_intent(
+        {
+            "action": "chat_message",
+            "text": "Watch out!",
+            "to": "Alice",
+        }
+    )
     assert events[0]["to"] == "Alice"
 
 
@@ -346,6 +445,7 @@ def test_chat_from_defaults_to_dm(server):
 # ---------------------------------------------------------------------------
 # Visibility radius
 # ---------------------------------------------------------------------------
+
 
 def test_set_visibility_radius(server):
     events = server.process_intent({"action": "set_visibility_radius", "radius": 15})
@@ -374,6 +474,7 @@ def test_visibility_radius_in_snapshot(server):
 # Recenter
 # ---------------------------------------------------------------------------
 
+
 def test_recenter_all_emits_event(server):
     events = server.process_intent({"action": "recenter_all", "pos": [5, 6]})
     assert events[0]["action"] == "recenter_all"
@@ -384,10 +485,15 @@ def test_recenter_all_emits_event(server):
 # Player management
 # ---------------------------------------------------------------------------
 
+
 def test_player_connected_initializes_locks(server):
-    events = server.process_intent({
-        "action": "player_connected", "name": "Alice", "color": "blue",
-    })
+    events = server.process_intent(
+        {
+            "action": "player_connected",
+            "name": "Alice",
+            "color": "blue",
+        }
+    )
     assert "Alice" in server.player_selection_locks
     assert "Alice" in server.player_move_locks
     assert events[0]["action"] == "player_connected"
@@ -397,7 +503,9 @@ def test_player_connected_initializes_locks(server):
 
 def test_player_connected_does_not_override_existing_lock(server):
     server.player_move_locks["Alice"] = True
-    server.process_intent({"action": "player_connected", "name": "Alice", "color": "red"})
+    server.process_intent(
+        {"action": "player_connected", "name": "Alice", "color": "red"}
+    )
     assert server.player_move_locks["Alice"] is True
 
 
@@ -411,36 +519,56 @@ def test_player_disconnected_removes_locks(server):
 
 
 def test_set_player_lock_move(server):
-    events = server.process_intent({
-        "action": "set_player_lock", "name": "Alice", "lock_type": "move", "locked": True,
-    })
+    events = server.process_intent(
+        {
+            "action": "set_player_lock",
+            "name": "Alice",
+            "lock_type": "move",
+            "locked": True,
+        }
+    )
     assert server.player_move_locks["Alice"] is True
     assert events[0]["action"] == "player_lock_changed"
     assert events[0]["lock_type"] == "move"
 
 
 def test_set_player_lock_select(server):
-    server.process_intent({
-        "action": "set_player_lock", "name": "Alice", "lock_type": "select", "locked": True,
-    })
+    server.process_intent(
+        {
+            "action": "set_player_lock",
+            "name": "Alice",
+            "lock_type": "select",
+            "locked": True,
+        }
+    )
     assert server.player_selection_locks["Alice"] is True
 
 
 def test_set_player_lock_select_false_clears_highlights(server):
     server.tile_highlights = [{"pos": [1, 1], "color": "blue", "owner": "Alice"}]
     server.player_selection_locks["Alice"] = True
-    server.process_intent({
-        "action": "set_player_lock", "name": "Alice", "lock_type": "select", "locked": False,
-    })
+    server.process_intent(
+        {
+            "action": "set_player_lock",
+            "name": "Alice",
+            "lock_type": "select",
+            "locked": False,
+        }
+    )
     assert server.player_selection_locks["Alice"] is False
     assert all(h["owner"] != "Alice" for h in server.tile_highlights)
 
 
 def test_set_player_lock_select_false_clears_selection_event(server):
     server.player_selection_locks["Alice"] = True
-    events = server.process_intent({
-        "action": "set_player_lock", "name": "Alice", "lock_type": "select", "locked": False,
-    })
+    events = server.process_intent(
+        {
+            "action": "set_player_lock",
+            "name": "Alice",
+            "lock_type": "select",
+            "locked": False,
+        }
+    )
     actions = [e["action"] for e in events]
     assert "selection_cleared" in actions
 
@@ -449,13 +577,16 @@ def test_set_player_lock_select_false_clears_selection_event(server):
 # Save / load — preservation of new fields
 # ---------------------------------------------------------------------------
 
+
 def test_save_load_preserves_light_sources(server, tmp_path):
     server.light_sources = [{"pos": [2, 3], "radius": 4, "color": "warm", "alpha": 80}]
     path = str(tmp_path / "save.json")
     server.save_to_file(path)
     s2 = GameServer(snapshot_interval=0)
     s2.load_from_file(path)
-    assert s2.light_sources == [{"pos": [2, 3], "radius": 4, "color": "warm", "alpha": 80}]
+    assert s2.light_sources == [
+        {"pos": [2, 3], "radius": 4, "color": "warm", "alpha": 80}
+    ]
 
 
 def test_save_load_preserves_map_objects(server, tmp_path):
@@ -464,7 +595,9 @@ def test_save_load_preserves_map_objects(server, tmp_path):
     server.save_to_file(path)
     s2 = GameServer(snapshot_interval=0)
     s2.load_from_file(path)
-    assert s2.map_objects == [{"pos": [1, 2], "icon": "chest.png", "width": 2, "height": 1}]
+    assert s2.map_objects == [
+        {"pos": [1, 2], "icon": "chest.png", "width": 2, "height": 1}
+    ]
 
 
 def test_save_load_preserves_explored_tiles(server, tmp_path):

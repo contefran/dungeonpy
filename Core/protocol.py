@@ -13,38 +13,38 @@ Error   (server → client): {"type": "error",    "seq": int, "reason": str, "cl
 # ---------------------------------------------------------------------------
 
 INTENTS: dict[str, list[str]] = {
-    "add_combatant":    ["combatant"],
+    "add_combatant": ["combatant"],
     "update_combatant": ["name", "fields"],
     "delete_combatant": ["name"],
-    "move_up":          ["name"],
-    "move_down":        ["name"],
-    "apply_damage":     ["name", "amount"],
-    "apply_heal":       ["name", "amount"],
-    "advance_turn":     [],
-    "retreat_turn":     [],
-"select":           ["name"],
-    "clear_selection":  [],
-    "place_token":      ["name", "pos"],
-    "move_token":       ["name", "pos"],
-    "toggle_door":      ["x", "y"],
-    "save":             ["path"],
-    "load":             ["path"],
-    "set_player_lock":      ["name", "lock_type", "locked"],
-    "player_connected":     ["name"],
-    "player_disconnected":  ["name"],
-    "load_map":             ["path"],
-    "set_map_visible":      ["visible"],
-    "chat_message":         ["text"],
-    "highlight_tile":       ["pos"],   # color/owner injected by bridge for players
-    "clear_highlights":     ["owner"],
-    "recenter_all":         ["pos"],   # DM only — broadcast view recenter to all players
+    "move_up": ["name"],
+    "move_down": ["name"],
+    "apply_damage": ["name", "amount"],
+    "apply_heal": ["name", "amount"],
+    "advance_turn": [],
+    "retreat_turn": [],
+    "select": ["name"],
+    "clear_selection": [],
+    "place_token": ["name", "pos"],
+    "move_token": ["name", "pos"],
+    "toggle_door": ["x", "y"],
+    "save": ["path"],
+    "load": ["path"],
+    "set_player_lock": ["name", "lock_type", "locked"],
+    "player_connected": ["name"],
+    "player_disconnected": ["name"],
+    "load_map": ["path"],
+    "set_map_visible": ["visible"],
+    "chat_message": ["text"],
+    "highlight_tile": ["pos"],  # color/owner injected by bridge for players
+    "clear_highlights": ["owner"],
+    "recenter_all": ["pos"],  # DM only — broadcast view recenter to all players
     "set_visibility_radius": ["radius"],  # DM only
-    "add_map_object":       ["pos", "icon", "width", "height"],  # DM only
-    "remove_map_object":    ["pos"],                  # DM only — pos is the object's top-left
-    "add_light_source":     ["pos", "radius", "color"],  # DM only
-    "remove_light_source":  ["pos"],                  # DM only
-    "aoe_add":    ["anchor", "shape", "size", "angle", "aperture", "color"],  # DM only
-    "aoe_remove": ["id"],                             # DM only
+    "add_map_object": ["pos", "icon", "width", "height"],  # DM only
+    "remove_map_object": ["pos"],  # DM only — pos is the object's top-left
+    "add_light_source": ["pos", "radius", "color"],  # DM only
+    "remove_light_source": ["pos"],  # DM only
+    "aoe_add": ["anchor", "shape", "size", "angle", "aperture", "color"],  # DM only
+    "aoe_remove": ["id"],  # DM only
 }
 
 
@@ -70,6 +70,7 @@ def validate_intent(intent: dict) -> tuple[bool, str | None]:
 # ---------------------------------------------------------------------------
 # Message factories
 # ---------------------------------------------------------------------------
+
 
 def make_event(action: str, seq: int, client_req_id=None, **fields) -> dict:
     """Build a server-to-client event message."""

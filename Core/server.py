@@ -22,13 +22,15 @@ from Core.los import compute_los
 
 def _load_map_grid(filepath: str) -> list:
     """Parse a dungeon .txt file into a 2D list of ints."""
+
     def _parse(ch):
         if ch.isdigit():
             return int(ch)
         if ch.isalpha():
-            return ord(ch.lower()) - ord('a') + 10
+            return ord(ch.lower()) - ord("a") + 10
         return 0
-    with open(filepath, 'r') as f:
+
+    with open(filepath, "r") as f:
         lines = f.readlines()
     return [[_parse(ch) for ch in line.strip()] for line in lines if line.strip()]
 
@@ -67,23 +69,45 @@ class GameServer:
         self.combatants: list[Combatant] = []
         self.active_index: int = 0
         self.turn: int = 1
-        self.door_states: dict[tuple, str] = {}         # (row, col) → 'open'|'closed'  tile 3 wooden
-        self.iron_door_states: dict[tuple, str] = {}    # (row, col) → 'open'|'closed'  tile 4 iron
-        self.secret_door_states: dict[tuple, str] = {}  # (row, col) → 'open'|'closed'  tile 5 secret
-        self.trap_states: dict[tuple, str] = {}          # (row, col) → 'open'|'closed'  tile 6 trap
-        self.player_selection_locks: dict[str, bool] = {}  # player name → allowed to select
-        self.player_move_locks: dict[str, bool] = {}       # player name → allowed to move token
-        self.player_aoe_locks: dict[str, bool] = {}        # player name → allowed to place AoEs
-        self.tile_highlights: list[dict] = []              # [{"pos":[c,r],"color":"gold","owner":"DM"}, ...]
-        self.map_objects: list[dict] = []                  # [{"pos":[c,r],"icon":"chest.png","width":1,"height":1}, ...]
-        self.light_sources: list[dict] = []               # [{"pos":[c,r],"radius":4,"color":"warm"}, ...]
-        self.aoe_areas: list[dict] = []                  # [{"id":int,"shape":str,"anchor":[c,r],...}, ...]
+        self.door_states: dict[
+            tuple, str
+        ] = {}  # (row, col) → 'open'|'closed'  tile 3 wooden
+        self.iron_door_states: dict[
+            tuple, str
+        ] = {}  # (row, col) → 'open'|'closed'  tile 4 iron
+        self.secret_door_states: dict[
+            tuple, str
+        ] = {}  # (row, col) → 'open'|'closed'  tile 5 secret
+        self.trap_states: dict[
+            tuple, str
+        ] = {}  # (row, col) → 'open'|'closed'  tile 6 trap
+        self.player_selection_locks: dict[
+            str, bool
+        ] = {}  # player name → allowed to select
+        self.player_move_locks: dict[
+            str, bool
+        ] = {}  # player name → allowed to move token
+        self.player_aoe_locks: dict[
+            str, bool
+        ] = {}  # player name → allowed to place AoEs
+        self.tile_highlights: list[
+            dict
+        ] = []  # [{"pos":[c,r],"color":"gold","owner":"DM"}, ...]
+        self.map_objects: list[
+            dict
+        ] = []  # [{"pos":[c,r],"icon":"chest.png","width":1,"height":1}, ...]
+        self.light_sources: list[
+            dict
+        ] = []  # [{"pos":[c,r],"radius":4,"color":"warm"}, ...]
+        self.aoe_areas: list[
+            dict
+        ] = []  # [{"id":int,"shape":str,"anchor":[c,r],...}, ...]
         self._aoe_id_seq: int = 0
-        self.map_grid: list | None = None                # 2-D tile grid; included in snapshots
-        self.map_path: str | None = None                 # absolute path to the loaded .txt map file
-        self.map_visible: bool = False                   # whether the map window is shown to everyone
-        self.visibility_radius: int = 10                 # LOS radius in tiles (DM-configurable)
-        self.explored_tiles: dict[str, set] = {}         # {player_name: {(col,row), ...}}
+        self.map_grid: list | None = None  # 2-D tile grid; included in snapshots
+        self.map_path: str | None = None  # absolute path to the loaded .txt map file
+        self.map_visible: bool = False  # whether the map window is shown to everyone
+        self.visibility_radius: int = 10  # LOS radius in tiles (DM-configurable)
+        self.explored_tiles: dict[str, set] = {}  # {player_name: {(col,row), ...}}
         self._subscribers: list = []
         self._seq: int = 0
         self._snapshot_interval: int = snapshot_interval
@@ -172,8 +196,12 @@ class GameServer:
             "active_index": self.active_index,
             "turn": self.turn,
             "door_states": {f"{r},{c}": v for (r, c), v in self.door_states.items()},
-            "iron_door_states": {f"{r},{c}": v for (r, c), v in self.iron_door_states.items()},
-            "secret_door_states": {f"{r},{c}": v for (r, c), v in self.secret_door_states.items()},
+            "iron_door_states": {
+                f"{r},{c}": v for (r, c), v in self.iron_door_states.items()
+            },
+            "secret_door_states": {
+                f"{r},{c}": v for (r, c), v in self.secret_door_states.items()
+            },
             "trap_states": {f"{r},{c}": v for (r, c), v in self.trap_states.items()},
             "player_selection_locks": dict(self.player_selection_locks),
             "player_move_locks": dict(self.player_move_locks),
@@ -186,8 +214,11 @@ class GameServer:
             "light_sources": list(self.light_sources),
             "aoe_areas": list(self.aoe_areas),
             "visibility_radius": self.visibility_radius,
-            "explored_tiles": [list(t) for t in self.explored_tiles.get(player_name, set())]
-                               if player_name else {},
+            "explored_tiles": [
+                list(t) for t in self.explored_tiles.get(player_name, set())
+            ]
+            if player_name
+            else {},
         }
         return {"type": "snapshot", "seq": self._seq, "state": state}
 
@@ -256,7 +287,7 @@ class GameServer:
             ``map_visible`` is always reset to ``False`` on load so the DM can
             place tokens before revealing the map to players.
         """
-        with open(filepath, 'r', encoding='utf-8') as f:
+        with open(filepath, "r", encoding="utf-8") as f:
             data = json.load(f)
         self.combatants = [Combatant.from_dict(c) for c in data.get("initiative", [])]
         self.active_index = data.get("active_index", 0)
@@ -297,7 +328,7 @@ class GameServer:
                 for name, tiles in self.explored_tiles.items()
             },
         }
-        with open(filepath, 'w', encoding='utf-8') as f:
+        with open(filepath, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)
 
     # ------------------------------------------------------------------
@@ -315,17 +346,26 @@ class GameServer:
         size = c.size if c else 1
         los_origin = [pos[0] + size // 2, pos[1] + size // 2] if size > 1 else pos
         los = compute_los(
-            self.map_grid, los_origin, self.visibility_radius,
-            self.door_states, self.iron_door_states, self.secret_door_states,
+            self.map_grid,
+            los_origin,
+            self.visibility_radius,
+            self.door_states,
+            self.iron_door_states,
+            self.secret_door_states,
         )
         already = self.explored_tiles.get(name, set())
         new_tiles = los - already
         if not new_tiles:
             return []
         self.explored_tiles.setdefault(name, set()).update(new_tiles)
-        return [{"type": "event", "action": "explored_updated",
-                 "target": name,
-                 "new_tiles": [list(t) for t in new_tiles]}]
+        return [
+            {
+                "type": "event",
+                "action": "explored_updated",
+                "target": name,
+                "new_tiles": [list(t) for t in new_tiles],
+            }
+        ]
 
     # ------------------------------------------------------------------
     # Intent processing — the single entry point for all state changes
@@ -367,8 +407,14 @@ class GameServer:
         if action == "advance_turn":
             self._next()
             active = self.get_active()
-            events = [{"type": "event", "action": "turn_advanced",
-                       "active": active.name if active else None, "turn": self.turn}]
+            events = [
+                {
+                    "type": "event",
+                    "action": "turn_advanced",
+                    "active": active.name if active else None,
+                    "turn": self.turn,
+                }
+            ]
             current_init = active.initiative if active else 0
             for c in self.combatants:
                 if not c.condition_timers:
@@ -376,35 +422,60 @@ class GameServer:
                 expired = []
                 for cond, timing in list(c.condition_timers.items()):
                     exp_round, exp_init = timing
-                    if self.turn > exp_round or (self.turn == exp_round and current_init <= exp_init):
+                    if self.turn > exp_round or (
+                        self.turn == exp_round and current_init <= exp_init
+                    ):
                         expired.append(cond)
                 if expired:
                     for cond in expired:
                         c.conditions = [x for x in c.conditions if x != cond]
                         del c.condition_timers[cond]
-                    events.append({"type": "event", "action": "combatant_updated",
-                                   "combatant": c.to_dict()})
+                    events.append(
+                        {
+                            "type": "event",
+                            "action": "combatant_updated",
+                            "combatant": c.to_dict(),
+                        }
+                    )
             return events
 
         if action == "retreat_turn":
             self._previous()
             active = self.get_active()
-            return [{"type": "event", "action": "turn_advanced",
-                     "active": active.name if active else None, "turn": self.turn}]
+            return [
+                {
+                    "type": "event",
+                    "action": "turn_advanced",
+                    "active": active.name if active else None,
+                    "turn": self.turn,
+                }
+            ]
 
         # --- HP ---
         if action == "apply_damage":
             c = self._get(intent.get("name"))
             if c:
                 self._apply_damage(c, intent.get("amount", 0))
-                return [{"type": "event", "action": "combatant_updated", "combatant": c.to_dict()}]
+                return [
+                    {
+                        "type": "event",
+                        "action": "combatant_updated",
+                        "combatant": c.to_dict(),
+                    }
+                ]
             return []
 
         if action == "apply_heal":
             c = self._get(intent.get("name"))
             if c:
                 self._apply_heal(c, intent.get("amount", 0))
-                return [{"type": "event", "action": "combatant_updated", "combatant": c.to_dict()}]
+                return [
+                    {
+                        "type": "event",
+                        "action": "combatant_updated",
+                        "combatant": c.to_dict(),
+                    }
+                ]
             return []
 
         # --- Combatant list ---
@@ -412,13 +483,17 @@ class GameServer:
             c = Combatant.from_dict(intent.get("combatant", {}))
             self.combatants.append(c)
             self._sort()
-            return [{"type": "event", "action": "combatant_added", "combatant": c.to_dict()}]
+            return [
+                {"type": "event", "action": "combatant_added", "combatant": c.to_dict()}
+            ]
 
         if action == "update_combatant":
             c = self._get(intent.get("name"))
             if c:
                 fields = intent.get("fields", {})
-                initiative_changed = "initiative" in fields and fields["initiative"] != c.initiative
+                initiative_changed = (
+                    "initiative" in fields and fields["initiative"] != c.initiative
+                )
                 for key, value in fields.items():
                     if hasattr(c, key):
                         setattr(c, key, value)
@@ -428,7 +503,13 @@ class GameServer:
                 if initiative_changed:
                     self._sort()
                     return [self.get_snapshot()]
-                return [{"type": "event", "action": "combatant_updated", "combatant": c.to_dict()}]
+                return [
+                    {
+                        "type": "event",
+                        "action": "combatant_updated",
+                        "combatant": c.to_dict(),
+                    }
+                ]
             return []
 
         if action == "delete_combatant":
@@ -439,15 +520,21 @@ class GameServer:
                     if not self.combatants:
                         self.active_index = 0
                     elif i == self.active_index:
-                        self.active_index = min(self.active_index, len(self.combatants) - 1)
+                        self.active_index = min(
+                            self.active_index, len(self.combatants) - 1
+                        )
                     elif i < self.active_index:
                         self.active_index -= 1
-                    return [{"type": "event", "action": "combatant_removed", "name": name}]
+                    return [
+                        {"type": "event", "action": "combatant_removed", "name": name}
+                    ]
             return []
 
         if action in ("move_up", "move_down"):
             name = intent.get("name")
-            i = next((idx for idx, c in enumerate(self.combatants) if c.name == name), None)
+            i = next(
+                (idx for idx, c in enumerate(self.combatants) if c.name == name), None
+            )
             if i is None:
                 return []
             j = i - 1 if action == "move_up" else i + 1
@@ -455,7 +542,10 @@ class GameServer:
                 return []
             if self.combatants[i].initiative != self.combatants[j].initiative:
                 return []
-            self.combatants[i], self.combatants[j] = self.combatants[j], self.combatants[i]
+            self.combatants[i], self.combatants[j] = (
+                self.combatants[j],
+                self.combatants[i],
+            )
             if self.active_index == i:
                 self.active_index = j
             elif self.active_index == j:
@@ -468,7 +558,14 @@ class GameServer:
             c = self._get(name)
             if c:
                 c.pos = pos
-                events = [{"type": "event", "action": "token_placed", "name": name, "pos": pos}]
+                events = [
+                    {
+                        "type": "event",
+                        "action": "token_placed",
+                        "name": name,
+                        "pos": pos,
+                    }
+                ]
                 events += self._update_explored(name, pos)
                 return events
             return []
@@ -478,14 +575,20 @@ class GameServer:
             c = self._get(name)
             if c:
                 c.pos = pos
-                events = [{"type": "event", "action": "token_moved", "name": name, "pos": pos}]
+                events = [
+                    {"type": "event", "action": "token_moved", "name": name, "pos": pos}
+                ]
                 events += self._update_explored(name, pos)
                 return events
             return []
 
         # --- Map: doors ---
         if action == "toggle_door":
-            x, y, tile_type = intent.get("x"), intent.get("y"), intent.get("tile_type", 3)
+            x, y, tile_type = (
+                intent.get("x"),
+                intent.get("y"),
+                intent.get("tile_type", 3),
+            )
             key = (y, x)
             if tile_type == 4:
                 states = self.iron_door_states
@@ -497,8 +600,16 @@ class GameServer:
                 states = self.door_states
             new = "open" if states.get(key, "closed") == "closed" else "closed"
             states[key] = new
-            return [{"type": "event", "action": "door_toggled",
-                     "x": x, "y": y, "tile_type": tile_type, "state": new}]
+            return [
+                {
+                    "type": "event",
+                    "action": "door_toggled",
+                    "x": x,
+                    "y": y,
+                    "tile_type": tile_type,
+                    "state": new,
+                }
+            ]
 
         # --- Player management ---
         if action == "set_player_lock":
@@ -507,31 +618,71 @@ class GameServer:
             locked = bool(intent.get("locked", False))
             if lock_type == "select":
                 self.player_selection_locks[name] = locked
-                events = [{"type": "event", "action": "player_lock_changed",
-                           "name": name, "lock_type": "select", "locked": locked}]
+                events = [
+                    {
+                        "type": "event",
+                        "action": "player_lock_changed",
+                        "name": name,
+                        "lock_type": "select",
+                        "locked": locked,
+                    }
+                ]
                 if not locked:
-                    events.append({"type": "event", "action": "selection_cleared",
-                                   "selector": name})
-                    self.tile_highlights = [h for h in self.tile_highlights if h["owner"] != name]
-                    events.append({"type": "event", "action": "highlights_changed",
-                                   "highlights": list(self.tile_highlights)})
+                    events.append(
+                        {
+                            "type": "event",
+                            "action": "selection_cleared",
+                            "selector": name,
+                        }
+                    )
+                    self.tile_highlights = [
+                        h for h in self.tile_highlights if h["owner"] != name
+                    ]
+                    events.append(
+                        {
+                            "type": "event",
+                            "action": "highlights_changed",
+                            "highlights": list(self.tile_highlights),
+                        }
+                    )
                 return events
             elif lock_type == "aoe":
                 self.player_aoe_locks[name] = locked
-                return [{"type": "event", "action": "player_lock_changed",
-                         "name": name, "lock_type": "aoe", "locked": locked}]
+                return [
+                    {
+                        "type": "event",
+                        "action": "player_lock_changed",
+                        "name": name,
+                        "lock_type": "aoe",
+                        "locked": locked,
+                    }
+                ]
             else:
                 self.player_move_locks[name] = locked
-                return [{"type": "event", "action": "player_lock_changed",
-                         "name": name, "lock_type": "move", "locked": locked}]
+                return [
+                    {
+                        "type": "event",
+                        "action": "player_lock_changed",
+                        "name": name,
+                        "lock_type": "move",
+                        "locked": locked,
+                    }
+                ]
 
         if action == "player_connected":
-            name  = intent.get("name")
+            name = intent.get("name")
             color = intent.get("color", "white")
             self.player_selection_locks.setdefault(name, False)
             self.player_move_locks.setdefault(name, False)
             self.player_aoe_locks.setdefault(name, False)
-            return [{"type": "event", "action": "player_connected", "name": name, "color": color}]
+            return [
+                {
+                    "type": "event",
+                    "action": "player_connected",
+                    "name": name,
+                    "color": color,
+                }
+            ]
 
         if action == "player_disconnected":
             name = intent.get("name")
@@ -572,32 +723,58 @@ class GameServer:
         if action == "set_map_visible":
             visible = bool(intent.get("visible", False))
             self.map_visible = visible
-            return [{"type": "event", "action": "map_visibility_changed", "visible": visible}]
+            return [
+                {
+                    "type": "event",
+                    "action": "map_visibility_changed",
+                    "visible": visible,
+                }
+            ]
 
         # --- Tile highlights ---
         if action == "highlight_tile":
-            pos   = intent.get("pos")
+            pos = intent.get("pos")
             color = intent.get("color", "gold")
             owner = intent.get("owner", "DM")
-            existing = next((h for h in self.tile_highlights
-                             if h["pos"] == pos and h["owner"] == owner), None)
+            existing = next(
+                (
+                    h
+                    for h in self.tile_highlights
+                    if h["pos"] == pos and h["owner"] == owner
+                ),
+                None,
+            )
             if existing:
                 self.tile_highlights.remove(existing)
             else:
-                self.tile_highlights.append({"pos": pos, "color": color, "owner": owner})
-            return [{"type": "event", "action": "highlights_changed",
-                     "highlights": list(self.tile_highlights)}]
+                self.tile_highlights.append(
+                    {"pos": pos, "color": color, "owner": owner}
+                )
+            return [
+                {
+                    "type": "event",
+                    "action": "highlights_changed",
+                    "highlights": list(self.tile_highlights),
+                }
+            ]
 
         if action == "clear_highlights":
             owner = intent.get("owner", "DM")
-            self.tile_highlights = [h for h in self.tile_highlights if h["owner"] != owner]
-            return [{"type": "event", "action": "highlights_changed",
-                     "highlights": list(self.tile_highlights)}]
+            self.tile_highlights = [
+                h for h in self.tile_highlights if h["owner"] != owner
+            ]
+            return [
+                {
+                    "type": "event",
+                    "action": "highlights_changed",
+                    "highlights": list(self.tile_highlights),
+                }
+            ]
 
         if action == "add_map_object":
-            pos    = intent.get("pos")
-            icon   = intent.get("icon")
-            width  = max(1, int(intent.get("width",  intent.get("size", 1))))
+            pos = intent.get("pos")
+            icon = intent.get("icon")
+            width = max(1, int(intent.get("width", intent.get("size", 1))))
             height = max(1, int(intent.get("height", intent.get("size", 1))))
             if pos and icon:
                 obj = {"pos": pos, "icon": icon, "width": width, "height": height}
@@ -614,10 +791,10 @@ class GameServer:
             return []
 
         if action == "add_light_source":
-            pos    = intent.get("pos")
+            pos = intent.get("pos")
             radius = max(1, int(intent.get("radius", 4)))
-            color  = intent.get("color", "warm")
-            alpha  = max(0, min(255, int(intent.get("alpha", 60))))
+            color = intent.get("color", "warm")
+            alpha = max(0, min(255, int(intent.get("alpha", 60))))
             if pos:
                 ls = {"pos": pos, "radius": radius, "color": color, "alpha": alpha}
                 self.light_sources.append(ls)
@@ -635,15 +812,15 @@ class GameServer:
         if action == "aoe_add":
             self._aoe_id_seq += 1
             aoe = {
-                "id":       self._aoe_id_seq,
-                "shape":    intent.get("shape", "sphere"),
-                "anchor":   intent["anchor"],
-                "size":     max(1, int(intent.get("size", 3))),
-                "angle":    float(intent.get("angle", 0)),
+                "id": self._aoe_id_seq,
+                "shape": intent.get("shape", "sphere"),
+                "anchor": intent["anchor"],
+                "size": max(1, int(intent.get("size", 3))),
+                "angle": float(intent.get("angle", 0)),
                 "aperture": float(intent.get("aperture", 53)),
-                "color":    intent.get("color", "red"),
-                "owner":    intent.get("owner"),       # None = DM, str = player name
-                "hidden":   bool(intent.get("hidden", False)),
+                "color": intent.get("color", "red"),
+                "owner": intent.get("owner"),  # None = DM, str = player name
+                "hidden": bool(intent.get("hidden", False)),
             }
             self.aoe_areas.append(aoe)
             return [{"type": "event", "action": "aoe_added", "aoe": aoe}]
@@ -666,17 +843,24 @@ class GameServer:
             r = int(intent.get("radius", 10))
             r = max(1, min(r, 30))
             self.visibility_radius = r
-            return [{"type": "event", "action": "visibility_radius_changed", "radius": r}]
+            return [
+                {"type": "event", "action": "visibility_radius_changed", "radius": r}
+            ]
 
         # --- Chat ---
         if action == "chat_message":
             text = intent.get("text", "").strip()
             if not text:
                 return []
-            return [{"type": "event", "action": "chat_message",
-                     "from": intent.get("from", "DM"),
-                     "to":   intent.get("to"),
-                     "text": text}]
+            return [
+                {
+                    "type": "event",
+                    "action": "chat_message",
+                    "from": intent.get("from", "DM"),
+                    "to": intent.get("to"),
+                    "text": text,
+                }
+            ]
 
         # --- Persistence ---
         if action == "save":

@@ -17,6 +17,10 @@ Savegames/auto*
 dist/
 build/
 
+# Python packaging artifacts
+*.egg-info/
+.venv/
+
 # TLS certificates — generated locally, never commit private keys
 dm_cert.pem
 dm_key.pem

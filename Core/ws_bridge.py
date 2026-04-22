@@ -31,16 +31,21 @@ import websockets
 
 
 class WSBridge:
-
-    def __init__(self, server, host: str = 'localhost', port: int = 8765,
-                 password: str | None = None, ssl_context=None):
+    def __init__(
+        self,
+        server,
+        host: str = "localhost",
+        port: int = 8765,
+        password: str | None = None,
+        ssl_context=None,
+    ):
         self.server = server
         self.host = host
-        self.port = port           # updated to actual OS-assigned port after start()
+        self.port = port  # updated to actual OS-assigned port after start()
         self._password = password
         self._ssl_context = ssl_context
         self._connections: set = set()
-        self._clients: dict = {}   # ws → {"role": str, "name": str}
+        self._clients: dict = {}  # ws → {"role": str, "name": str}
         self._loop: asyncio.AbstractEventLoop | None = None
         self._queue: asyncio.Queue | None = None
         self._stop_event: asyncio.Event | None = None
@@ -57,7 +62,7 @@ class WSBridge:
         self.server.subscribe(self._on_server_event)
         ready = threading.Event()
         threading.Thread(
-            target=self._run, args=(ready,), daemon=True, name='ws-bridge'
+            target=self._run, args=(ready,), daemon=True, name="ws-bridge"
         ).start()
         ready.wait()
 
@@ -95,13 +100,23 @@ class WSBridge:
         try:
             raw = await asyncio.wait_for(ws.recv(), timeout=10.0)
             hello = json.loads(raw)
-        except (asyncio.TimeoutError, json.JSONDecodeError,
-                websockets.exceptions.ConnectionClosed):
+        except (
+            asyncio.TimeoutError,
+            json.JSONDecodeError,
+            websockets.exceptions.ConnectionClosed,
+        ):
             return
 
         if hello.get("type") != "hello":
-            await ws.send(json.dumps(
-                {"type": "hello_ack", "ok": False, "reason": "expected hello message"}))
+            await ws.send(
+                json.dumps(
+                    {
+                        "type": "hello_ack",
+                        "ok": False,
+                        "reason": "expected hello message",
+                    }
+                )
+            )
             return
 
         role = hello.get("role", "player")
@@ -111,8 +126,11 @@ class WSBridge:
         # Step 2: validate
         if role == "dm":
             if self._password and hello.get("password") != self._password:
-                await ws.send(json.dumps(
-                    {"type": "hello_ack", "ok": False, "reason": "wrong password"}))
+                await ws.send(
+                    json.dumps(
+                        {"type": "hello_ack", "ok": False, "reason": "wrong password"}
+                    )
+                )
                 return
         elif role == "player":
             taken = any(
@@ -120,26 +138,52 @@ class WSBridge:
                 for c in self._clients.values()
             )
             if taken:
-                await ws.send(json.dumps(
-                    {"type": "hello_ack", "ok": False,
-                     "reason": f"name '{name}' is already connected"}))
+                await ws.send(
+                    json.dumps(
+                        {
+                            "type": "hello_ack",
+                            "ok": False,
+                            "reason": f"name '{name}' is already connected",
+                        }
+                    )
+                )
                 return
-            used_colors = {c["color"] for c in self._clients.values() if c["role"] == "player"}
+            used_colors = {
+                c["color"] for c in self._clients.values() if c["role"] == "player"
+            }
             if color in used_colors:
-                _ALL_COLORS = ["red", "orange", "amber", "lime", "green",
-                               "teal", "sky", "blue", "purple", "pink"]
+                _ALL_COLORS = [
+                    "red",
+                    "orange",
+                    "amber",
+                    "lime",
+                    "green",
+                    "teal",
+                    "sky",
+                    "blue",
+                    "purple",
+                    "pink",
+                ]
                 free = [c for c in _ALL_COLORS if c not in used_colors]
                 color = random.choice(free) if free else color
         else:
-            await ws.send(json.dumps(
-                {"type": "hello_ack", "ok": False,
-                 "reason": f"unknown role '{role}'"}))
+            await ws.send(
+                json.dumps(
+                    {
+                        "type": "hello_ack",
+                        "ok": False,
+                        "reason": f"unknown role '{role}'",
+                    }
+                )
+            )
             return
 
         # Step 3: register + greet
         self._clients[ws] = {"role": role, "name": name, "color": color}
         self._connections.add(ws)
-        await ws.send(json.dumps({"type": "hello_ack", "ok": True, "role": role, "color": color}))
+        await ws.send(
+            json.dumps({"type": "hello_ack", "ok": True, "role": role, "color": color})
+        )
         # Players get a personalised snapshot (fog-of-war filtered)
         snap = self.server.get_snapshot(player_name=name if role == "player" else None)
         await ws.send(json.dumps(snap))
@@ -148,7 +192,9 @@ class WSBridge:
         if role == "player":
             ip = ws.remote_address[0] if ws.remote_address else "unknown"
             print(f"[DungeonPy] Player '{name}' connected from {ip}.")
-            await self._queue.put((None, {"action": "player_connected", "name": name, "color": color}))
+            await self._queue.put(
+                (None, {"action": "player_connected", "name": name, "color": color})
+            )
 
         # Step 5: normal intent loop
         try:
@@ -167,7 +213,9 @@ class WSBridge:
             if role == "player":
                 # Fire-and-forget: notify after handler exits
                 self._loop.create_task(
-                    self._queue.put((None, {"action": "player_disconnected", "name": name}))
+                    self._queue.put(
+                        (None, {"action": "player_disconnected", "name": name})
+                    )
                 )
 
     # ------------------------------------------------------------------
@@ -183,21 +231,38 @@ class WSBridge:
 
         # Player rules
         action = intent.get("action")
-        _PLAYER_ALLOWED = {"select", "clear_selection", "move_token", "chat_message",
-                           "highlight_tile", "clear_highlights", "aoe_add", "aoe_remove"}
+        _PLAYER_ALLOWED = {
+            "select",
+            "clear_selection",
+            "move_token",
+            "chat_message",
+            "highlight_tile",
+            "clear_highlights",
+            "aoe_add",
+            "aoe_remove",
+        }
         if action not in _PLAYER_ALLOWED:
             return False, f"action '{action}' not permitted for players"
         if action in ("select", "highlight_tile"):
             if not self.server.player_selection_locks.get(client["name"]):
-                return False, "selection not currently allowed — wait for the DM to enable you"
+                return (
+                    False,
+                    "selection not currently allowed — wait for the DM to enable you",
+                )
         if action == "move_token":
             if intent.get("name") != client["name"]:
                 return False, "players may only move their own token"
             if not self.server.player_move_locks.get(client["name"]):
-                return False, "movement not currently allowed — wait for the DM to enable you"
+                return (
+                    False,
+                    "movement not currently allowed — wait for the DM to enable you",
+                )
         if action == "aoe_add":
             if not self.server.player_aoe_locks.get(client["name"]):
-                return False, "AoE placement not currently allowed — wait for the DM to enable you"
+                return (
+                    False,
+                    "AoE placement not currently allowed — wait for the DM to enable you",
+                )
         if action == "aoe_remove":
             aoe_id = intent.get("id")
             aoe = next((a for a in self.server.aoe_areas if a["id"] == aoe_id), None)
@@ -240,7 +305,9 @@ class WSBridge:
             try:
                 self.server.submit(intent)
             except Exception as e:
-                print(f"[WSBridge] Error processing intent {intent.get('action')!r}: {e}")
+                print(
+                    f"[WSBridge] Error processing intent {intent.get('action')!r}: {e}"
+                )
 
     # ------------------------------------------------------------------
     # Server event → WS broadcast
@@ -280,8 +347,11 @@ class WSBridge:
     async def _send_to_player(self, message: str, player_name: str):
         """Send a message to a single named player connection."""
         target = next(
-            (ws for ws, info in self._clients.items()
-             if info.get("name") == player_name and info.get("role") == "player"),
+            (
+                ws
+                for ws, info in self._clients.items()
+                if info.get("name") == player_name and info.get("role") == "player"
+            ),
             None,
         )
         if target:
@@ -291,8 +361,9 @@ class WSBridge:
                 self._connections.discard(target)
 
     async def _broadcast_dm_only(self, message: str):
-        dm_connections = [ws for ws, info in self._clients.items()
-                          if info.get("role") == "dm"]
+        dm_connections = [
+            ws for ws, info in self._clients.items() if info.get("role") == "dm"
+        ]
         if not dm_connections:
             return
         await asyncio.gather(
@@ -306,6 +377,4 @@ class WSBridge:
 
     def submit(self, intent: dict):
         """Queue an intent from any thread as a trusted (DM) in-process call."""
-        asyncio.run_coroutine_threadsafe(
-            self._queue.put((None, intent)), self._loop
-        )
+        asyncio.run_coroutine_threadsafe(self._queue.put((None, intent)), self._loop)

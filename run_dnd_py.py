@@ -7,8 +7,9 @@ import sys
 # On Windows, tkinter (used by PySimpleGUI) is DPI-unaware by default and gets
 # scaled up by the OS, making fonts and emoji huge on high-DPI displays.
 # Declaring DPI awareness before any GUI import prevents this.
-if sys.platform == 'win32':
+if sys.platform == "win32":
     import ctypes
+
     try:
         ctypes.windll.shcore.SetProcessDpiAwareness(1)
     except Exception:
@@ -20,29 +21,38 @@ if sys.platform == 'win32':
 
 def _load_fonts(dir_path: str):
     """Register bundled Noto Sans fonts with Windows before any tkinter window opens."""
-    if sys.platform != 'win32':
+    if sys.platform != "win32":
         return
     import ctypes
+
     _FR_PRIVATE = 0x10
-    fonts_dir = os.path.join(dir_path, 'Assets', 'Fonts')
-    for fname in ('NotoSans-Regular.ttf', 'NotoSans-Bold.ttf'):
+    fonts_dir = os.path.join(dir_path, "Assets", "Fonts")
+    for fname in ("NotoSans-Regular.ttf", "NotoSans-Bold.ttf"):
         path = os.path.join(fonts_dir, fname)
         if os.path.isfile(path):
             ctypes.windll.gdi32.AddFontResourceExW(path, _FR_PRIVATE, 0)
 
 
-from Core.game import Game
+from Core.game import Game  # noqa: E402
 
 # When frozen by PyInstaller, default the asset directory to wherever the
 # executable lives so Assets/, Maps/ etc. are found next to the binary.
-if getattr(sys, 'frozen', False):
+if getattr(sys, "frozen", False):
     _DEFAULT_DIR = os.path.dirname(sys.executable) + os.sep
 else:
     _DEFAULT_DIR = "./"
 
 _PLAYER_COLORS = [
-    "red", "orange", "amber", "lime", "green",
-    "teal", "sky", "blue", "purple", "pink",
+    "red",
+    "orange",
+    "amber",
+    "lime",
+    "green",
+    "teal",
+    "sky",
+    "blue",
+    "purple",
+    "pink",
 ]
 
 
@@ -59,7 +69,8 @@ def _run_picker_mode(argv):
     if sys.stdout is None:
         try:
             sys.stdout = io.TextIOWrapper(
-                io.open(1, 'wb', closefd=False), line_buffering=True)
+                io.open(1, "wb", closefd=False), line_buffering=True
+            )
         except Exception:
             pass
 
@@ -80,10 +91,22 @@ def _run_picker_mode(argv):
         if not path:
             root.destroy()
             return
-        w = simpledialog.askinteger("Object width",  "Width in tiles?",
-                                    initialvalue=1, minvalue=1, maxvalue=20, parent=root)
-        h = simpledialog.askinteger("Object height", "Height in tiles?",
-                                    initialvalue=1, minvalue=1, maxvalue=20, parent=root)
+        w = simpledialog.askinteger(
+            "Object width",
+            "Width in tiles?",
+            initialvalue=1,
+            minvalue=1,
+            maxvalue=20,
+            parent=root,
+        )
+        h = simpledialog.askinteger(
+            "Object height",
+            "Height in tiles?",
+            initialvalue=1,
+            minvalue=1,
+            maxvalue=20,
+            parent=root,
+        )
         root.destroy()
         print(os.path.basename(path))
         print(w or 1)
@@ -95,36 +118,51 @@ def _run_picker_mode(argv):
         root.resizable(False, False)
         root.lift()
 
-        shape_var  = tk.StringVar(value="sphere")
-        size_var   = tk.IntVar(value=3)
-        ap_var     = tk.DoubleVar(value=53.0)
-        color_var  = tk.StringVar(value="red")
+        shape_var = tk.StringVar(value="sphere")
+        size_var = tk.IntVar(value=3)
+        ap_var = tk.DoubleVar(value=53.0)
+        color_var = tk.StringVar(value="red")
 
         # Shape
         tk.Label(root, text="Shape:", font=("Arial", 10, "bold")).grid(
-            row=0, column=0, columnspan=2, sticky="w", padx=14, pady=(12, 2))
+            row=0, column=0, columnspan=2, sticky="w", padx=14, pady=(12, 2)
+        )
         for i, s in enumerate(("sphere", "cone", "line")):
-            tk.Radiobutton(root, text=s.capitalize(), variable=shape_var, value=s,
-                           command=lambda: _aoe_update()).grid(
-                row=1 + i, column=0, columnspan=2, sticky="w", padx=28)
+            tk.Radiobutton(
+                root,
+                text=s.capitalize(),
+                variable=shape_var,
+                value=s,
+                command=lambda: _aoe_update(),
+            ).grid(row=1 + i, column=0, columnspan=2, sticky="w", padx=28)
 
         # Size
         size_lbl = tk.Label(root, text="Radius (tiles):")
         size_lbl.grid(row=4, column=0, sticky="w", padx=14, pady=(8, 2))
         tk.Spinbox(root, from_=1, to=30, textvariable=size_var, width=5).grid(
-            row=4, column=1, sticky="w", padx=4, pady=(8, 2))
+            row=4, column=1, sticky="w", padx=4, pady=(8, 2)
+        )
 
         # Aperture (cone only)
-        ap_lbl   = tk.Label(root, text="Aperture (°):")
-        ap_spin  = tk.Spinbox(root, from_=5, to=180, textvariable=ap_var,
-                              format="%.1f", increment=1.0, width=6)
+        ap_lbl = tk.Label(root, text="Aperture (°):")
+        ap_spin = tk.Spinbox(
+            root,
+            from_=5,
+            to=180,
+            textvariable=ap_var,
+            format="%.1f",
+            increment=1.0,
+            width=6,
+        )
 
         def _aoe_update():
             s = shape_var.get()
-            size_lbl.config(text="Radius (tiles):" if s == "sphere" else "Length (tiles):")
+            size_lbl.config(
+                text="Radius (tiles):" if s == "sphere" else "Length (tiles):"
+            )
             if s == "cone":
-                ap_lbl.grid( row=5, column=0, sticky="w", padx=14, pady=(4, 2))
-                ap_spin.grid(row=5, column=1, sticky="w", padx=4,  pady=(4, 2))
+                ap_lbl.grid(row=5, column=0, sticky="w", padx=14, pady=(4, 2))
+                ap_spin.grid(row=5, column=1, sticky="w", padx=4, pady=(4, 2))
             else:
                 ap_lbl.grid_remove()
                 ap_spin.grid_remove()
@@ -133,11 +171,25 @@ def _run_picker_mode(argv):
 
         # Color
         tk.Label(root, text="Color:", font=("Arial", 10, "bold")).grid(
-            row=6, column=0, columnspan=2, sticky="w", padx=14, pady=(10, 2))
-        for i, c in enumerate(("red", "orange", "amber", "lime", "green",
-                               "teal", "sky", "blue", "purple", "pink")):
+            row=6, column=0, columnspan=2, sticky="w", padx=14, pady=(10, 2)
+        )
+        for i, c in enumerate(
+            (
+                "red",
+                "orange",
+                "amber",
+                "lime",
+                "green",
+                "teal",
+                "sky",
+                "blue",
+                "purple",
+                "pink",
+            )
+        ):
             tk.Radiobutton(root, text=c, variable=color_var, value=c).grid(
-                row=7 + i, column=0, columnspan=2, sticky="w", padx=28)
+                row=7 + i, column=0, columnspan=2, sticky="w", padx=28
+            )
 
         result = {}
 
@@ -154,14 +206,15 @@ def _run_picker_mode(argv):
                 except (tk.TclError, ValueError):
                     ap = 53.0
                 ap = max(5.0, min(180.0, ap))
-            result["shape"]    = shape_var.get()
-            result["size"]     = sz
+            result["shape"] = shape_var.get()
+            result["size"] = sz
             result["aperture"] = ap
-            result["color"]    = color_var.get()
+            result["color"] = color_var.get()
             root.destroy()
 
         tk.Button(root, text="Place", width=10, command=_ok).grid(
-            row=17, column=0, columnspan=2, pady=(10, 12))
+            row=17, column=0, columnspan=2, pady=(10, 12)
+        )
 
         root.bind("<Return>", lambda e: _ok())
         root.mainloop()
@@ -176,8 +229,14 @@ def _run_picker_mode(argv):
         root = tk.Tk()
         root.withdraw()
         root.lift()
-        r = simpledialog.askinteger("Light radius", "Radius in tiles?",
-                                    initialvalue=4, minvalue=1, maxvalue=20, parent=root)
+        r = simpledialog.askinteger(
+            "Light radius",
+            "Radius in tiles?",
+            initialvalue=4,
+            minvalue=1,
+            maxvalue=20,
+            parent=root,
+        )
         if not r:
             root.destroy()
             return
@@ -187,11 +246,14 @@ def _run_picker_mode(argv):
         tk.Label(dlg, text="Color:").pack(padx=10, pady=(10, 2))
         color_var = tk.StringVar(value="warm")
         for c in ("warm", "cool", "white", "red", "green", "blue", "black"):
-            tk.Radiobutton(dlg, text=c, variable=color_var, value=c).pack(anchor="w", padx=20)
+            tk.Radiobutton(dlg, text=c, variable=color_var, value=c).pack(
+                anchor="w", padx=20
+            )
         tk.Label(dlg, text="Intensity:").pack(padx=10, pady=(8, 2))
         alpha_var = tk.IntVar(value=60)
-        tk.Scale(dlg, from_=0, to=255, orient="horizontal",
-                 variable=alpha_var, length=180).pack(padx=10)
+        tk.Scale(
+            dlg, from_=0, to=255, orient="horizontal", variable=alpha_var, length=180
+        ).pack(padx=10)
         tk.Button(dlg, text="OK", command=dlg.destroy).pack(pady=8)
         dlg.grab_set()
         root.wait_window(dlg)
@@ -208,47 +270,114 @@ def _run_launcher() -> argparse.Namespace | None:
     _prev_theme = sg.theme()
     sg.theme("DarkGrey13")
 
-    savegames_dir = os.path.join(_DEFAULT_DIR, 'Savegames')
+    savegames_dir = os.path.join(_DEFAULT_DIR, "Savegames")
 
     dm_fields = [
-        [sg.Radio("Start a new game",    "GAME", key='-NEW_GAME-',  default=True, enable_events=True)],
-        [sg.Radio("Load a previous game", "GAME", key='-LOAD_GAME-', default=False, enable_events=True)],
-        [sg.Column([
-            [sg.Input('', key='-LOAD_PATH-', size=(22, 1), disabled=True, disabled_readonly_background_color=None),
-             sg.Button("Browse", key='-BROWSE-', size=(6, 1))],
-        ], key='-LOAD_ROW-', visible=False, pad=(0, (0, 4)))],
-        [sg.Text("Password:", size=(12, 1)),
-         sg.Input('', key='-DM_PASS-', password_char='*', size=(24, 1))],
-        [sg.Text("Leave blank to allow anyone to join.", font=("Arial", 9),
-                 text_color='gray', pad=(0, (0, 4)))],
+        [
+            sg.Radio(
+                "Start a new game",
+                "GAME",
+                key="-NEW_GAME-",
+                default=True,
+                enable_events=True,
+            )
+        ],
+        [
+            sg.Radio(
+                "Load a previous game",
+                "GAME",
+                key="-LOAD_GAME-",
+                default=False,
+                enable_events=True,
+            )
+        ],
+        [
+            sg.Column(
+                [
+                    [
+                        sg.Input(
+                            "",
+                            key="-LOAD_PATH-",
+                            size=(22, 1),
+                            disabled=True,
+                            disabled_readonly_background_color=None,
+                        ),
+                        sg.Button("Browse", key="-BROWSE-", size=(6, 1)),
+                    ],
+                ],
+                key="-LOAD_ROW-",
+                visible=False,
+                pad=(0, (0, 4)),
+            )
+        ],
+        [
+            sg.Text("Password:", size=(12, 1)),
+            sg.Input("", key="-DM_PASS-", password_char="*", size=(24, 1)),
+        ],
+        [
+            sg.Text(
+                "Leave blank to allow anyone to join.",
+                font=("Arial", 9),
+                text_color="gray",
+                pad=(0, (0, 4)),
+            )
+        ],
     ]
     player_fields = [
-        [sg.Text("Your name:", size=(12, 1)),
-         sg.Input('', key='-NAME-', size=(24, 1))],
-        [sg.Text("DM address:", size=(12, 1)),
-         sg.Input('', key='-HOST-', size=(24, 1))],
-        [sg.Text("Color:", size=(12, 1)),
-         sg.Combo(_PLAYER_COLORS, default_value=random.choice(_PLAYER_COLORS),
-                  key='-COLOR-', size=(22, 1), readonly=True)],
-        [sg.Checkbox("Skip TLS verification", key='-INSECURE-', default=True,
-                     pad=(0, (4, 0)))],
+        [sg.Text("Your name:", size=(12, 1)), sg.Input("", key="-NAME-", size=(24, 1))],
+        [
+            sg.Text("DM address:", size=(12, 1)),
+            sg.Input("", key="-HOST-", size=(24, 1)),
+        ],
+        [
+            sg.Text("Color:", size=(12, 1)),
+            sg.Combo(
+                _PLAYER_COLORS,
+                default_value=random.choice(_PLAYER_COLORS),
+                key="-COLOR-",
+                size=(22, 1),
+                readonly=True,
+            ),
+        ],
+        [
+            sg.Checkbox(
+                "Skip TLS verification", key="-INSECURE-", default=True, pad=(0, (4, 0))
+            )
+        ],
     ]
 
     layout = [
         [sg.Text("DungeonPy", font=("Arial", 16, "bold"), pad=(0, (0, 8)))],
         [sg.HorizontalSeparator()],
-        [sg.Radio("Dungeon Master", "MODE", key='-MODE_DM-',
-                  default=True, enable_events=True, pad=(0, (10, 2)))],
-        [sg.Radio("Player", "MODE", key='-MODE_PLAYER-',
-                  enable_events=True, pad=(0, (2, 10)))],
+        [
+            sg.Radio(
+                "Dungeon Master",
+                "MODE",
+                key="-MODE_DM-",
+                default=True,
+                enable_events=True,
+                pad=(0, (10, 2)),
+            )
+        ],
+        [
+            sg.Radio(
+                "Player",
+                "MODE",
+                key="-MODE_PLAYER-",
+                enable_events=True,
+                pad=(0, (2, 10)),
+            )
+        ],
         [sg.HorizontalSeparator()],
-        [sg.Column(dm_fields,     key='-DM_COL-',     visible=True,  pad=(0, (8, 0)))],
-        [sg.Column(player_fields, key='-PLAYER_COL-', visible=False, pad=(0, (8, 0)))],
+        [sg.Column(dm_fields, key="-DM_COL-", visible=True, pad=(0, (8, 0)))],
+        [sg.Column(player_fields, key="-PLAYER_COL-", visible=False, pad=(0, (8, 0)))],
         [sg.HorizontalSeparator()],
-        [sg.Push(),
-         sg.Button("Launch", size=(10, 1), bind_return_key=True),
-         sg.Button("Quit",   size=(10, 1)),
-         sg.Push()],
+        [
+            sg.Push(),
+            sg.Button("Launch", size=(10, 1), bind_return_key=True),
+            sg.Button("Quit", size=(10, 1)),
+            sg.Push(),
+        ],
     ]
 
     window = sg.Window("DungeonPy", layout, margins=(28, 20), finalize=True)
@@ -260,38 +389,45 @@ def _run_launcher() -> argparse.Namespace | None:
             window.close()
             return None
 
-        if event == '-MODE_DM-':
-            window['-DM_COL-'].update(visible=True)
-            window['-PLAYER_COL-'].update(visible=False)
+        if event == "-MODE_DM-":
+            window["-DM_COL-"].update(visible=True)
+            window["-PLAYER_COL-"].update(visible=False)
 
-        elif event == '-MODE_PLAYER-':
-            window['-DM_COL-'].update(visible=False)
-            window['-PLAYER_COL-'].update(visible=True)
+        elif event == "-MODE_PLAYER-":
+            window["-DM_COL-"].update(visible=False)
+            window["-PLAYER_COL-"].update(visible=True)
 
-        elif event == '-NEW_GAME-':
-            window['-LOAD_ROW-'].update(visible=False)
+        elif event == "-NEW_GAME-":
+            window["-LOAD_ROW-"].update(visible=False)
 
-        elif event == '-LOAD_GAME-':
-            window['-LOAD_ROW-'].update(visible=True)
+        elif event == "-LOAD_GAME-":
+            window["-LOAD_ROW-"].update(visible=True)
 
-        elif event == '-BROWSE-':
+        elif event == "-BROWSE-":
             path = sg.popup_get_file(
-                'Select save file',
-                file_types=(('Save Files', '*.json'), ('All files', '*.*')),
-                initial_folder=savegames_dir if os.path.isdir(savegames_dir) else _DEFAULT_DIR,
+                "Select save file",
+                file_types=(("Save Files", "*.json"), ("All files", "*.*")),
+                initial_folder=savegames_dir
+                if os.path.isdir(savegames_dir)
+                else _DEFAULT_DIR,
                 no_window=True,
             )
             if path:
-                window['-LOAD_PATH-'].update(path)
+                window["-LOAD_PATH-"].update(path)
 
         elif event == "Launch":
-            if values['-MODE_PLAYER-']:
-                name = values['-NAME-'].strip()
-                host = values['-HOST-'].strip()
+            if values["-MODE_PLAYER-"]:
+                name = values["-NAME-"].strip()
+                host = values["-HOST-"].strip()
                 if not name or not host:
-                    sg.popup_error("Name and DM address are required.", title="DungeonPy")
+                    sg.popup_error(
+                        "Name and DM address are required.", title="DungeonPy"
+                    )
                     continue
-            if values.get('-LOAD_GAME-') and not (values.get('-LOAD_PATH-') or '').strip():
+            if (
+                values.get("-LOAD_GAME-")
+                and not (values.get("-LOAD_PATH-") or "").strip()
+            ):
                 sg.popup_error("Please select a save file to load.", title="DungeonPy")
                 continue
             break
@@ -308,25 +444,25 @@ def _run_launcher() -> argparse.Namespace | None:
         key=None,
     )
 
-    if values['-MODE_DM-']:
-        args.mode      = 'dm'
-        args.host      = None
-        args.password  = values['-DM_PASS-'].strip() or None
-        args.name      = None
-        args.color     = 'white'
-        args.insecure  = False
-        load_path = (values.get('-LOAD_PATH-') or '').strip()
-        if values.get('-LOAD_GAME-') and load_path:
-            args.load_path = load_path   # explicit file to load
+    if values["-MODE_DM-"]:
+        args.mode = "dm"
+        args.host = None
+        args.password = values["-DM_PASS-"].strip() or None
+        args.name = None
+        args.color = "white"
+        args.insecure = False
+        load_path = (values.get("-LOAD_PATH-") or "").strip()
+        if values.get("-LOAD_GAME-") and load_path:
+            args.load_path = load_path  # explicit file to load
         else:
-            args.load_path = False       # explicit new game — load nothing
+            args.load_path = False  # explicit new game — load nothing
     else:
-        args.mode      = 'player'
-        args.name      = values['-NAME-'].strip()
-        args.host      = values['-HOST-'].strip()
-        args.color     = values['-COLOR-']
-        args.insecure  = values['-INSECURE-']
-        args.password  = None
+        args.mode = "player"
+        args.name = values["-NAME-"].strip()
+        args.host = values["-HOST-"].strip()
+        args.color = values["-COLOR-"]
+        args.insecure = values["-INSECURE-"]
+        args.password = None
         args.load_path = None
 
     return args
@@ -345,75 +481,132 @@ def main():
         if args is None:
             return
     else:
-        parser = argparse.ArgumentParser(description="Run the D&D Map and Tracker system.")
+        parser = argparse.ArgumentParser(
+            description="Run the D&D Map and Tracker system."
+        )
         parser.add_argument(
             "--mode",
             choices=["dm", "player"],
             default="dm",
             help="dm: host a session.  player: connect to a DM's server.",
         )
-        parser.add_argument("--dir", type=str, default=_DEFAULT_DIR,
-                            help="Base directory for maps, data, and textures.")
-        parser.add_argument("--verbose", action="store_true",
-                            help="Enable verbose logging.")
-        parser.add_argument("--super_verbose", action="store_true",
-                            help="Enable extra-verbose logging.")
-        parser.add_argument("--host", type=str, default=None,
-                            help="DM's IP address (--mode player).")
-        parser.add_argument("--port", type=int, default=8765,
-                            help="WebSocket port (default: 8765).")
-        parser.add_argument("--name", type=str, default=None,
-                            help="Your character name (--mode player).")
-        parser.add_argument("--color", type=str, default=None,
-                            choices=_PLAYER_COLORS,
-                            help=f"Token highlight color. Choices: {', '.join(_PLAYER_COLORS)}.")
-        parser.add_argument("--password", type=str, default=None,
-                            help="DM session password (--mode dm). Prompted if omitted.")
-        parser.add_argument("--insecure", action="store_true",
-                            help="Skip TLS certificate verification (--mode player).")
-        parser.add_argument("--cert", type=str, default=None,
-                            help="Path to TLS certificate (--mode dm).")
-        parser.add_argument("--key", type=str, default=None,
-                            help="Path to TLS private key (--mode dm).")
+        parser.add_argument(
+            "--dir",
+            type=str,
+            default=_DEFAULT_DIR,
+            help="Base directory for maps, data, and textures.",
+        )
+        parser.add_argument(
+            "--verbose", action="store_true", help="Enable verbose logging."
+        )
+        parser.add_argument(
+            "--super_verbose", action="store_true", help="Enable extra-verbose logging."
+        )
+        parser.add_argument(
+            "--host", type=str, default=None, help="DM's IP address (--mode player)."
+        )
+        parser.add_argument(
+            "--port", type=int, default=8765, help="WebSocket port (default: 8765)."
+        )
+        parser.add_argument(
+            "--name",
+            type=str,
+            default=None,
+            help="Your character name (--mode player).",
+        )
+        parser.add_argument(
+            "--color",
+            type=str,
+            default=None,
+            choices=_PLAYER_COLORS,
+            help=f"Token highlight color. Choices: {', '.join(_PLAYER_COLORS)}.",
+        )
+        parser.add_argument(
+            "--password",
+            type=str,
+            default=None,
+            help="DM session password (--mode dm). Prompted if omitted.",
+        )
+        parser.add_argument(
+            "--insecure",
+            action="store_true",
+            help="Skip TLS certificate verification (--mode player).",
+        )
+        parser.add_argument(
+            "--cert",
+            type=str,
+            default=None,
+            help="Path to TLS certificate (--mode dm).",
+        )
+        parser.add_argument(
+            "--key", type=str, default=None, help="Path to TLS private key (--mode dm)."
+        )
 
         args = parser.parse_args()
         _load_fonts(args.dir)
 
         # DM: prompt for password if not provided on the command line.
         if args.mode == "dm" and args.password is None:
-            args.password = getpass.getpass("[DungeonPy] DM password (leave blank to disable): ")
+            args.password = getpass.getpass(
+                "[DungeonPy] DM password (leave blank to disable): "
+            )
             if not args.password:
                 args.password = None
 
         # Player: show connection dialog if --name or --host are missing.
         if args.mode == "player" and (not args.name or not args.host):
             import PySimpleGUI as sg
+
             sg.theme("DarkGrey13")
             layout = [
-                [sg.Text("DungeonPy — Connect", font=("Arial", 14, "bold"), pad=(0, (0, 12)))],
-                [sg.Text("Your name:", size=(10, 1)),
-                 sg.Input(args.name or "", key="-NAME-", size=(28, 1))],
-                [sg.Text("DM address:", size=(10, 1)),
-                 sg.Input(args.host or "", key="-HOST-", size=(28, 1))],
-                [sg.Text("Color:", size=(10, 1)),
-                 sg.Combo(_PLAYER_COLORS,
-                          default_value=args.color or random.choice(_PLAYER_COLORS),
-                          key="-COLOR-", size=(26, 1), readonly=True)],
-                [sg.Checkbox("Skip TLS verification", key="-INSECURE-",
-                             default=args.insecure, pad=(0, (8, 0)))],
-                [sg.Push(),
-                 sg.Button("Connect", size=(10, 1), bind_return_key=True),
-                 sg.Button("Cancel",  size=(10, 1)),
-                 sg.Push()],
+                [
+                    sg.Text(
+                        "DungeonPy — Connect",
+                        font=("Arial", 14, "bold"),
+                        pad=(0, (0, 12)),
+                    )
+                ],
+                [
+                    sg.Text("Your name:", size=(10, 1)),
+                    sg.Input(args.name or "", key="-NAME-", size=(28, 1)),
+                ],
+                [
+                    sg.Text("DM address:", size=(10, 1)),
+                    sg.Input(args.host or "", key="-HOST-", size=(28, 1)),
+                ],
+                [
+                    sg.Text("Color:", size=(10, 1)),
+                    sg.Combo(
+                        _PLAYER_COLORS,
+                        default_value=args.color or random.choice(_PLAYER_COLORS),
+                        key="-COLOR-",
+                        size=(26, 1),
+                        readonly=True,
+                    ),
+                ],
+                [
+                    sg.Checkbox(
+                        "Skip TLS verification",
+                        key="-INSECURE-",
+                        default=args.insecure,
+                        pad=(0, (8, 0)),
+                    )
+                ],
+                [
+                    sg.Push(),
+                    sg.Button("Connect", size=(10, 1), bind_return_key=True),
+                    sg.Button("Cancel", size=(10, 1)),
+                    sg.Push(),
+                ],
             ]
             window = sg.Window("DungeonPy", layout, margins=(24, 20), finalize=True)
             event, values = window.read()
             window.close()
             if event in (sg.WIN_CLOSED, "Cancel"):
                 sys.exit(0)
-            args.name     = values["-NAME-"].strip()
-            args.host     = values["-HOST-"].strip()
-            args.color    = values["-COLOR-"]
+            args.name = values["-NAME-"].strip()
+            args.host = values["-HOST-"].strip()
+            args.color = values["-COLOR-"]
             args.insecure = values["-INSECURE-"]
             if not args.name or not args.host:
                 sg.popup_error("Name and DM address are required.", title="DungeonPy")
@@ -430,12 +623,12 @@ def main():
         host=args.host,
         port=args.port,
         player_name=args.name,
-        player_color=args.color or 'red',
+        player_color=args.color or "red",
         password=args.password,
         insecure=args.insecure,
         cert=args.cert,
         key=args.key,
-        load_path=getattr(args, 'load_path', None),
+        load_path=getattr(args, "load_path", None),
     )
     game.run()
 

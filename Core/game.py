@@ -26,9 +26,9 @@ from Core.map_manager import MapManager
 from Core.tracker import Tracker
 from Core.log_utils import log_msg
 
-DEFAULT_SAVE_FILE = 'Savegames/combat_tracker_example.json'
-AUTOSAVE_INTERVAL = 120   # seconds between autosaves
-AUTOSAVE_SLOTS    = 4     # number of rotating autosave files
+DEFAULT_SAVE_FILE = "Savegames/combat_tracker_example.json"
+AUTOSAVE_INTERVAL = 120  # seconds between autosaves
+AUTOSAVE_SLOTS = 4  # number of rotating autosave files
 
 
 class Game:
@@ -49,9 +49,22 @@ class Game:
         key: Path to the matching TLS private key for DM mode.
     """
 
-    def __init__(self, dir_path, mode='dm', verbose=False, super_verbose=False,
-                 host=None, port=8765, player_name=None, player_color='red',
-                 password=None, insecure=False, cert=None, key=None, load_path=None):
+    def __init__(
+        self,
+        dir_path,
+        mode="dm",
+        verbose=False,
+        super_verbose=False,
+        host=None,
+        port=8765,
+        player_name=None,
+        player_color="red",
+        password=None,
+        insecure=False,
+        cert=None,
+        key=None,
+        load_path=None,
+    ):
         self.mode = mode
         self.dir_path = dir_path
         self.verbose = verbose
@@ -66,10 +79,14 @@ class Game:
 
         # Map thread state
         self._map_thread: threading.Thread | None = None
-        self._programmatic_map_close = False   # True when WE close the window, not the user
-        self._quit_event = threading.Event()   # used in player mode to keep main thread alive
+        self._programmatic_map_close = (
+            False  # True when WE close the window, not the user
+        )
+        self._quit_event = (
+            threading.Event()
+        )  # used in player mode to keep main thread alive
 
-        if mode == 'player':
+        if mode == "player":
             self._init_player(host, port, player_name, player_color, insecure)
         else:
             self._init_dm(host, port, password, cert, key)
@@ -84,7 +101,7 @@ class Game:
 
         cert_path, key_path = ensure_cert(
             cert_path=cert or "dm_cert.pem",
-            key_path=key  or "dm_key.pem",
+            key_path=key or "dm_key.pem",
         )
         ssl_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         ssl_ctx.load_cert_chain(cert_path, key_path)
@@ -100,7 +117,7 @@ class Game:
         self.bridge.start()
 
         print(f"[DungeonPy] DM server listening on wss://*:{self.bridge.port}")
-        print(f"[DungeonPy] Share your public IP + port with players.")
+        print("[DungeonPy] Share your public IP + port with players.")
         if self.verbose:
             log_msg(f"[Game] DM bridge on wss://{host}:{self.bridge.port}")
 
@@ -127,7 +144,9 @@ class Game:
 
         if self.tracker and self.tracker._chat:
             mm = self.map_manager
-            self.tracker._chat._ping_fn = lambda: mm._ping_sound and mm._ping_sound.play()
+            self.tracker._chat._ping_fn = lambda: (
+                mm._ping_sound and mm._ping_sound.play()
+            )
 
     def _init_player(self, host, port, player_name, player_color, insecure):
         """--mode player — remote map-only client; no local files needed."""
@@ -142,12 +161,12 @@ class Game:
             ssl_ctx.check_hostname = False
             ssl_ctx.verify_mode = ssl.CERT_NONE
 
-        self.server = GameServer()   # mirror — filled from server snapshots
+        self.server = GameServer()  # mirror — filled from server snapshots
 
         self.map_manager = MapManager(
             server=self.server,
             dir_path=self.dir_path,
-            map_path=None,           # grid arrives via snapshot
+            map_path=None,  # grid arrives via snapshot
             verbose=self.verbose,
             super_verbose=self.super_verbose,
         )
@@ -174,7 +193,7 @@ class Game:
         self.server.subscribe(self.map_manager.handle_server_event)
         self.server.subscribe(self._handle_player_map_events)
         self.server.subscribe(self._player_chat.handle_server_event)
-        self.player_client.start()   # blocks until handshake or all attempts exhausted
+        self.player_client.start()  # blocks until handshake or all attempts exhausted
 
         if not self.player_client._running:
             print("[DungeonPy] Could not connect to the DM server — exiting.")
@@ -193,7 +212,7 @@ class Game:
             return
         self.map_manager.running = True
         self._map_thread = threading.Thread(
-            target=self._run_map_thread, daemon=True, name='map-window'
+            target=self._run_map_thread, daemon=True, name="map-window"
         )
         self._map_thread.start()
 
@@ -209,8 +228,8 @@ class Game:
         # run_loop has exited — determine why
         if not self._programmatic_map_close:
             # User closed the pygame window manually
-            if self.mode == 'player':
-                self._quit_event.set()   # causes chat window loop to exit too
+            if self.mode == "player":
+                self._quit_event.set()  # causes chat window loop to exit too
             else:
                 # Treat window close as toggling the map off for everyone
                 self.bridge.submit({"action": "set_map_visible", "visible": False})
@@ -233,12 +252,16 @@ class Game:
 
         if event.get("type") == "snapshot":
             # Only act on the first snapshot after connect (initial state restore)
-            if not getattr(self, '_player_first_snapshot_done', False):
+            if not getattr(self, "_player_first_snapshot_done", False):
                 self._player_first_snapshot_done = True
                 if self.server.map_visible:
                     token = next(
-                        (c for c in self.server.combatants
-                         if c.name == player_name and c.pos), None
+                        (
+                            c
+                            for c in self.server.combatants
+                            if c.name == player_name and c.pos
+                        ),
+                        None,
                     )
                     if token:
                         self._open_map()
@@ -248,8 +271,12 @@ class Game:
         if action == "map_visibility_changed":
             if event.get("visible"):
                 token = next(
-                    (c for c in self.server.combatants
-                     if c.name == player_name and c.pos), None
+                    (
+                        c
+                        for c in self.server.combatants
+                        if c.name == player_name and c.pos
+                    ),
+                    None,
                 )
                 if token:
                     self._open_map()
@@ -272,13 +299,13 @@ class Game:
                 time.sleep(AUTOSAVE_INTERVAL)
                 slot[0] = (slot[0] % AUTOSAVE_SLOTS) + 1
                 path = os.path.join(
-                    self.dir_path, 'Savegames', f'autosave_{slot[0]}.json'
+                    self.dir_path, "Savegames", f"autosave_{slot[0]}.json"
                 )
                 self.server.submit({"action": "save", "path": path})
                 if self.verbose:
                     log_msg(f"[Game] Autosaved to {path}")
 
-        threading.Thread(target=_loop, daemon=True, name='autosave').start()
+        threading.Thread(target=_loop, daemon=True, name="autosave").start()
 
     # ------------------------------------------------------------------
     # Save / load helpers
@@ -297,7 +324,7 @@ class Game:
         if self.verbose:
             log_msg(f"[Game] Launching in {self.mode} mode...")
 
-        if self.mode == 'player':
+        if self.mode == "player":
             self._player_chat.run(self._quit_event)  # blocks until chat window closes
 
         else:  # dm

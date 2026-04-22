@@ -16,21 +16,30 @@ from Core.protocol import validate_intent
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def server():
     return GameServer(snapshot_interval=0)
 
 
 def add(server, name, initiative, hp=10, is_pc=False):
-    server.process_intent({
-        "action": "add_combatant",
-        "combatant": {"name": name, "initiative": initiative, "hp": hp, "is_pc": is_pc},
-    })
+    server.process_intent(
+        {
+            "action": "add_combatant",
+            "combatant": {
+                "name": name,
+                "initiative": initiative,
+                "hp": hp,
+                "is_pc": is_pc,
+            },
+        }
+    )
 
 
 # ===========================================================================
 # Combatant / save format
 # ===========================================================================
+
 
 def test_condition_timer_old_int_format_migrated():
     """
@@ -41,12 +50,14 @@ def test_condition_timer_old_int_format_migrated():
 
     Commit: 551f416 "Solved bug with timed conditions"
     """
-    c = Combatant.from_dict({
-        "name": "A",
-        "initiative": 10,
-        "conditions": ["Invisible"],
-        "condition_timers": {"Invisible": 3},   # old integer format
-    })
+    c = Combatant.from_dict(
+        {
+            "name": "A",
+            "initiative": 10,
+            "conditions": ["Invisible"],
+            "condition_timers": {"Invisible": 3},  # old integer format
+        }
+    )
     # Timer should be migrated to [round, 999] so it doesn't crash on unpack
     assert isinstance(c.condition_timers["Invisible"], list)
     assert c.condition_timers["Invisible"] == [3, 999]
@@ -54,12 +65,14 @@ def test_condition_timer_old_int_format_migrated():
 
 def test_condition_timer_new_list_format_preserved():
     """Counterpart: new format must pass through _migrate_timers unchanged."""
-    c = Combatant.from_dict({
-        "name": "A",
-        "initiative": 10,
-        "conditions": ["Blind"],
-        "condition_timers": {"Blind": [5, 15]},
-    })
+    c = Combatant.from_dict(
+        {
+            "name": "A",
+            "initiative": 10,
+            "conditions": ["Blind"],
+            "condition_timers": {"Blind": [5, 15]},
+        }
+    )
     assert c.condition_timers["Blind"] == [5, 15]
 
 
@@ -107,6 +120,7 @@ def test_combatant_from_dict_missing_condition_timers_defaults_empty():
 # Server — condition expiry
 # ===========================================================================
 
+
 def test_advance_turn_does_not_crash_with_old_timer_format(server):
     """
     Bug: if a condition timer was stored as an int (old format), advance_turn
@@ -134,20 +148,32 @@ def test_dead_clears_condition_timers_preventing_ghost_expiry(server):
     Commit: 0b7c90f "Solved bug with canceled conditions"
     """
     add(server, "A", 20)
-    server.process_intent({"action": "update_combatant", "name": "A",
-                           "fields": {"conditions": ["Blind"],
-                                      "condition_timers": {"Blind": [2, 20]}}}),
-    server.process_intent({"action": "update_combatant", "name": "A",
-                           "fields": {"conditions": ["Dead"]}})
+    (
+        server.process_intent(
+            {
+                "action": "update_combatant",
+                "name": "A",
+                "fields": {
+                    "conditions": ["Blind"],
+                    "condition_timers": {"Blind": [2, 20]},
+                },
+            }
+        ),
+    )
+    server.process_intent(
+        {"action": "update_combatant", "name": "A", "fields": {"conditions": ["Dead"]}}
+    )
     assert server.combatants[0].condition_timers == {}
     # Advance past the old expiry — must not emit a combatant_updated for the timer
     server.turn = 1
     received = []
     server.subscribe(received.append)
     server.process_intent({"action": "advance_turn"})  # round 2
-    timer_updates = [e for e in received
-                     if e.get("action") == "combatant_updated"
-                     and "Blind" in str(e)]
+    timer_updates = [
+        e
+        for e in received
+        if e.get("action") == "combatant_updated" and "Blind" in str(e)
+    ]
     assert timer_updates == []
 
 
@@ -163,9 +189,13 @@ def test_condition_expiry_uses_initiative_not_just_round(server):
     add(server, "B", 10)
     server.turn = 1
     server.active_index = 1  # B is active
-    server.process_intent({"action": "update_combatant", "name": "A",
-                           "fields": {"conditions": ["Blind"],
-                                      "condition_timers": {"Blind": [2, 10]}}})
+    server.process_intent(
+        {
+            "action": "update_combatant",
+            "name": "A",
+            "fields": {"conditions": ["Blind"], "condition_timers": {"Blind": [2, 10]}},
+        }
+    )
     # Advance to round 2, A active (init 20 > expiry init 10) → NOT yet expired
     server.process_intent({"action": "advance_turn"})
     assert "Blind" in server.combatants[0].conditions
@@ -179,6 +209,7 @@ def test_condition_expiry_uses_initiative_not_just_round(server):
 # Server — turn / index management
 # ===========================================================================
 
+
 def test_delete_active_combatant_does_not_leave_out_of_range_index(server):
     """
     Bug: deleting the last combatant while it was active set active_index to
@@ -191,7 +222,7 @@ def test_delete_active_combatant_does_not_leave_out_of_range_index(server):
     server.active_index = 0
     server.process_intent({"action": "delete_combatant", "name": "A"})
     assert server.active_index == 0
-    assert server.get_active() is None   # graceful, not IndexError
+    assert server.get_active() is None  # graceful, not IndexError
 
 
 def test_delete_combatant_before_active_shifts_index_correctly(server):
@@ -202,7 +233,7 @@ def test_delete_combatant_before_active_shifts_index_correctly(server):
     add(server, "A", 30)
     add(server, "B", 20)
     add(server, "C", 10)
-    server.active_index = 2   # C is active
+    server.active_index = 2  # C is active
     server.process_intent({"action": "delete_combatant", "name": "A"})
     # active_index must shift down by 1
     assert server.active_index == 1
@@ -217,8 +248,9 @@ def test_advance_turn_skips_dead_combatants(server):
     add(server, "A", 20)
     add(server, "B", 10)
     add(server, "C", 5)
-    server.process_intent({"action": "update_combatant", "name": "B",
-                           "fields": {"conditions": ["Dead"]}})
+    server.process_intent(
+        {"action": "update_combatant", "name": "B", "fields": {"conditions": ["Dead"]}}
+    )
     server.active_index = 0
     server.process_intent({"action": "advance_turn"})
     assert server.combatants[server.active_index].name == "C"
@@ -229,9 +261,10 @@ def test_retreat_turn_skips_dead_combatants(server):
     add(server, "A", 20)
     add(server, "B", 10)
     add(server, "C", 5)
-    server.process_intent({"action": "update_combatant", "name": "B",
-                           "fields": {"conditions": ["Dead"]}})
-    server.active_index = 2   # C is active
+    server.process_intent(
+        {"action": "update_combatant", "name": "B", "fields": {"conditions": ["Dead"]}}
+    )
+    server.active_index = 2  # C is active
     server.process_intent({"action": "retreat_turn"})
     assert server.combatants[server.active_index].name == "A"
 
@@ -239,6 +272,7 @@ def test_retreat_turn_skips_dead_combatants(server):
 # ===========================================================================
 # Server — HP
 # ===========================================================================
+
 
 def test_wound_to_zero_adds_unconscious_exactly_once(server):
     """
@@ -256,9 +290,17 @@ def test_heal_above_zero_removes_unconscious(server):
     Bug: healing a downed combatant did not remove the Unconscious condition,
     leaving them permanently flagged as down even with positive HP.
     """
-    server.process_intent({"action": "add_combatant",
-                           "combatant": {"name": "A", "initiative": 10,
-                                         "hp": 0, "conditions": ["Unconscious"]}})
+    server.process_intent(
+        {
+            "action": "add_combatant",
+            "combatant": {
+                "name": "A",
+                "initiative": 10,
+                "hp": 0,
+                "conditions": ["Unconscious"],
+            },
+        }
+    )
     server.process_intent({"action": "apply_heal", "name": "A", "amount": 5})
     assert "Unconscious" not in server.combatants[0].conditions
     assert server.combatants[0].hp == 5
@@ -269,9 +311,17 @@ def test_heal_to_exactly_zero_keeps_unconscious(server):
     Edge case: healing for 0 (or heal that doesn't raise hp above 0) must
     NOT remove Unconscious.
     """
-    server.process_intent({"action": "add_combatant",
-                           "combatant": {"name": "A", "initiative": 10,
-                                         "hp": 0, "conditions": ["Unconscious"]}})
+    server.process_intent(
+        {
+            "action": "add_combatant",
+            "combatant": {
+                "name": "A",
+                "initiative": 10,
+                "hp": 0,
+                "conditions": ["Unconscious"],
+            },
+        }
+    )
     server.process_intent({"action": "apply_heal", "name": "A", "amount": 0})
     assert "Unconscious" in server.combatants[0].conditions
 
@@ -279,6 +329,7 @@ def test_heal_to_exactly_zero_keeps_unconscious(server):
 # ===========================================================================
 # Server — map load
 # ===========================================================================
+
 
 def test_load_map_always_hides_map_on_session_resume(server, tmp_path):
     """
@@ -319,10 +370,18 @@ def test_load_map_keeps_pcs_removes_npcs(server, tmp_path):
 
     Commit: 3ebc32c "solved a bug that caused the map to be forgotten by combatant"
     """
-    server.process_intent({"action": "add_combatant",
-                           "combatant": {"name": "Alice", "initiative": 15, "is_pc": True}})
-    server.process_intent({"action": "add_combatant",
-                           "combatant": {"name": "Goblin", "initiative": 8, "is_pc": False}})
+    server.process_intent(
+        {
+            "action": "add_combatant",
+            "combatant": {"name": "Alice", "initiative": 15, "is_pc": True},
+        }
+    )
+    server.process_intent(
+        {
+            "action": "add_combatant",
+            "combatant": {"name": "Goblin", "initiative": 8, "is_pc": False},
+        }
+    )
     map_file = tmp_path / "map.txt"
     map_file.write_text("1\n")
     server.process_intent({"action": "load_map", "path": str(map_file)})
@@ -336,20 +395,29 @@ def test_load_map_resets_pc_position(server, tmp_path):
     Bug: PCs retained their old pos after a load_map, causing them to appear
     on the wrong tile (or off-map) in the new dungeon.
     """
-    server.process_intent({"action": "add_combatant",
-                           "combatant": {"name": "Alice", "initiative": 15,
-                                         "is_pc": True, "pos": [10, 10]}})
+    server.process_intent(
+        {
+            "action": "add_combatant",
+            "combatant": {
+                "name": "Alice",
+                "initiative": 15,
+                "is_pc": True,
+                "pos": [10, 10],
+            },
+        }
+    )
     map_file = tmp_path / "map.txt"
     map_file.write_text("1\n")
     server.process_intent({"action": "load_map", "path": str(map_file)})
     alice = server.combatants[0]
     assert alice.pos is None
-    assert alice.initiative == 1   # reset to 1 for re-rolling
+    assert alice.initiative == 1  # reset to 1 for re-rolling
 
 
 # ===========================================================================
 # WebSocket — multiplayer
 # ===========================================================================
+
 
 def test_same_player_name_cannot_connect_twice():
     """
@@ -358,7 +426,9 @@ def test_same_player_name_cannot_connect_twice():
 
     Commit: bed9e99 "Fixed multiple connections to combatant"
     """
-    import asyncio, json, websockets
+    import asyncio
+    import json
+    import websockets
     from Core.ws_bridge import WSBridge
 
     bridge = WSBridge(GameServer(), host="localhost", port=0)
@@ -367,12 +437,16 @@ def test_same_player_name_cannot_connect_twice():
     async def _test():
         url = f"ws://localhost:{bridge.port}"
         async with websockets.connect(url) as ws1:
-            await ws1.send(json.dumps({"type": "hello", "role": "player", "name": "Alice"}))
+            await ws1.send(
+                json.dumps({"type": "hello", "role": "player", "name": "Alice"})
+            )
             ack1 = json.loads(await ws1.recv())
             await ws1.recv()  # snapshot
 
             async with websockets.connect(url) as ws2:
-                await ws2.send(json.dumps({"type": "hello", "role": "player", "name": "Alice"}))
+                await ws2.send(
+                    json.dumps({"type": "hello", "role": "player", "name": "Alice"})
+                )
                 ack2 = json.loads(await ws2.recv())
                 return ack1, ack2
 
@@ -388,6 +462,7 @@ def test_same_player_name_cannot_connect_twice():
 # PlayerClient — state mirroring
 # ===========================================================================
 
+
 def test_player_client_explored_tiles_accumulate_not_replace():
     """
     Bug: each explored_updated event replaced the explored_tiles set instead
@@ -396,13 +471,15 @@ def test_player_client_explored_tiles_accumulate_not_replace():
     mirror = GameServer(snapshot_interval=0)
     client = PlayerClient(server=mirror, host="localhost", port=8765, name="Alice")
 
-    client._apply_incremental({"action": "explored_updated", "new_tiles": [[1, 1], [2, 2]]})
+    client._apply_incremental(
+        {"action": "explored_updated", "new_tiles": [[1, 1], [2, 2]]}
+    )
     client._apply_incremental({"action": "explored_updated", "new_tiles": [[3, 3]]})
 
     tiles = mirror.explored_tiles.get("Alice", set())
     assert (1, 1) in tiles
     assert (2, 2) in tiles
-    assert (3, 3) in tiles   # must not have replaced the first batch
+    assert (3, 3) in tiles  # must not have replaced the first batch
 
 
 def test_player_client_snapshot_sets_explored_tiles_for_own_name():
@@ -413,21 +490,34 @@ def test_player_client_snapshot_sets_explored_tiles_for_own_name():
     mirror = GameServer(snapshot_interval=0)
     client = PlayerClient(server=mirror, host="localhost", port=8765, name="Bob")
 
-    client._apply_snapshot({
-        "combatants": [], "active_index": 0, "turn": 1,
-        "door_states": {}, "iron_door_states": {}, "secret_door_states": {},
-        "trap_states": {}, "player_selection_locks": {}, "player_move_locks": {},
-        "map_path": None, "map_visible": False, "tile_highlights": [],
-        "map_objects": [], "light_sources": [], "visibility_radius": 10,
-        "explored_tiles": [[5, 5], [6, 6]],
-        "map_grid": None,
-    })
+    client._apply_snapshot(
+        {
+            "combatants": [],
+            "active_index": 0,
+            "turn": 1,
+            "door_states": {},
+            "iron_door_states": {},
+            "secret_door_states": {},
+            "trap_states": {},
+            "player_selection_locks": {},
+            "player_move_locks": {},
+            "map_path": None,
+            "map_visible": False,
+            "tile_highlights": [],
+            "map_objects": [],
+            "light_sources": [],
+            "visibility_radius": 10,
+            "explored_tiles": [[5, 5], [6, 6]],
+            "map_grid": None,
+        }
+    )
     assert (5, 5) in mirror.explored_tiles.get("Bob", set())
 
 
 # ===========================================================================
 # Protocol
 # ===========================================================================
+
 
 def test_validate_intent_rejects_missing_action():
     """

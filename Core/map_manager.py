@@ -6,44 +6,51 @@ from Core.los import compute_los, _clear_line as _los_clear_line
 import math
 
 PLAYER_COLORS = {
-    "red":    (215,  40,  40),
-    "orange": (230, 110,  15),
-    "amber":  (195, 155,  10),
-    "lime":   ( 90, 200,  20),
-    "green":  ( 30, 175,  50),
-    "teal":   ( 15, 170, 150),
-    "sky":    ( 45, 155, 230),
-    "blue":   ( 35,  55, 210),
-    "purple": (135,  35, 205),
-    "pink":   (215,  45, 140),
+    "red": (215, 40, 40),
+    "orange": (230, 110, 15),
+    "amber": (195, 155, 10),
+    "lime": (90, 200, 20),
+    "green": (30, 175, 50),
+    "teal": (15, 170, 150),
+    "sky": (45, 155, 230),
+    "blue": (35, 55, 210),
+    "purple": (135, 35, 205),
+    "pink": (215, 45, 140),
 }
 
 # Gold is reserved for the DM (active-turn glow, selection, highlights).
 # It is intentionally absent from PLAYER_COLORS so players cannot claim it.
-DM_COLOR      = (255, 200, 0)
+DM_COLOR = (255, 200, 0)
 DM_COLOR_NAME = "gold"
 
 # Combined lookup used by rendering code (highlights, remote selections).
 _ALL_COLORS = {**PLAYER_COLORS, DM_COLOR_NAME: DM_COLOR}
 
-TOOLBAR_WIDTH = 60   # pixel width of the right-side tool panel
+TOOLBAR_WIDTH = 60  # pixel width of the right-side tool panel
 
 
-def _aoe_tiles(aoe: dict, grid_rows: int, grid_cols: int, map_data=None,
-               door_states=None, iron_door_states=None, secret_door_states=None) -> set:
+def _aoe_tiles(
+    aoe: dict,
+    grid_rows: int,
+    grid_cols: int,
+    map_data=None,
+    door_states=None,
+    iron_door_states=None,
+    secret_door_states=None,
+) -> set:
     """Return floor tiles covered by *aoe*, respecting LOS from the anchor.
     Walls and void tiles are never included; closed doors block the effect."""
-    ac, ar  = aoe["anchor"]
-    size    = aoe["size"]
-    shape   = aoe["shape"]
-    angle   = aoe.get("angle", 0)
+    ac, ar = aoe["anchor"]
+    size = aoe["size"]
+    shape = aoe["shape"]
+    angle = aoe.get("angle", 0)
     half_ap = aoe.get("aperture", 53) / 2
 
     # Integer anchor tile used as LOS origin
     origin_c, origin_r = int(ac), int(ar)
 
-    ds  = door_states        or {}
-    ids = iron_door_states   or {}
+    ds = door_states or {}
+    ids = iron_door_states or {}
     sds = secret_door_states or {}
 
     def _is_opaque(c, r):
@@ -52,12 +59,18 @@ def _aoe_tiles(aoe: dict, grid_rows: int, grid_cols: int, map_data=None,
         if not (0 <= r < grid_rows and 0 <= c < grid_cols):
             return True
         t = map_data[r][c]
-        if t in (1, 6):  return False          # floor, trap — transparent
-        if t == 0:       return True           # void
-        if t == 2:       return True           # wall
-        if t == 3:       return ds.get((r, c),  "closed") != "open"
-        if t == 4:       return ids.get((r, c), "closed") != "open"
-        if t == 5:       return sds.get((r, c), "closed") != "open"
+        if t in (1, 6):
+            return False  # floor, trap — transparent
+        if t == 0:
+            return True  # void
+        if t == 2:
+            return True  # wall
+        if t == 3:
+            return ds.get((r, c), "closed") != "open"
+        if t == 4:
+            return ids.get((r, c), "closed") != "open"
+        if t == 5:
+            return sds.get((r, c), "closed") != "open"
         return False
 
     tiles = set()
@@ -66,7 +79,7 @@ def _aoe_tiles(aoe: dict, grid_rows: int, grid_cols: int, map_data=None,
             # Only floor-like tiles are affected
             if map_data is not None and map_data[r][c] not in (1, 6):
                 continue
-            dc = c - ac + 0.5   # vector from anchor to tile centre
+            dc = c - ac + 0.5  # vector from anchor to tile centre
             dr = r - ar + 0.5
             dist = math.sqrt(dc * dc + dr * dr)
 
@@ -76,12 +89,12 @@ def _aoe_tiles(aoe: dict, grid_rows: int, grid_cols: int, map_data=None,
                 in_shape = dist <= size + 0.5
             elif shape == "cone":
                 if dist <= size + 0.5:
-                    ta   = math.degrees(math.atan2(dr, dc))
+                    ta = math.degrees(math.atan2(dr, dc))
                     diff = (ta - angle + 180) % 360 - 180
                     in_shape = abs(diff) <= half_ap
             elif shape == "line":
-                dx_  = math.cos(math.radians(angle))
-                dy_  = math.sin(math.radians(angle))
+                dx_ = math.cos(math.radians(angle))
+                dy_ = math.sin(math.radians(angle))
                 proj = dc * dx_ + dr * dy_
                 perp = abs(dc * (-dy_) + dr * dx_)
                 in_shape = 0 <= proj <= size + 0.5 and perp <= 0.5
@@ -91,7 +104,8 @@ def _aoe_tiles(aoe: dict, grid_rows: int, grid_cols: int, map_data=None,
 
             # LOS test: effect can only reach tiles with an unobstructed path
             if map_data is not None and not _los_clear_line(
-                    origin_c, origin_r, c, r, _is_opaque):
+                origin_c, origin_r, c, r, _is_opaque
+            ):
                 continue
 
             tiles.add((c, r))
@@ -113,16 +127,24 @@ def _aoe_hide_rect(aoe: dict, ts: int, ox: int, oy: int) -> "pygame.Rect":
 def _aoe_rotate_rect(aoe: dict, ts: int, ox: int, oy: int) -> "pygame.Rect":
     """Return the screen rect of the rotation handle at the tip of cone/line AoEs."""
     ac, ar = aoe["anchor"]
-    angle  = aoe.get("angle", 0)
-    size   = aoe["size"]
+    angle = aoe.get("angle", 0)
+    size = aoe["size"]
     tx = int(ac * ts + ox + math.cos(math.radians(angle)) * size * ts)
     ty = int(ar * ts + oy + math.sin(math.radians(angle)) * size * ts)
     return pygame.Rect(tx - 8, ty - 8, 16, 16)
 
-class MapManager:
 
-    def __init__(self, server, dir_path, submit=None,
-                 map_path=None, map_data=None, verbose=False, super_verbose=False):
+class MapManager:
+    def __init__(
+        self,
+        server,
+        dir_path,
+        submit=None,
+        map_path=None,
+        map_data=None,
+        verbose=False,
+        super_verbose=False,
+    ):
         self.server = server
         self._submit = submit if submit is not None else server.submit
         self.dir_path = dir_path
@@ -144,27 +166,50 @@ class MapManager:
         self.panning = False
         self.pan_start = (0, 0)
 
-        self.icons = {}          # file → surface scaled to tile_size (for normal tokens)
-        self.icons_original = {} # file → original full-resolution surface
-        self.object_icons = {}          # file → surface scaled to tile_size
-        self.object_icons_original = {} # file → original full-resolution surface
-        self._pending_object_icon: tuple | None = None  # (filename, width, height) while add_object active
-        self._picking_object: bool = False              # True while the file-picker subprocess runs
-        self._pending_light: tuple | None = None        # (radius, color_name) while add_light active
-        self._picking_light: bool = False               # True while the light picker subprocess runs
-        self._pending_aoe: dict | None = None           # {shape, size, aperture, color} while placing AoE
-        self._picking_aoe: bool = False                 # True while the AoE picker subprocess runs
-        self._aoe_anchor: tuple | None = None           # float (ax, ay) anchor for line/cone AoE
-        self._aoe_preview_angle: float = 0.0            # live direction angle while in aoe_rotate mode
-        self._dragging_aoe: dict | None = None          # AoE being drag-repositioned
-        self._dragging_aoe_start: tuple = (0, 0)        # mouse px position at drag start
-        self._dragging_aoe_offset: tuple = (0.0, 0.0)   # px offset from anchor to mouse at drag start
-        self._dragging_aoe_committed: bool = False       # True once mouse moved past threshold
-        self._dragging_aoe_anchor: list = [0.0, 0.0]    # current preview anchor during drag
-        self._rotating_aoe: dict | None = None          # AoE being rotation-dragged
-        self._rotating_aoe_start: tuple = (0, 0)        # mouse px position at rotation drag start
-        self._rotating_aoe_committed: bool = False       # True once mouse moved past threshold
-        self._rotating_aoe_angle: float = 0.0           # current preview angle during rotation drag
+        self.icons = {}  # file → surface scaled to tile_size (for normal tokens)
+        self.icons_original = {}  # file → original full-resolution surface
+        self.object_icons = {}  # file → surface scaled to tile_size
+        self.object_icons_original = {}  # file → original full-resolution surface
+        self._pending_object_icon: tuple | None = (
+            None  # (filename, width, height) while add_object active
+        )
+        self._picking_object: bool = False  # True while the file-picker subprocess runs
+        self._pending_light: tuple | None = (
+            None  # (radius, color_name) while add_light active
+        )
+        self._picking_light: bool = False  # True while the light picker subprocess runs
+        self._pending_aoe: dict | None = (
+            None  # {shape, size, aperture, color} while placing AoE
+        )
+        self._picking_aoe: bool = False  # True while the AoE picker subprocess runs
+        self._aoe_anchor: tuple | None = None  # float (ax, ay) anchor for line/cone AoE
+        self._aoe_preview_angle: float = (
+            0.0  # live direction angle while in aoe_rotate mode
+        )
+        self._dragging_aoe: dict | None = None  # AoE being drag-repositioned
+        self._dragging_aoe_start: tuple = (0, 0)  # mouse px position at drag start
+        self._dragging_aoe_offset: tuple = (
+            0.0,
+            0.0,
+        )  # px offset from anchor to mouse at drag start
+        self._dragging_aoe_committed: bool = (
+            False  # True once mouse moved past threshold
+        )
+        self._dragging_aoe_anchor: list = [
+            0.0,
+            0.0,
+        ]  # current preview anchor during drag
+        self._rotating_aoe: dict | None = None  # AoE being rotation-dragged
+        self._rotating_aoe_start: tuple = (
+            0,
+            0,
+        )  # mouse px position at rotation drag start
+        self._rotating_aoe_committed: bool = (
+            False  # True once mouse moved past threshold
+        )
+        self._rotating_aoe_angle: float = (
+            0.0  # current preview angle during rotation drag
+        )
         self.unplaced = []
         self.selected_token = None
         self._remote_selections: dict = {}  # selector_name → (token_name, color_name)
@@ -198,21 +243,21 @@ class MapManager:
         self.initial_token_pos = None
         self.ui_font = None
         self._minimap_surface = None
-        self.active_tool: str = "select"          # "select" | "highlight" | "recenter_pick"
-        self._player_name: str | None = None      # set by Game in player mode; None = DM
-        self._chat_toggle_fn = None               # set by Game in player mode; None = DM
-        self._chat_visible: bool = True           # tracks chat window state for toolbar icon
+        self.active_tool: str = "select"  # "select" | "highlight" | "recenter_pick"
+        self._player_name: str | None = None  # set by Game in player mode; None = DM
+        self._chat_toggle_fn = None  # set by Game in player mode; None = DM
+        self._chat_visible: bool = True  # tracks chat window state for toolbar icon
         self._toolbar_font = None
         # Fog of war — player mode only
-        self._explored_tiles: set = set()         # (col, row) tiles this player has ever seen
-        self._current_los: set = set()            # (col, row) tiles visible this frame
+        self._explored_tiles: set = set()  # (col, row) tiles this player has ever seen
+        self._current_los: set = set()  # (col, row) tiles visible this frame
         self._fog_surface: pygame.Surface | None = None  # cached per-frame fog overlay
         # Last-seen door states (fog-gated): only updated when tile is in LOS
-        self._player_door_states: dict = {}        # (row, col) → state
-        self._player_iron_door_states: dict = {}   # (row, col) → state
-        self._player_secret_door_states: dict = {} # (row, col) → state
-        self._chat_unread: bool = False            # unread message arrived while chat closed
-        self._ping_sound = None                    # generated once after pygame.init()
+        self._player_door_states: dict = {}  # (row, col) → state
+        self._player_iron_door_states: dict = {}  # (row, col) → state
+        self._player_secret_door_states: dict = {}  # (row, col) → state
+        self._chat_unread: bool = False  # unread message arrived while chat closed
+        self._ping_sound = None  # generated once after pygame.init()
 
     def _make_ping_sound(self):
         """Generate a short 880 Hz ping using the mixer's current format."""
@@ -221,14 +266,14 @@ class MapManager:
             if abs(size) != 16:
                 return None
             n = int(rate * 0.12)
-            fmt = '<' + 'h' * channels
+            fmt = "<" + "h" * channels
             parts = []
             for i in range(n):
                 fade = max(0.0, 1.0 - (i / n) * 4)
                 v = int(32767 * fade * math.sin(2 * math.pi * 880 * i / rate))
                 v = max(-32768, min(32767, v))
                 parts.append(struct.pack(fmt, *([v] * channels)))
-            return pygame.mixer.Sound(buffer=b''.join(parts))
+            return pygame.mixer.Sound(buffer=b"".join(parts))
         except Exception:
             return None
 
@@ -247,14 +292,16 @@ class MapManager:
             self.offset_x = 0
             self.offset_y = 0
 
-        screen = pygame.display.set_mode((screen_width, screen_height), pygame.RESIZABLE)
+        screen = pygame.display.set_mode(
+            (screen_width, screen_height), pygame.RESIZABLE
+        )
         pygame.display.set_caption(self._window_title)
 
         self._load_textures()
 
         self._ping_sound = self._make_ping_sound()
-        self.ui_font = pygame.font.SysFont('Arial', 18)
-        self._toolbar_font = pygame.font.SysFont('Arial', 11)
+        self.ui_font = pygame.font.SysFont("Arial", 18)
+        self._toolbar_font = pygame.font.SysFont("Arial", 11)
         # Re-cache icons (needed if map is reopened after close)
         self.icons = {}
         self.object_icons = {}
@@ -274,27 +321,51 @@ class MapManager:
     def _load_textures(self):
         """Load textures from disk and convert them. Requires an active pygame display."""
         d = self.dir_path
-        self.floor_texture_original = pygame.image.load(os.path.join(d, 'Assets/Textures/stonefloor3.jpg')).convert()
-        self.wall_texture_original = pygame.image.load(os.path.join(d, 'Assets/Textures/stonefloor4.jpg')).convert()
-        self.wooden_door_closed_texture_original = pygame.image.load(os.path.join(d, 'Assets/Textures/Wooden_door_closed.png')).convert_alpha()
-        self.wooden_door_open_texture_original = pygame.image.load(os.path.join(d, 'Assets/Textures/Wooden_door_open.png')).convert_alpha()
-        self.iron_door_closed_texture_original = pygame.image.load(os.path.join(d, 'Assets/Textures/Iron_door_closed.png')).convert_alpha()
-        self.iron_door_open_texture_original = pygame.image.load(os.path.join(d, 'Assets/Textures/Iron_door_open.png')).convert_alpha()
+        self.floor_texture_original = pygame.image.load(
+            os.path.join(d, "Assets/Textures/stonefloor3.jpg")
+        ).convert()
+        self.wall_texture_original = pygame.image.load(
+            os.path.join(d, "Assets/Textures/stonefloor4.jpg")
+        ).convert()
+        self.wooden_door_closed_texture_original = pygame.image.load(
+            os.path.join(d, "Assets/Textures/Wooden_door_closed.png")
+        ).convert_alpha()
+        self.wooden_door_open_texture_original = pygame.image.load(
+            os.path.join(d, "Assets/Textures/Wooden_door_open.png")
+        ).convert_alpha()
+        self.iron_door_closed_texture_original = pygame.image.load(
+            os.path.join(d, "Assets/Textures/Iron_door_closed.png")
+        ).convert_alpha()
+        self.iron_door_open_texture_original = pygame.image.load(
+            os.path.join(d, "Assets/Textures/Iron_door_open.png")
+        ).convert_alpha()
         self.secret_door_texture_original = self.wall_texture_original
-        self.trap_texture_original = pygame.image.load(os.path.join(d, 'Assets/Textures/trap_pit.jpg')).convert_alpha()
-        self.grass_texture_original = pygame.image.load(os.path.join(d, 'Assets/Textures/grass_4.png')).convert()
-        (self.floor_texture, self.wall_texture, self.wooden_door_closed_texture,
-         self.wooden_door_open_texture, self.iron_door_closed_texture,
-         self.iron_door_open_texture, self.secret_door_texture,
-         self.trap_texture, self.grass_texture) = self.scale_textures(self.tile_size)
+        self.trap_texture_original = pygame.image.load(
+            os.path.join(d, "Assets/Textures/trap_pit.jpg")
+        ).convert_alpha()
+        self.grass_texture_original = pygame.image.load(
+            os.path.join(d, "Assets/Textures/grass_4.png")
+        ).convert()
+        (
+            self.floor_texture,
+            self.wall_texture,
+            self.wooden_door_closed_texture,
+            self.wooden_door_open_texture,
+            self.iron_door_closed_texture,
+            self.iron_door_open_texture,
+            self.secret_door_texture,
+            self.trap_texture,
+            self.grass_texture,
+        ) = self.scale_textures(self.tile_size)
 
     def load_map_from_txt(self, filepath):
         def _parse(ch):
             if ch.isdigit():
                 return int(ch)
             if ch.isalpha():
-                return ord(ch.lower()) - ord('a') + 10
+                return ord(ch.lower()) - ord("a") + 10
             return 0
+
         with open(filepath, "r") as f:
             lines = f.readlines()
         return [[_parse(ch) for ch in line.strip()] for line in lines if line.strip()]
@@ -307,12 +378,12 @@ class MapManager:
             pos = obj.get("pos")
             icon_file = obj.get("icon")
             _s = obj.get("size", 1)  # backward compat with old square saves
-            width  = obj.get("width",  _s)
+            width = obj.get("width", _s)
             height = obj.get("height", _s)
             if pos is None:
                 continue
             col, row = pos
-            px_w = width  * self.tile_size
+            px_w = width * self.tile_size
             px_h = height * self.tile_size
             x = col * self.tile_size + self.offset_x
             y = row * self.tile_size + self.offset_y
@@ -320,14 +391,17 @@ class MapManager:
             if self._player_name:
                 if not any(
                     (col + dc, row + dr) in self._explored_tiles
-                    for dc in range(width) for dr in range(height)
+                    for dc in range(width)
+                    for dr in range(height)
                 ):
                     continue
             if icon_file:
                 if icon_file not in self.object_icons:
                     self.load_object_icon(icon_file)
                 if icon_file in self.object_icons:
-                    if (width != 1 or height != 1) and icon_file in self.object_icons_original:
+                    if (
+                        width != 1 or height != 1
+                    ) and icon_file in self.object_icons_original:
                         surf = pygame.transform.smoothscale(
                             self.object_icons_original[icon_file], (px_w, px_h)
                         )
@@ -349,7 +423,9 @@ class MapManager:
         self.draw_grid(screen)
         self._draw_highlights(screen)
         mx, my = pygame.mouse.get_pos()
-        self.draw_tokens(screen, self.selected_token, self.server.get_active(), (mx, my))
+        self.draw_tokens(
+            screen, self.selected_token, self.server.get_active(), (mx, my)
+        )
         self.draw_aoe_widgets(screen)
         self.draw_minimap(screen)
         if self.ui_font:
@@ -376,28 +452,46 @@ class MapManager:
         return (
             pygame.transform.scale(self.floor_texture_original, (tile_size, tile_size)),
             pygame.transform.scale(self.wall_texture_original, (tile_size, tile_size)),
-            pygame.transform.scale(self.wooden_door_closed_texture_original, (tile_size, tile_size)),
-            pygame.transform.scale(self.wooden_door_open_texture_original, (tile_size, tile_size)),
-            pygame.transform.scale(self.iron_door_closed_texture_original, (tile_size, tile_size)),
-            pygame.transform.scale(self.iron_door_open_texture_original, (tile_size, tile_size)),
-            pygame.transform.scale(self.secret_door_texture_original, (tile_size, tile_size)),
+            pygame.transform.scale(
+                self.wooden_door_closed_texture_original, (tile_size, tile_size)
+            ),
+            pygame.transform.scale(
+                self.wooden_door_open_texture_original, (tile_size, tile_size)
+            ),
+            pygame.transform.scale(
+                self.iron_door_closed_texture_original, (tile_size, tile_size)
+            ),
+            pygame.transform.scale(
+                self.iron_door_open_texture_original, (tile_size, tile_size)
+            ),
+            pygame.transform.scale(
+                self.secret_door_texture_original, (tile_size, tile_size)
+            ),
             pygame.transform.scale(self.trap_texture_original, (tile_size, tile_size)),
             pygame.transform.scale(self.grass_texture_original, (tile_size, tile_size)),
         )
 
     def rescale_icons(self):
         for file, orig in self.icons_original.items():
-            self.icons[file] = pygame.transform.smoothscale(orig, (self.tile_size, self.tile_size))
+            self.icons[file] = pygame.transform.smoothscale(
+                orig, (self.tile_size, self.tile_size)
+            )
 
     def rescale_object_icons(self):
         for file, orig in self.object_icons_original.items():
-            self.object_icons[file] = pygame.transform.smoothscale(orig, (self.tile_size, self.tile_size))
+            self.object_icons[file] = pygame.transform.smoothscale(
+                orig, (self.tile_size, self.tile_size)
+            )
 
     def load_icon(self, file):
         try:
-            img = pygame.image.load(os.path.join(self.dir_path, "Assets", "Combatants", file)).convert_alpha()
+            img = pygame.image.load(
+                os.path.join(self.dir_path, "Assets", "Combatants", file)
+            ).convert_alpha()
             self.icons_original[file] = img
-            self.icons[file] = pygame.transform.smoothscale(img, (self.tile_size, self.tile_size))
+            self.icons[file] = pygame.transform.smoothscale(
+                img, (self.tile_size, self.tile_size)
+            )
         except Exception as e:
             print(f"Could not load icon {file}: {e}")
         return self.icons.get(file)
@@ -408,7 +502,9 @@ class MapManager:
                 os.path.join(self.dir_path, "Assets", "Objects", file)
             ).convert_alpha()
             self.object_icons_original[file] = img
-            self.object_icons[file] = pygame.transform.smoothscale(img, (self.tile_size, self.tile_size))
+            self.object_icons[file] = pygame.transform.smoothscale(
+                img, (self.tile_size, self.tile_size)
+            )
         except Exception as e:
             print(f"Could not load object icon {file}: {e}")
         return self.object_icons.get(file)
@@ -416,22 +512,31 @@ class MapManager:
     def _run_object_picker_subprocess(self):
         """Blocking: spawns a tkinter file picker in a child process, returns (filename, width, height).
         When frozen by PyInstaller, re-invokes the executable with --_picker instead of -c."""
-        import subprocess, sys
+        import subprocess
+        import sys
+
         objects_dir = os.path.join(self.dir_path, "Assets", "Objects")
-        if getattr(sys, 'frozen', False):
+        if getattr(sys, "frozen", False):
             try:
                 result = subprocess.run(
                     [sys.executable, "--_picker", "object", objects_dir],
-                    capture_output=True, text=True, timeout=300,
+                    capture_output=True,
+                    text=True,
+                    timeout=300,
                 )
                 all_lines = result.stdout.strip().splitlines()
                 # Skip pygame startup banner in frozen builds
-                lines = [l for l in all_lines if l.strip() and not l.startswith("pygame")
-                         and "pygame community" not in l]
+                lines = [
+                    line
+                    for line in all_lines
+                    if line.strip()
+                    and not line.startswith("pygame")
+                    and "pygame community" not in line
+                ]
                 if not lines or not lines[0]:
                     return None, 1, 1
-                icon   = lines[0]
-                width  = int(lines[1]) if len(lines) > 1 and lines[1].isdigit() else 1
+                icon = lines[0]
+                width = int(lines[1]) if len(lines) > 1 and lines[1].isdigit() else 1
                 height = int(lines[2]) if len(lines) > 2 and lines[2].isdigit() else 1
                 return icon, width, height
             except Exception as e:
@@ -461,13 +566,15 @@ class MapManager:
         try:
             result = subprocess.run(
                 [sys.executable, "-c", script],
-                capture_output=True, text=True, timeout=300,
+                capture_output=True,
+                text=True,
+                timeout=300,
             )
             lines = result.stdout.strip().splitlines()
             if not lines or not lines[0]:
                 return None, 1, 1
-            icon   = lines[0]
-            width  = int(lines[1]) if len(lines) > 1 and lines[1].isdigit() else 1
+            icon = lines[0]
+            width = int(lines[1]) if len(lines) > 1 and lines[1].isdigit() else 1
             height = int(lines[2]) if len(lines) > 2 and lines[2].isdigit() else 1
             return icon, width, height
         except Exception as e:
@@ -477,6 +584,7 @@ class MapManager:
     def _start_object_picker(self):
         """Non-blocking: run the file picker in a background thread so pygame keeps ticking."""
         import threading
+
         self._picking_object = True
 
         def _worker():
@@ -495,34 +603,47 @@ class MapManager:
     # ------------------------------------------------------------------
 
     _LIGHT_COLORS = {
-        "warm":  (255, 180,  60),   # torch / candle
-        "cool":  (120, 160, 255),   # magic / moonlight
-        "white": (255, 255, 200),   # bright daylight
-        "red":   (255,  60,  60),   # blood / alarm
-        "green": ( 60, 220,  80),   # poison / nature
-        "blue":  ( 60, 120, 255),   # arcane / cold
-        "black": (  0,   0,   0),   # magical darkness — darkens rather than illuminates
+        "warm": (255, 180, 60),  # torch / candle
+        "cool": (120, 160, 255),  # magic / moonlight
+        "white": (255, 255, 200),  # bright daylight
+        "red": (255, 60, 60),  # blood / alarm
+        "green": (60, 220, 80),  # poison / nature
+        "blue": (60, 120, 255),  # arcane / cold
+        "black": (0, 0, 0),  # magical darkness — darkens rather than illuminates
     }
 
     def _run_light_picker_subprocess(self):
         """Blocking: ask radius + color via subprocess tkinter. Returns (radius, color_name, alpha).
         When frozen by PyInstaller, re-invokes the executable with --_picker instead of -c."""
-        import subprocess, sys
-        if getattr(sys, 'frozen', False):
+        import subprocess
+        import sys
+
+        if getattr(sys, "frozen", False):
             try:
                 result = subprocess.run(
                     [sys.executable, "--_picker", "light"],
-                    capture_output=True, text=True, timeout=300,
+                    capture_output=True,
+                    text=True,
+                    timeout=300,
                 )
                 all_lines = result.stdout.strip().splitlines()
                 # Skip pygame startup banner in frozen builds
-                lines = [l for l in all_lines if l.strip() and not l.startswith("pygame")
-                         and "pygame community" not in l]
+                lines = [
+                    line
+                    for line in all_lines
+                    if line.strip()
+                    and not line.startswith("pygame")
+                    and "pygame community" not in line
+                ]
                 if not lines or not lines[0].isdigit():
                     return None, "warm", 60
                 radius = int(lines[0])
-                color  = lines[1] if len(lines) > 1 and lines[1] in self._LIGHT_COLORS else "warm"
-                alpha  = int(lines[2]) if len(lines) > 2 and lines[2].isdigit() else 60
+                color = (
+                    lines[1]
+                    if len(lines) > 1 and lines[1] in self._LIGHT_COLORS
+                    else "warm"
+                )
+                alpha = int(lines[2]) if len(lines) > 2 and lines[2].isdigit() else 60
                 return radius, color, alpha
             except Exception as e:
                 print(f"[Map] Light picker failed: {e}")
@@ -554,14 +675,20 @@ class MapManager:
         try:
             result = subprocess.run(
                 [sys.executable, "-c", script],
-                capture_output=True, text=True, timeout=300,
+                capture_output=True,
+                text=True,
+                timeout=300,
             )
             lines = result.stdout.strip().splitlines()
             if not lines or not lines[0].isdigit():
                 return None, "warm", 60
             radius = int(lines[0])
-            color  = lines[1] if len(lines) > 1 and lines[1] in self._LIGHT_COLORS else "warm"
-            alpha  = int(lines[2]) if len(lines) > 2 and lines[2].isdigit() else 60
+            color = (
+                lines[1]
+                if len(lines) > 1 and lines[1] in self._LIGHT_COLORS
+                else "warm"
+            )
+            alpha = int(lines[2]) if len(lines) > 2 and lines[2].isdigit() else 60
             return radius, color, alpha
         except Exception as e:
             print(f"[Map] Light picker failed: {e}")
@@ -570,6 +697,7 @@ class MapManager:
     def _start_light_picker(self):
         """Non-blocking: run the light picker in a background thread."""
         import threading
+
         self._picking_light = True
 
         def _worker():
@@ -593,27 +721,42 @@ class MapManager:
     def _run_aoe_picker_subprocess(self) -> dict | None:
         """Blocking: ask shape/size/aperture/color via subprocess tkinter.
         When frozen by PyInstaller, re-invokes the executable with --_picker instead of -c."""
-        import subprocess, sys
+        import subprocess
+        import sys
+
         _shapes = ("sphere", "cone", "line")
-        _colors = ("red", "orange", "amber", "lime", "green",
-                   "teal", "sky", "blue", "purple", "pink")
-        if getattr(sys, 'frozen', False):
+        _colors = (
+            "red",
+            "orange",
+            "amber",
+            "lime",
+            "green",
+            "teal",
+            "sky",
+            "blue",
+            "purple",
+            "pink",
+        )
+        if getattr(sys, "frozen", False):
             try:
                 result = subprocess.run(
                     [sys.executable, "--_picker", "aoe"],
-                    capture_output=True, text=True, timeout=300,
+                    capture_output=True,
+                    text=True,
+                    timeout=300,
                 )
                 all_lines = result.stdout.strip().splitlines()
-                idx = next((i for i, l in enumerate(all_lines)
-                            if l.strip() in _shapes), None)
+                idx = next(
+                    (i for i, line in enumerate(all_lines) if line.strip() in _shapes), None
+                )
                 if idx is None or idx + 3 >= len(all_lines):
                     return None
-                lines = all_lines[idx:idx + 4]
+                lines = all_lines[idx : idx + 4]
                 return {
-                    "shape":    lines[0],
-                    "size":     int(lines[1]),
+                    "shape": lines[0],
+                    "size": int(lines[1]),
                     "aperture": float(lines[2]),
-                    "color":    lines[3] if lines[3] in _colors else "red",
+                    "color": lines[3] if lines[3] in _colors else "red",
                 }
             except Exception as e:
                 print(f"[Map] AoE picker failed: {e}")
@@ -667,16 +810,18 @@ class MapManager:
         try:
             result = subprocess.run(
                 [sys.executable, "-c", script],
-                capture_output=True, text=True, timeout=300,
+                capture_output=True,
+                text=True,
+                timeout=300,
             )
             lines = result.stdout.strip().splitlines()
             if len(lines) < 4 or lines[0] not in _shapes:
                 return None
             return {
-                "shape":    lines[0],
-                "size":     int(lines[1]),
+                "shape": lines[0],
+                "size": int(lines[1]),
                 "aperture": float(lines[2]),
-                "color":    lines[3] if lines[3] in _colors else "red",
+                "color": lines[3] if lines[3] in _colors else "red",
             }
         except Exception as e:
             print(f"[Map] AoE picker failed: {e}")
@@ -685,6 +830,7 @@ class MapManager:
     def _start_aoe_picker(self):
         """Non-blocking: run the AoE picker in a background thread."""
         import threading
+
         self._picking_aoe = True
 
         def _worker():
@@ -704,17 +850,19 @@ class MapManager:
     def _submit_aoe(self, ax: float, ay: float, angle: float):
         """Build and submit an aoe_add intent from the pending AoE params."""
         p = self._pending_aoe
-        self._submit({
-            "action":   "aoe_add",
-            "anchor":   [round(ax, 3), round(ay, 3)],
-            "shape":    p["shape"],
-            "size":     p["size"],
-            "angle":    round(angle, 2),
-            "aperture": p.get("aperture", 53.0),
-            "color":    p["color"],
-            "owner":    self._player_name,   # None for DM
-            "hidden":   True,  # all AoEs hidden by default; owner/DM makes them visible
-        })
+        self._submit(
+            {
+                "action": "aoe_add",
+                "anchor": [round(ax, 3), round(ay, 3)],
+                "shape": p["shape"],
+                "size": p["size"],
+                "angle": round(angle, 2),
+                "aperture": p.get("aperture", 53.0),
+                "color": p["color"],
+                "owner": self._player_name,  # None for DM
+                "hidden": True,  # all AoEs hidden by default; owner/DM makes them visible
+            }
+        )
 
     def draw_lights(self, screen):
         """Draw LOS-aware tile-based light glows above the map, below fog.
@@ -722,36 +870,38 @@ class MapManager:
         Wall and void tiles are excluded from illumination."""
         if not self.server.light_sources or not self.map_data:
             return
-        ts   = self.tile_size
+        ts = self.tile_size
         rows = len(self.map_data)
         cols = len(self.map_data[0])
         tile_surf = pygame.Surface((ts, ts), pygame.SRCALPHA)
         for ls in self.server.light_sources:
-            pos       = ls.get("pos")
-            radius    = ls.get("radius", 4)
-            color     = ls.get("color", "warm")
+            pos = ls.get("pos")
+            radius = ls.get("radius", 4)
+            color = ls.get("color", "warm")
             alpha_max = ls.get("alpha", 60)
             if pos is None:
                 continue
-            lc, lr  = pos
-            rgb     = self._LIGHT_COLORS.get(color, (255, 180, 60))
-            is_dark = (color == "black")
+            lc, lr = pos
+            rgb = self._LIGHT_COLORS.get(color, (255, 180, 60))
+            is_dark = color == "black"
             lit_tiles = compute_los(
-                self.map_data, pos, radius,
+                self.map_data,
+                pos,
+                radius,
                 self.server.door_states,
                 self.server.iron_door_states,
                 self.server.secret_door_states,
             )
-            for (tc, tr) in lit_tiles:
+            for tc, tr in lit_tiles:
                 # Skip non-floor tiles (walls, voids)
                 if not (0 <= tr < rows and 0 <= tc < cols):
                     continue
                 tile_type = self.map_data[tr][tc]
-                if tile_type in (0, 2):   # void, wall
+                if tile_type in (0, 2):  # void, wall
                     continue
-                dist  = math.sqrt((tc - lc) ** 2 + (tr - lr) ** 2)
-                t     = max(0.0, 1.0 - dist / radius)
-                alpha = int(alpha_max * (t ** 0.55))
+                dist = math.sqrt((tc - lc) ** 2 + (tr - lr) ** 2)
+                t = max(0.0, 1.0 - dist / radius)
+                alpha = int(alpha_max * (t**0.55))
                 if alpha <= 0:
                     continue
                 x = tc * ts + self.offset_x
@@ -774,21 +924,26 @@ class MapManager:
         """Draw AoE tile overlays (before fog). Widgets are drawn separately by draw_aoe_widgets."""
         if not self.map_data:
             return
-        ts    = self.tile_size
-        rows  = len(self.map_data)
-        cols  = len(self.map_data[0])
+        ts = self.tile_size
+        rows = len(self.map_data)
+        cols = len(self.map_data[0])
         ox, oy = self.offset_x, self.offset_y
         is_dm = self._player_name is None
 
         def _paint(aoe_dict, alpha_override=None):
-            rgb  = self._AOE_COLORS.get(aoe_dict.get("color", "red"), (220, 40, 40))
+            rgb = self._AOE_COLORS.get(aoe_dict.get("color", "red"), (220, 40, 40))
             alpha = alpha_override if alpha_override is not None else self._AOE_ALPHA
             surf = pygame.Surface((ts, ts), pygame.SRCALPHA)
             surf.fill((*rgb, alpha))
-            for (c, r) in _aoe_tiles(aoe_dict, rows, cols, self.map_data,
-                                      self.server.door_states,
-                                      self.server.iron_door_states,
-                                      self.server.secret_door_states):
+            for c, r in _aoe_tiles(
+                aoe_dict,
+                rows,
+                cols,
+                self.map_data,
+                self.server.door_states,
+                self.server.iron_door_states,
+                self.server.secret_door_states,
+            ):
                 screen.blit(surf, (c * ts + ox, r * ts + oy))
 
         dragging_id = self._dragging_aoe["id"] if self._dragging_aoe else None
@@ -808,14 +963,23 @@ class MapManager:
         if self._rotating_aoe is not None and self._rotating_aoe_committed:
             _paint(dict(self._rotating_aoe, angle=self._rotating_aoe_angle))
         if self.active_tool == "aoe_rotate" and self._pending_aoe and self._aoe_anchor:
-            _paint(dict(self._pending_aoe, anchor=list(self._aoe_anchor),
-                        angle=self._aoe_preview_angle))
+            _paint(
+                dict(
+                    self._pending_aoe,
+                    anchor=list(self._aoe_anchor),
+                    angle=self._aoe_preview_angle,
+                )
+            )
 
     def draw_aoe_widgets(self, screen):
         """Draw per-AoE control widgets (×, eye, ↺) on top of tokens."""
-        if not self.map_data or self.active_tool in ("aoe_place", "aoe_anchor", "aoe_rotate"):
+        if not self.map_data or self.active_tool in (
+            "aoe_place",
+            "aoe_anchor",
+            "aoe_rotate",
+        ):
             return
-        ts    = self.tile_size
+        ts = self.tile_size
         ox, oy = self.offset_x, self.offset_y
         is_dm = self._player_name is None
         dragging_id = self._dragging_aoe["id"] if self._dragging_aoe else None
@@ -829,9 +993,11 @@ class MapManager:
             rgb = self._AOE_COLORS.get(aoe.get("color", "red"), (220, 40, 40))
             hidden = aoe.get("hidden", False)
 
-            anchor = (list(self._dragging_aoe_anchor)
-                      if (self._dragging_aoe_committed and aoe["id"] == dragging_id)
-                      else aoe["anchor"])
+            anchor = (
+                list(self._dragging_aoe_anchor)
+                if (self._dragging_aoe_committed and aoe["id"] == dragging_id)
+                else aoe["anchor"]
+            )
 
             # Anchor widget (×) — move/delete
             btn = _aoe_remove_rect({"anchor": anchor}, ts, ox, oy)
@@ -846,32 +1012,46 @@ class MapManager:
                 eye_col = (90, 90, 110) if hidden else (60, 160, 60)
                 pygame.draw.circle(screen, eye_col, ebtn.center, ebtn.width // 2)
                 ecx, ecy = ebtn.center
-                pygame.draw.ellipse(screen, (255, 255, 255),
-                                    pygame.Rect(ecx - 4, ecy - 2, 8, 5), 1)
+                pygame.draw.ellipse(
+                    screen, (255, 255, 255), pygame.Rect(ecx - 4, ecy - 2, 8, 5), 1
+                )
                 pygame.draw.circle(screen, (255, 255, 255), (ecx, ecy), 2)
                 if hidden:
-                    pygame.draw.line(screen, (255, 80, 80),
-                                     (ecx - 4, ecy - 3), (ecx + 4, ecy + 3), 2)
+                    pygame.draw.line(
+                        screen, (255, 80, 80), (ecx - 4, ecy - 3), (ecx + 4, ecy + 3), 2
+                    )
 
             # Rotation widget (↺) for cone/line
             if aoe["shape"] != "sphere":
-                angle = (self._rotating_aoe_angle
-                         if (self._rotating_aoe_committed and aoe["id"] == rotating_id)
-                         else aoe["angle"])
-                rbtn = _aoe_rotate_rect({"anchor": anchor, "angle": angle, "size": aoe["size"]},
-                                        ts, ox, oy)
+                angle = (
+                    self._rotating_aoe_angle
+                    if (self._rotating_aoe_committed and aoe["id"] == rotating_id)
+                    else aoe["angle"]
+                )
+                rbtn = _aoe_rotate_rect(
+                    {"anchor": anchor, "angle": angle, "size": aoe["size"]}, ts, ox, oy
+                )
                 pygame.draw.circle(screen, rgb, rbtn.center, rbtn.width // 2)
                 cx2, cy2 = rbtn.center
-                pygame.draw.arc(screen, (255, 255, 255),
-                                pygame.Rect(cx2 - 4, cy2 - 4, 8, 8),
-                                math.radians(30), math.radians(330), 2)
+                pygame.draw.arc(
+                    screen,
+                    (255, 255, 255),
+                    pygame.Rect(cx2 - 4, cy2 - 4, 8, 8),
+                    math.radians(30),
+                    math.radians(330),
+                    2,
+                )
                 tip_x = cx2 + round(4 * math.cos(math.radians(30)))
                 tip_y = cy2 - round(4 * math.sin(math.radians(30)))
-                pygame.draw.polygon(screen, (255, 255, 255), [
-                    (tip_x, tip_y),
-                    (tip_x - 3, tip_y - 2),
-                    (tip_x + 1, tip_y - 3),
-                ])
+                pygame.draw.polygon(
+                    screen,
+                    (255, 255, 255),
+                    [
+                        (tip_x, tip_y),
+                        (tip_x - 3, tip_y - 2),
+                        (tip_x + 1, tip_y - 3),
+                    ],
+                )
 
     def is_tile_occupied(self, col, row, ignore_token=None):
         for c in self.server.combatants:
@@ -942,8 +1122,11 @@ class MapManager:
 
         elif action == "player_lock_changed":
             # If select lock removed while highlight tool is active, revert to select
-            if (event.get("lock_type") == "select" and not event.get("locked")
-                    and self.active_tool == "highlight"):
+            if (
+                event.get("lock_type") == "select"
+                and not event.get("locked")
+                and self.active_tool == "highlight"
+            ):
                 self.active_tool = "select"
 
         elif action == "recenter_all":
@@ -1005,13 +1188,22 @@ class MapManager:
         For a no-zoom recenter use _recenter_on_player() instead."""
         mid_zoom = (self.min_tile_size + self.max_tile_size) // 2
         self.tile_size = mid_zoom
-        (self.floor_texture, self.wall_texture, self.wooden_door_closed_texture,
-         self.wooden_door_open_texture, self.iron_door_closed_texture,
-         self.iron_door_open_texture, self.secret_door_texture,
-         self.trap_texture, self.grass_texture) = self.scale_textures(self.tile_size)
+        (
+            self.floor_texture,
+            self.wall_texture,
+            self.wooden_door_closed_texture,
+            self.wooden_door_open_texture,
+            self.iron_door_closed_texture,
+            self.iron_door_open_texture,
+            self.secret_door_texture,
+            self.trap_texture,
+            self.grass_texture,
+        ) = self.scale_textures(self.tile_size)
         self.rescale_icons()
 
-        token = next((c for c in self.server.combatants if c.name == player_name and c.pos), None)
+        token = next(
+            (c for c in self.server.combatants if c.name == player_name and c.pos), None
+        )
         screen_w, screen_h = pygame.display.get_surface().get_size()
         if token:
             col, row = token.pos
@@ -1026,8 +1218,14 @@ class MapManager:
         """Re-center the view on the player's token without changing zoom."""
         if not self._player_name or not self.map_data:
             return
-        token = next((c for c in self.server.combatants
-                      if c.name == self._player_name and c.pos), None)
+        token = next(
+            (
+                c
+                for c in self.server.combatants
+                if c.name == self._player_name and c.pos
+            ),
+            None,
+        )
         if not token:
             return
         col, row = token.pos
@@ -1040,10 +1238,12 @@ class MapManager:
         if state.get("map_grid"):
             self.map_data = state["map_grid"]
             import pygame as _pg
+
             if _pg.get_init():
                 self._build_minimap_surface()
         self.unplaced = [c for c in self.server.combatants if c.pos is None]
         import pygame as _pg
+
         if _pg.get_init():
             for c in self.server.combatants:
                 if c.icon and c.icon not in self.icons:
@@ -1079,23 +1279,35 @@ class MapManager:
         """Compute toolbar button rects from current screen width."""
         x0 = screen_w - TOOLBAR_WIDTH + 8
         rects = {
-            "select":    pygame.Rect(x0, 12, 44, 44),
+            "select": pygame.Rect(x0, 12, 44, 44),
             "highlight": pygame.Rect(x0, 64, 44, 44),
-            "clear":     pygame.Rect(x0, 116, 44, 44),
+            "clear": pygame.Rect(x0, 116, 44, 44),
         }
         if self._chat_toggle_fn is not None:
             rects["chat"] = pygame.Rect(x0, 176, 44, 44)
         if self._player_name is not None:
-            chat_bottom = rects["chat"].bottom if "chat" in rects else rects["clear"].bottom
+            chat_bottom = (
+                rects["chat"].bottom if "chat" in rects else rects["clear"].bottom
+            )
             rects["recenter"] = pygame.Rect(x0, chat_bottom + 8, 44, 44)
             rects["add_aoe"] = pygame.Rect(x0, rects["recenter"].bottom + 16, 44, 44)
         if self._player_name is None:
-            rects["recenter_all"]  = pygame.Rect(x0, rects["clear"].bottom + 16, 44, 44)
-            rects["add_object"]    = pygame.Rect(x0, rects["recenter_all"].bottom + 16, 44, 44)
-            rects["remove_object"] = pygame.Rect(x0, rects["add_object"].bottom + 8, 44, 44)
-            rects["add_light"]     = pygame.Rect(x0, rects["remove_object"].bottom + 16, 44, 44)
-            rects["remove_light"]  = pygame.Rect(x0, rects["add_light"].bottom + 8, 44, 44)
-            rects["add_aoe"]       = pygame.Rect(x0, rects["remove_light"].bottom + 16, 44, 44)
+            rects["recenter_all"] = pygame.Rect(x0, rects["clear"].bottom + 16, 44, 44)
+            rects["add_object"] = pygame.Rect(
+                x0, rects["recenter_all"].bottom + 16, 44, 44
+            )
+            rects["remove_object"] = pygame.Rect(
+                x0, rects["add_object"].bottom + 8, 44, 44
+            )
+            rects["add_light"] = pygame.Rect(
+                x0, rects["remove_object"].bottom + 16, 44, 44
+            )
+            rects["remove_light"] = pygame.Rect(
+                x0, rects["add_light"].bottom + 8, 44, 44
+            )
+            rects["add_aoe"] = pygame.Rect(
+                x0, rects["remove_light"].bottom + 16, 44, 44
+            )
         return rects
 
     def _handle_toolbar_click(self, mx, my):
@@ -1108,9 +1320,13 @@ class MapManager:
                 self.active_tool = "highlight"
         elif rects["clear"].collidepoint(mx, my):
             if self._player_name:
-                self._submit({"action": "clear_highlights"})   # bridge injects owner/color
+                self._submit(
+                    {"action": "clear_highlights"}
+                )  # bridge injects owner/color
             else:
-                self._submit({"action": "clear_highlights", "owner": "DM", "color": "gold"})
+                self._submit(
+                    {"action": "clear_highlights", "owner": "DM", "color": "gold"}
+                )
         elif rects.get("chat") and rects["chat"].collidepoint(mx, my):
             if self._chat_toggle_fn:
                 self._chat_toggle_fn()
@@ -1120,7 +1336,9 @@ class MapManager:
         elif rects.get("recenter") and rects["recenter"].collidepoint(mx, my):
             self._recenter_on_player()
         elif rects.get("recenter_all") and rects["recenter_all"].collidepoint(mx, my):
-            self.active_tool = "highlight" if self.active_tool == "recenter_pick" else "recenter_pick"
+            self.active_tool = (
+                "highlight" if self.active_tool == "recenter_pick" else "recenter_pick"
+            )
         elif rects.get("add_object") and rects["add_object"].collidepoint(mx, my):
             if self.active_tool in ("add_object", "picking_object"):
                 self.active_tool = "select"
@@ -1129,7 +1347,9 @@ class MapManager:
             elif not self._picking_object:
                 self._start_object_picker()
         elif rects.get("remove_object") and rects["remove_object"].collidepoint(mx, my):
-            self.active_tool = "select" if self.active_tool == "remove_object" else "remove_object"
+            self.active_tool = (
+                "select" if self.active_tool == "remove_object" else "remove_object"
+            )
         elif rects.get("add_light") and rects["add_light"].collidepoint(mx, my):
             if self.active_tool in ("add_light",) or self._picking_light:
                 self.active_tool = "select"
@@ -1138,11 +1358,16 @@ class MapManager:
             elif not self._picking_light:
                 self._start_light_picker()
         elif rects.get("remove_light") and rects["remove_light"].collidepoint(mx, my):
-            self.active_tool = "select" if self.active_tool == "remove_light" else "remove_light"
+            self.active_tool = (
+                "select" if self.active_tool == "remove_light" else "remove_light"
+            )
         elif rects.get("add_aoe") and rects["add_aoe"].collidepoint(mx, my):
             if not self._can_place_aoe():
                 return
-            if self.active_tool in ("aoe_place", "aoe_anchor", "aoe_rotate") or self._picking_aoe:
+            if (
+                self.active_tool in ("aoe_place", "aoe_anchor", "aoe_rotate")
+                or self._picking_aoe
+            ):
                 self.active_tool = "select"
                 self._pending_aoe = None
                 self._aoe_anchor = None
@@ -1161,16 +1386,16 @@ class MapManager:
         rects = self._toolbar_button_rects(sw)
         can_hl = self._can_highlight()
         is_sel = self.active_tool == "select"
-        is_hl  = self.active_tool == "highlight"
+        is_hl = self.active_tool == "highlight"
 
-        _BG_ACTIVE   = (55, 85, 55)
+        _BG_ACTIVE = (55, 85, 55)
         _BG_INACTIVE = (45, 45, 60)
         _BG_DISABLED = (35, 35, 42)
-        _BG_CLEAR    = (80, 42, 42)
-        _BORDER      = (90, 90, 110)
-        _ICON        = (220, 220, 230)
+        _BG_CLEAR = (80, 42, 42)
+        _BORDER = (90, 90, 110)
+        _ICON = (220, 220, 230)
         _ICON_ACTIVE = (200, 240, 200)
-        _ICON_DIM    = (90,  90, 105)
+        _ICON_DIM = (90, 90, 105)
 
         # --- Select button ---
         bg = _BG_ACTIVE if is_sel else _BG_INACTIVE
@@ -1179,8 +1404,15 @@ class MapManager:
         cx, cy = rects["select"].centerx, rects["select"].centery - 6
         ic = _ICON_ACTIVE if is_sel else _ICON
         # Cursor: filled triangle (arrow-like)
-        pts = [(cx - 7, cy - 8), (cx - 7, cy + 7), (cx - 1, cy + 3),
-               (cx + 1, cy + 8), (cx + 4, cy + 6), (cx + 2, cy + 1), (cx + 7, cy + 1)]
+        pts = [
+            (cx - 7, cy - 8),
+            (cx - 7, cy + 7),
+            (cx - 1, cy + 3),
+            (cx + 1, cy + 8),
+            (cx + 4, cy + 6),
+            (cx + 2, cy + 1),
+            (cx + 7, cy + 1),
+        ]
         pygame.draw.polygon(screen, ic, pts)
 
         # --- Highlight button ---
@@ -1225,9 +1457,13 @@ class MapManager:
 
         # --- Recenter-all button (DM only) ---
         if rects.get("recenter_all"):
-            pygame.draw.line(screen, (55, 55, 70),
-                             (x0 + 8, rects["recenter_all"].top - 8),
-                             (sw - 8, rects["recenter_all"].top - 8), 1)
+            pygame.draw.line(
+                screen,
+                (55, 55, 70),
+                (x0 + 8, rects["recenter_all"].top - 8),
+                (sw - 8, rects["recenter_all"].top - 8),
+                1,
+            )
             is_picking = self.active_tool == "recenter_pick"
             bg = (70, 55, 85) if is_picking else _BG_INACTIVE
             pygame.draw.rect(screen, bg, rects["recenter_all"], border_radius=4)
@@ -1242,14 +1478,26 @@ class MapManager:
         if rects.get("add_object"):
             is_add_obj = self.active_tool == "add_object"
             is_picking = self._picking_object
-            pygame.draw.line(screen, (55, 55, 70),
-                             (x0 + 8, rects["add_object"].top - 8),
-                             (sw - 8, rects["add_object"].top - 8), 1)
-            bg = (40, 70, 40) if is_add_obj else ((60, 60, 30) if is_picking else _BG_INACTIVE)
+            pygame.draw.line(
+                screen,
+                (55, 55, 70),
+                (x0 + 8, rects["add_object"].top - 8),
+                (sw - 8, rects["add_object"].top - 8),
+                1,
+            )
+            bg = (
+                (40, 70, 40)
+                if is_add_obj
+                else ((60, 60, 30) if is_picking else _BG_INACTIVE)
+            )
             pygame.draw.rect(screen, bg, rects["add_object"], border_radius=4)
             pygame.draw.rect(screen, _BORDER, rects["add_object"], 1, border_radius=4)
             cx, cy = rects["add_object"].centerx, rects["add_object"].centery - 6
-            ic = (130, 220, 130) if is_add_obj else ((220, 220, 100) if is_picking else _ICON)
+            ic = (
+                (130, 220, 130)
+                if is_add_obj
+                else ((220, 220, 100) if is_picking else _ICON)
+            )
             # "+" icon
             pygame.draw.line(screen, ic, (cx, cy - 9), (cx, cy + 9), 2)
             pygame.draw.line(screen, ic, (cx - 9, cy), (cx + 9, cy), 2)
@@ -1261,7 +1509,9 @@ class MapManager:
             is_rem_obj = self.active_tool == "remove_object"
             bg = (70, 40, 40) if is_rem_obj else _BG_INACTIVE
             pygame.draw.rect(screen, bg, rects["remove_object"], border_radius=4)
-            pygame.draw.rect(screen, _BORDER, rects["remove_object"], 1, border_radius=4)
+            pygame.draw.rect(
+                screen, _BORDER, rects["remove_object"], 1, border_radius=4
+            )
             cx, cy = rects["remove_object"].centerx, rects["remove_object"].centery - 6
             ic = (220, 130, 130) if is_rem_obj else _ICON
             # Eraser-like "–" with strike-through square
@@ -1272,10 +1522,18 @@ class MapManager:
         if rects.get("add_light"):
             is_add_light = self.active_tool == "add_light"
             is_pick_light = self._picking_light
-            pygame.draw.line(screen, (55, 55, 70),
-                             (x0 + 8, rects["add_light"].top - 8),
-                             (sw - 8, rects["add_light"].top - 8), 1)
-            bg = (55, 50, 20) if is_add_light else ((60, 55, 20) if is_pick_light else _BG_INACTIVE)
+            pygame.draw.line(
+                screen,
+                (55, 55, 70),
+                (x0 + 8, rects["add_light"].top - 8),
+                (sw - 8, rects["add_light"].top - 8),
+                1,
+            )
+            bg = (
+                (55, 50, 20)
+                if is_add_light
+                else ((60, 55, 20) if is_pick_light else _BG_INACTIVE)
+            )
             pygame.draw.rect(screen, bg, rects["add_light"], border_radius=4)
             pygame.draw.rect(screen, _BORDER, rects["add_light"], 1, border_radius=4)
             cx, cy = rects["add_light"].centerx, rects["add_light"].centery - 6
@@ -1284,8 +1542,8 @@ class MapManager:
             pygame.draw.circle(screen, ic, (cx, cy), 5, 2)
             for angle_deg in range(0, 360, 45):
                 angle = math.radians(angle_deg)
-                x1 = int(cx + 7  * math.cos(angle))
-                y1 = int(cy + 7  * math.sin(angle))
+                x1 = int(cx + 7 * math.cos(angle))
+                y1 = int(cy + 7 * math.sin(angle))
                 x2 = int(cx + 11 * math.cos(angle))
                 y2 = int(cy + 11 * math.sin(angle))
                 pygame.draw.line(screen, ic, (x1, y1), (x2, y2), 1)
@@ -1307,15 +1565,23 @@ class MapManager:
             is_aoe = self.active_tool in ("aoe_place", "aoe_anchor", "aoe_rotate")
             is_pick_aoe = self._picking_aoe
             can_aoe = self._can_place_aoe()
-            pygame.draw.line(screen, (55, 55, 70),
-                             (x0 + 8, rects["add_aoe"].top - 8),
-                             (sw - 8, rects["add_aoe"].top - 8), 1)
-            bg = (70, 30, 30) if is_aoe else ((60, 40, 30) if is_pick_aoe else _BG_INACTIVE)
+            pygame.draw.line(
+                screen,
+                (55, 55, 70),
+                (x0 + 8, rects["add_aoe"].top - 8),
+                (sw - 8, rects["add_aoe"].top - 8),
+                1,
+            )
+            bg = (
+                (70, 30, 30)
+                if is_aoe
+                else ((60, 40, 30) if is_pick_aoe else _BG_INACTIVE)
+            )
             pygame.draw.rect(screen, bg, rects["add_aoe"], border_radius=4)
             pygame.draw.rect(screen, _BORDER, rects["add_aoe"], 1, border_radius=4)
             cx, cy = rects["add_aoe"].centerx, rects["add_aoe"].centery - 6
             if not can_aoe:
-                ic = (60, 60, 70)   # greyed out — no permission
+                ic = (60, 60, 70)  # greyed out — no permission
             elif is_aoe or is_pick_aoe:
                 ic = (220, 80, 80)
             else:
@@ -1324,69 +1590,102 @@ class MapManager:
             pygame.draw.circle(screen, ic, (cx, cy), 7, 2)
             for angle_deg in (0, 60, 120, 180, 240, 300):
                 angle_r = math.radians(angle_deg)
-                x1 = int(cx + 9  * math.cos(angle_r))
-                y1 = int(cy + 9  * math.sin(angle_r))
+                x1 = int(cx + 9 * math.cos(angle_r))
+                y1 = int(cy + 9 * math.sin(angle_r))
                 x2 = int(cx + 13 * math.cos(angle_r))
                 y2 = int(cy + 13 * math.sin(angle_r))
                 pygame.draw.line(screen, ic, (x1, y1), (x2, y2), 1)
 
         # --- Recenter button (player mode only) ---
         if rects.get("recenter"):
-            pygame.draw.line(screen, (55, 55, 70),
-                             (x0 + 8, rects["recenter"].top - 4),
-                             (sw - 8, rects["recenter"].top - 4), 1)
+            pygame.draw.line(
+                screen,
+                (55, 55, 70),
+                (x0 + 8, rects["recenter"].top - 4),
+                (sw - 8, rects["recenter"].top - 4),
+                1,
+            )
             pygame.draw.rect(screen, _BG_INACTIVE, rects["recenter"], border_radius=4)
             pygame.draw.rect(screen, _BORDER, rects["recenter"], 1, border_radius=4)
             cx, cy = rects["recenter"].centerx, rects["recenter"].centery - 6
             # Crosshair icon
             pygame.draw.circle(screen, _ICON, (cx, cy), 7, 2)
             pygame.draw.line(screen, _ICON, (cx - 11, cy), (cx - 8, cy), 2)
-            pygame.draw.line(screen, _ICON, (cx + 8,  cy), (cx + 11, cy), 2)
+            pygame.draw.line(screen, _ICON, (cx + 8, cy), (cx + 11, cy), 2)
             pygame.draw.line(screen, _ICON, (cx, cy - 11), (cx, cy - 8), 2)
-            pygame.draw.line(screen, _ICON, (cx, cy + 8),  (cx, cy + 11), 2)
+            pygame.draw.line(screen, _ICON, (cx, cy + 8), (cx, cy + 11), 2)
 
         # Labels beneath icons
         if self._toolbar_font:
             for key, label, active in [
-                ("select",    "SEL", is_sel),
-                ("highlight", "HL",  is_hl),
+                ("select", "SEL", is_sel),
+                ("highlight", "HL", is_hl),
             ]:
                 r = rects[key]
-                ic = _ICON_ACTIVE if active else (_ICON if (key != "highlight" or can_hl) else _ICON_DIM)
+                ic = (
+                    _ICON_ACTIVE
+                    if active
+                    else (_ICON if (key != "highlight" or can_hl) else _ICON_DIM)
+                )
                 surf = self._toolbar_font.render(label, True, ic)
-                screen.blit(surf, (r.x + (r.width - surf.get_width()) // 2, r.bottom - 13))
+                screen.blit(
+                    surf, (r.x + (r.width - surf.get_width()) // 2, r.bottom - 13)
+                )
             clr_surf = self._toolbar_font.render("CLR", True, _ICON)
             r = rects["clear"]
-            screen.blit(clr_surf, (r.x + (r.width - clr_surf.get_width()) // 2, r.bottom - 13))
+            screen.blit(
+                clr_surf, (r.x + (r.width - clr_surf.get_width()) // 2, r.bottom - 13)
+            )
             if self._chat_toggle_fn is not None:
-                ic = (255, 200, 50) if self._chat_unread else (_ICON_ACTIVE if self._chat_visible else _ICON)
+                ic = (
+                    (255, 200, 50)
+                    if self._chat_unread
+                    else (_ICON_ACTIVE if self._chat_visible else _ICON)
+                )
                 chat_surf = self._toolbar_font.render("CHAT", True, ic)
                 r = rects["chat"]
-                screen.blit(chat_surf, (r.x + (r.width - chat_surf.get_width()) // 2, r.bottom - 13))
+                screen.blit(
+                    chat_surf,
+                    (r.x + (r.width - chat_surf.get_width()) // 2, r.bottom - 13),
+                )
             if rects.get("recenter"):
                 ctr_surf = self._toolbar_font.render("CTR", True, _ICON)
                 r = rects["recenter"]
-                screen.blit(ctr_surf, (r.x + (r.width - ctr_surf.get_width()) // 2, r.bottom - 13))
+                screen.blit(
+                    ctr_surf,
+                    (r.x + (r.width - ctr_surf.get_width()) // 2, r.bottom - 13),
+                )
             if rects.get("recenter_all"):
                 is_picking = self.active_tool == "recenter_pick"
                 ic = (200, 170, 240) if is_picking else _ICON
                 eye_surf = self._toolbar_font.render("POINT", True, ic)
                 r = rects["recenter_all"]
-                screen.blit(eye_surf, (r.x + (r.width - eye_surf.get_width()) // 2, r.bottom - 13))
+                screen.blit(
+                    eye_surf,
+                    (r.x + (r.width - eye_surf.get_width()) // 2, r.bottom - 13),
+                )
             if rects.get("add_object"):
                 is_add_obj = self.active_tool == "add_object"
                 is_picking = self._picking_object
-                ic = (130, 220, 130) if is_add_obj else ((220, 220, 100) if is_picking else _ICON)
+                ic = (
+                    (130, 220, 130)
+                    if is_add_obj
+                    else ((220, 220, 100) if is_picking else _ICON)
+                )
                 label = "..." if is_picking else "OBJ+"
                 surf = self._toolbar_font.render(label, True, ic)
                 r = rects["add_object"]
-                screen.blit(surf, (r.x + (r.width - surf.get_width()) // 2, r.bottom - 13))
+                screen.blit(
+                    surf, (r.x + (r.width - surf.get_width()) // 2, r.bottom - 13)
+                )
             if rects.get("remove_object"):
                 is_rem_obj = self.active_tool == "remove_object"
                 ic = (220, 130, 130) if is_rem_obj else _ICON
                 surf = self._toolbar_font.render("OBJ-", True, ic)
                 r = rects["remove_object"]
-                screen.blit(surf, (r.x + (r.width - surf.get_width()) // 2, r.bottom - 13))
+                screen.blit(
+                    surf, (r.x + (r.width - surf.get_width()) // 2, r.bottom - 13)
+                )
             if rects.get("add_light"):
                 is_add_light = self.active_tool == "add_light"
                 is_pick_light = self._picking_light
@@ -1394,13 +1693,17 @@ class MapManager:
                 label = "..." if is_pick_light else "LIT+"
                 surf = self._toolbar_font.render(label, True, ic)
                 r = rects["add_light"]
-                screen.blit(surf, (r.x + (r.width - surf.get_width()) // 2, r.bottom - 13))
+                screen.blit(
+                    surf, (r.x + (r.width - surf.get_width()) // 2, r.bottom - 13)
+                )
             if rects.get("remove_light"):
                 is_rem_light = self.active_tool == "remove_light"
                 ic = (200, 160, 60) if is_rem_light else _ICON
                 surf = self._toolbar_font.render("LIT-", True, ic)
                 r = rects["remove_light"]
-                screen.blit(surf, (r.x + (r.width - surf.get_width()) // 2, r.bottom - 13))
+                screen.blit(
+                    surf, (r.x + (r.width - surf.get_width()) // 2, r.bottom - 13)
+                )
             if rects.get("add_aoe"):
                 is_aoe = self.active_tool in ("aoe_place", "aoe_anchor", "aoe_rotate")
                 is_pick_aoe = self._picking_aoe
@@ -1408,7 +1711,9 @@ class MapManager:
                 label = "..." if is_pick_aoe else "AOE"
                 surf = self._toolbar_font.render(label, True, ic)
                 r = rects["add_aoe"]
-                screen.blit(surf, (r.x + (r.width - surf.get_width()) // 2, r.bottom - 13))
+                screen.blit(
+                    surf, (r.x + (r.width - surf.get_width()) // 2, r.bottom - 13)
+                )
 
     # ------------------------------------------------------------------
     # Highlight rendering
@@ -1423,8 +1728,14 @@ class MapManager:
         if not self.map_data or not self._player_name:
             self._current_los = set()
             return
-        token = next((c for c in self.server.combatants
-                      if c.name == self._player_name and c.pos), None)
+        token = next(
+            (
+                c
+                for c in self.server.combatants
+                if c.name == self._player_name and c.pos
+            ),
+            None,
+        )
         if not token:
             self._current_los = set()
             return
@@ -1432,13 +1743,15 @@ class MapManager:
         s = token.size
         los_origin = [token.pos[0] + s // 2, token.pos[1] + s // 2]
         self._current_los = compute_los(
-            self.map_data, los_origin, self.server.visibility_radius,
-            self._player_door_states,        # use last-seen states so fog gates LOS too
+            self.map_data,
+            los_origin,
+            self.server.visibility_radius,
+            self._player_door_states,  # use last-seen states so fog gates LOS too
             self._player_iron_door_states,
             self._player_secret_door_states,
         )
         # For each newly visible tile, learn its current door/secret-door state
-        for (c, r) in self._current_los:
+        for c, r in self._current_los:
             k = (r, c)
             if k in self.server.door_states:
                 self._player_door_states[k] = self.server.door_states[k]
@@ -1456,7 +1769,9 @@ class MapManager:
             if (lpos[0], lpos[1]) not in self._current_los:
                 continue  # light source is behind a wall / out of range
             lit = compute_los(
-                self.map_data, lpos, lrad,
+                self.map_data,
+                lpos,
+                lrad,
                 self.server.door_states,
                 self.server.iron_door_states,
                 self.server.secret_door_states,
@@ -1485,8 +1800,8 @@ class MapManager:
         map_h = rows * ts
         fog = pygame.Surface((map_w, map_h), pygame.SRCALPHA)
 
-        BLACK      = (0,   0,   0, 255)
-        MEMORY     = (0,   0,   0, 70)
+        BLACK = (0, 0, 0, 255)
+        MEMORY = (0, 0, 0, 70)
 
         for row in range(rows):
             for col in range(cols):
@@ -1509,7 +1824,7 @@ class MapManager:
         t = pygame.time.get_ticks()
         # ~1 Hz flicker: sin period = 2π / 0.00628 ≈ 1000 ms
         flicker = 0.5 + 0.5 * math.sin(t * 0.00628)
-        alpha = int(80 + 160 * flicker)   # 80 … 240
+        alpha = int(80 + 160 * flicker)  # 80 … 240
         inset = 2
         border = 3
         for h in self.server.tile_highlights:
@@ -1522,11 +1837,12 @@ class MapManager:
                 continue
             rgb = _ALL_COLORS.get(h["color"], (255, 200, 0))
             surf = pygame.Surface((self.tile_size, self.tile_size), pygame.SRCALPHA)
-            pygame.draw.rect(surf, (*rgb, alpha),
-                             (inset, inset,
-                              self.tile_size - 2 * inset,
-                              self.tile_size - 2 * inset),
-                             border)
+            pygame.draw.rect(
+                surf,
+                (*rgb, alpha),
+                (inset, inset, self.tile_size - 2 * inset, self.tile_size - 2 * inset),
+                border,
+            )
             screen.blit(surf, (x, y))
 
     # ------------------------------------------------------------------
@@ -1536,8 +1852,14 @@ class MapManager:
     def draw_map(self, screen):
         # In player mode use fog-gated door states so doors only visually change
         # when the player has LOS on them.
-        door_st = self._player_door_states if self._player_name else self.server.door_states
-        iron_st = self._player_iron_door_states if self._player_name else self.server.iron_door_states
+        door_st = (
+            self._player_door_states if self._player_name else self.server.door_states
+        )
+        iron_st = (
+            self._player_iron_door_states
+            if self._player_name
+            else self.server.iron_door_states
+        )
         for row in range(len(self.map_data)):
             for col in range(len(self.map_data[0])):
                 x = col * self.tile_size + self.offset_x
@@ -1545,8 +1867,10 @@ class MapManager:
                 tile = self.map_data[row][col]
                 key = (row, col)
 
-                if tile == 0:   # nothing / void
-                    pygame.draw.rect(screen, (0, 0, 0), (x, y, self.tile_size, self.tile_size))
+                if tile == 0:  # nothing / void
+                    pygame.draw.rect(
+                        screen, (0, 0, 0), (x, y, self.tile_size, self.tile_size)
+                    )
                 elif tile == 1:  # floor
                     screen.blit(self.floor_texture, (x, y))
                 elif tile == 2:  # wall
@@ -1563,9 +1887,15 @@ class MapManager:
                         screen.blit(self.iron_door_open_texture, (x, y))
                     else:
                         screen.blit(self.iron_door_closed_texture, (x, y))
-                elif tile == 5:  # secret door — wall until opened (fog-gated per player)
+                elif (
+                    tile == 5
+                ):  # secret door — wall until opened (fog-gated per player)
                     screen.blit(self.wall_texture, (x, y))
-                    secret_st = self._player_secret_door_states if self._player_name else self.server.secret_door_states
+                    secret_st = (
+                        self._player_secret_door_states
+                        if self._player_name
+                        else self.server.secret_door_states
+                    )
                     if secret_st.get(key) == "open":
                         screen.blit(self.iron_door_open_texture, (x, y))
                 elif tile == 6:  # trap — looks like floor until revealed
@@ -1582,21 +1912,31 @@ class MapManager:
         cols = len(self.map_data[0])
         sw, sh = screen.get_size()
         grid_surf = pygame.Surface((sw, sh), pygame.SRCALPHA)
-        grid_color = (200, 200, 200, 50)   # white-ish, very transparent
+        grid_color = (200, 200, 200, 50)  # white-ish, very transparent
 
         for col in range(cols + 1):
             x = col * self.tile_size + self.offset_x
-            pygame.draw.line(grid_surf, grid_color,
-                             (x, self.offset_y), (x, rows * self.tile_size + self.offset_y))
+            pygame.draw.line(
+                grid_surf,
+                grid_color,
+                (x, self.offset_y),
+                (x, rows * self.tile_size + self.offset_y),
+            )
 
         for row in range(rows + 1):
             y = row * self.tile_size + self.offset_y
-            pygame.draw.line(grid_surf, grid_color,
-                             (self.offset_x, y), (cols * self.tile_size + self.offset_x, y))
+            pygame.draw.line(
+                grid_surf,
+                grid_color,
+                (self.offset_x, y),
+                (cols * self.tile_size + self.offset_x, y),
+            )
 
         screen.blit(grid_surf, (0, 0))
 
-    def draw_tokens(self, screen, selected_token=None, active_combatant=None, mouse_pos=None):
+    def draw_tokens(
+        self, screen, selected_token=None, active_combatant=None, mouse_pos=None
+    ):
         for i, c in enumerate(self.server.combatants):
             if not c.pos:
                 continue
@@ -1610,7 +1950,8 @@ class MapManager:
                 col, row = c.pos
                 visible = any(
                     (col + dc, row + dr) in self._current_los
-                    for dc in range(size) for dr in range(size)
+                    for dc in range(size)
+                    for dr in range(size)
                 )
                 if not visible:
                     continue
@@ -1618,22 +1959,27 @@ class MapManager:
             # Invisibility / Hidden — own token is always fully visible to its player.
             # show_faded=True means draw at half-alpha + purple outline (DM / see-invis viewer).
             is_invisible = "Invisible" in c.conditions
-            is_hidden    = "Hidden"    in c.conditions
+            is_hidden = "Hidden" in c.conditions
             show_faded = False
             if (is_invisible or is_hidden) and c.name != self._player_name:
                 if self._player_name:
                     if is_hidden:
-                        continue    # Hidden: no player can see it, even with See-invisible
+                        continue  # Hidden: no player can see it, even with See-invisible
                     # Invisible only:
                     viewer = next(
-                        (v for v in self.server.combatants if v.name == self._player_name), None
+                        (
+                            v
+                            for v in self.server.combatants
+                            if v.name == self._player_name
+                        ),
+                        None,
                     )
                     if viewer and "See-invisible" in viewer.conditions:
-                        show_faded = True   # player with see-invis: show faded
+                        show_faded = True  # player with see-invis: show faded
                     else:
-                        continue            # ordinary player: fully hidden
+                        continue  # ordinary player: fully hidden
                 else:
-                    show_faded = True       # DM: show faded for both Invisible and Hidden
+                    show_faded = True  # DM: show faded for both Invisible and Hidden
 
             x, y = self.get_pixel_coords(c.pos)
 
@@ -1651,7 +1997,9 @@ class MapManager:
             is_dead = "Dead" in c.conditions
             if icon_file and icon_file in self.icons:
                 if size > 1 and icon_file in self.icons_original:
-                    surf = pygame.transform.smoothscale(self.icons_original[icon_file], (px_size, px_size))
+                    surf = pygame.transform.smoothscale(
+                        self.icons_original[icon_file], (px_size, px_size)
+                    )
                 else:
                     surf = self.icons[icon_file]
                 if is_dead:
@@ -1666,32 +2014,46 @@ class MapManager:
                 color = (160, 160, 160) if is_dead else (255, 0, 0)
                 if show_faded:
                     circ = pygame.Surface((px_size, px_size), pygame.SRCALPHA)
-                    pygame.draw.circle(circ, (*color, 110), (px_size // 2, px_size // 2), px_size // 3)
+                    pygame.draw.circle(
+                        circ, (*color, 110), (px_size // 2, px_size // 2), px_size // 3
+                    )
                     screen.blit(circ, (x, y))
                 else:
                     pygame.draw.circle(screen, color, (cx, cy), px_size // 3)
 
-
             # Highlight selected (DM local selection — gold)
             if c == selected_token:
-                pygame.draw.rect(screen, (255, 200, 0), pygame.Rect(x, y, px_size, px_size), 3)
+                pygame.draw.rect(
+                    screen, (255, 200, 0), pygame.Rect(x, y, px_size, px_size), 3
+                )
 
             # Highlight remote player selections (each with their own color)
             offset = 0
             for selector, (token_name, color_name) in self._remote_selections.items():
                 if c.name == token_name:
                     rgb = _ALL_COLORS.get(color_name, (255, 255, 255))
-                    pygame.draw.rect(screen, rgb,
-                                     pygame.Rect(x - offset, y - offset,
-                                                 px_size + offset * 2,
-                                                 px_size + offset * 2), 3)
+                    pygame.draw.rect(
+                        screen,
+                        rgb,
+                        pygame.Rect(
+                            x - offset,
+                            y - offset,
+                            px_size + offset * 2,
+                            px_size + offset * 2,
+                        ),
+                        3,
+                    )
                     offset += 4  # stack multiple selections outward
 
             # Highlight active — gold pulsing glow centered on footprint
             if active_combatant and c == active_combatant:
-                base_r = px_size // 4 + int((px_size // 8) * (1 + math.sin(pygame.time.get_ticks() * 0.005)))
+                base_r = px_size // 4 + int(
+                    (px_size // 8) * (1 + math.sin(pygame.time.get_ticks() * 0.005))
+                )
                 glow_surface = pygame.Surface((base_r * 2, base_r * 2), pygame.SRCALPHA)
-                pygame.draw.circle(glow_surface, (255, 200, 0, 120), (base_r, base_r), base_r)
+                pygame.draw.circle(
+                    glow_surface, (255, 200, 0, 120), (base_r, base_r), base_r
+                )
                 screen.blit(glow_surface, (cx - base_r, cy - base_r))
 
     # ------------------------------------------------------------------
@@ -1717,7 +2079,7 @@ class MapManager:
                 elif tile == 2:
                     color = (100, 60, 40)
                 elif tile == 16:
-                    color = (80, 160, 60)   # green for grass
+                    color = (80, 160, 60)  # green for grass
                 else:
                     color = (210, 210, 200)
                 pixel_surf.set_at((col, row), color)
@@ -1727,7 +2089,12 @@ class MapManager:
         """Bounding rect of the minimap on screen. Single source of truth for its position."""
         if self._minimap_surface is None:
             return None
-        return pygame.Rect(10, 10, self._minimap_surface.get_width(), self._minimap_surface.get_height())
+        return pygame.Rect(
+            10,
+            10,
+            self._minimap_surface.get_width(),
+            self._minimap_surface.get_height(),
+        )
 
     def _recenter_on_minimap_click(self, mx, my):
         rect = self._minimap_rect()
@@ -1741,7 +2108,9 @@ class MapManager:
         self.offset_x = screen_w // 2 - int(frac_x * map_px_w)
         self.offset_y = screen_h // 2 - int(frac_y * map_px_h)
         if self.verbose:
-            log_msg(f"[Map] Minimap click at ({mx},{my}) -> recentered to frac ({frac_x:.2f},{frac_y:.2f})")
+            log_msg(
+                f"[Map] Minimap click at ({mx},{my}) -> recentered to frac ({frac_x:.2f},{frac_y:.2f})"
+            )
 
     def draw_minimap(self, screen):
         rect = self._minimap_rect()
@@ -1755,7 +2124,7 @@ class MapManager:
             cols = len(self.map_data[0])
             fog_px = pygame.Surface((cols, rows), pygame.SRCALPHA)
             fog_px.fill((0, 0, 0, 255))
-            for (c, r) in self._explored_tiles:
+            for c, r in self._explored_tiles:
                 if 0 <= r < rows and 0 <= c < cols:
                     fog_px.set_at((c, r), (0, 0, 0, 0))
             fog_surf = pygame.transform.scale(fog_px, (rect.width, rect.height))
@@ -1772,9 +2141,15 @@ class MapManager:
         ratio_x = screen_w / map_px_w
         ratio_y = screen_h / map_px_h
 
-        view_x = rect.x + (center_x / map_px_w) * rect.width  - (ratio_x * rect.width)  / 2
-        view_y = rect.y + (center_y / map_px_h) * rect.height - (ratio_y * rect.height) / 2
-        view_rect = pygame.Rect(view_x, view_y, ratio_x * rect.width, ratio_y * rect.height)
+        view_x = (
+            rect.x + (center_x / map_px_w) * rect.width - (ratio_x * rect.width) / 2
+        )
+        view_y = (
+            rect.y + (center_y / map_px_h) * rect.height - (ratio_y * rect.height) / 2
+        )
+        view_rect = pygame.Rect(
+            view_x, view_y, ratio_x * rect.width, ratio_y * rect.height
+        )
         pygame.draw.rect(screen, (255, 0, 0), view_rect, 2)
 
     # ------------------------------------------------------------------
@@ -1791,28 +2166,40 @@ class MapManager:
         overlay.fill((0, 0, 0, 160))
         screen.blit(overlay, (0, 0))
 
-        font_big = pygame.font.SysFont('Arial', 20, bold=True)
-        font_btn = pygame.font.SysFont('Arial', 16)
+        font_big = pygame.font.SysFont("Arial", 20, bold=True)
+        font_btn = pygame.font.SysFont("Arial", 16)
 
-        msg   = font_big.render('Quit DungeonPy?', True, (230, 230, 230))
-        yes_t = font_btn.render('Yes', True, (230, 230, 230))
-        no_t  = font_btn.render('No',  True, (230, 230, 230))
+        msg = font_big.render("Quit DungeonPy?", True, (230, 230, 230))
+        yes_t = font_btn.render("Yes", True, (230, 230, 230))
+        no_t = font_btn.render("No", True, (230, 230, 230))
 
         box_w, box_h = 280, 120
         bx = (sw - box_w) // 2
         by = (sh - box_h) // 2
         pygame.draw.rect(screen, (40, 40, 50), (bx, by, box_w, box_h), border_radius=8)
-        pygame.draw.rect(screen, (90, 90, 110), (bx, by, box_w, box_h), 2, border_radius=8)
+        pygame.draw.rect(
+            screen, (90, 90, 110), (bx, by, box_w, box_h), 2, border_radius=8
+        )
         screen.blit(msg, (bx + (box_w - msg.get_width()) // 2, by + 18))
 
-        yes_rect = pygame.Rect(bx + 40,  by + 68, 80, 32)
-        no_rect  = pygame.Rect(bx + 160, by + 68, 80, 32)
-        pygame.draw.rect(screen, (160, 50, 50),  yes_rect, border_radius=5)
-        pygame.draw.rect(screen, (55, 55, 70),   no_rect,  border_radius=5)
-        screen.blit(yes_t, yes_rect.move((yes_rect.w - yes_t.get_width()) // 2,
-                                         (yes_rect.h - yes_t.get_height()) // 2).topleft)
-        screen.blit(no_t,  no_rect.move((no_rect.w  - no_t.get_width())  // 2,
-                                         (no_rect.h  - no_t.get_height())  // 2).topleft)
+        yes_rect = pygame.Rect(bx + 40, by + 68, 80, 32)
+        no_rect = pygame.Rect(bx + 160, by + 68, 80, 32)
+        pygame.draw.rect(screen, (160, 50, 50), yes_rect, border_radius=5)
+        pygame.draw.rect(screen, (55, 55, 70), no_rect, border_radius=5)
+        screen.blit(
+            yes_t,
+            yes_rect.move(
+                (yes_rect.w - yes_t.get_width()) // 2,
+                (yes_rect.h - yes_t.get_height()) // 2,
+            ).topleft,
+        )
+        screen.blit(
+            no_t,
+            no_rect.move(
+                (no_rect.w - no_t.get_width()) // 2,
+                (no_rect.h - no_t.get_height()) // 2,
+            ).topleft,
+        )
         pygame.display.flip()
 
         while True:
@@ -1857,36 +2244,48 @@ class MapManager:
                             if self._rotating_aoe_committed:
                                 p = self._rotating_aoe
                                 self._submit({"action": "aoe_remove", "id": p["id"]})
-                                self._submit({
-                                    "action":   "aoe_add",
-                                    "anchor":   p["anchor"],
-                                    "shape":    p["shape"],
-                                    "size":     p["size"],
-                                    "angle":    round(self._rotating_aoe_angle, 2),
-                                    "aperture": p["aperture"],
-                                    "color":    p["color"],
-                                    "owner":    p.get("owner"),
-                                    "hidden":   p.get("hidden", False),
-                                })
+                                self._submit(
+                                    {
+                                        "action": "aoe_add",
+                                        "anchor": p["anchor"],
+                                        "shape": p["shape"],
+                                        "size": p["size"],
+                                        "angle": round(self._rotating_aoe_angle, 2),
+                                        "aperture": p["aperture"],
+                                        "color": p["color"],
+                                        "owner": p.get("owner"),
+                                        "hidden": p.get("hidden", False),
+                                    }
+                                )
                             self._rotating_aoe = None
                             self._rotating_aoe_committed = False
                         elif self._dragging_aoe is not None:
                             if self._dragging_aoe_committed:
                                 p = self._dragging_aoe
                                 self._submit({"action": "aoe_remove", "id": p["id"]})
-                                self._submit({
-                                    "action":   "aoe_add",
-                                    "anchor":   [round(v, 3) for v in self._dragging_aoe_anchor],
-                                    "shape":    p["shape"],
-                                    "size":     p["size"],
-                                    "angle":    p["angle"],
-                                    "aperture": p["aperture"],
-                                    "color":    p["color"],
-                                    "owner":    p.get("owner"),
-                                    "hidden":   p.get("hidden", False),
-                                })
+                                self._submit(
+                                    {
+                                        "action": "aoe_add",
+                                        "anchor": [
+                                            round(v, 3)
+                                            for v in self._dragging_aoe_anchor
+                                        ],
+                                        "shape": p["shape"],
+                                        "size": p["size"],
+                                        "angle": p["angle"],
+                                        "aperture": p["aperture"],
+                                        "color": p["color"],
+                                        "owner": p.get("owner"),
+                                        "hidden": p.get("hidden", False),
+                                    }
+                                )
                             else:
-                                self._submit({"action": "aoe_remove", "id": self._dragging_aoe["id"]})
+                                self._submit(
+                                    {
+                                        "action": "aoe_remove",
+                                        "id": self._dragging_aoe["id"],
+                                    }
+                                )
                             self._dragging_aoe = None
                             self._dragging_aoe_committed = False
                         else:
@@ -1902,7 +2301,9 @@ class MapManager:
                         ac, ar = self._aoe_anchor
                         cx = ac * self.tile_size + self.offset_x
                         cy = ar * self.tile_size + self.offset_y
-                        self._aoe_preview_angle = math.degrees(math.atan2(my - cy, mx - cx))
+                        self._aoe_preview_angle = math.degrees(
+                            math.atan2(my - cy, mx - cx)
+                        )
                     if self._dragging_aoe is not None:
                         if not self._dragging_aoe_committed:
                             sx, sy = self._dragging_aoe_start
@@ -1925,7 +2326,9 @@ class MapManager:
                             ts = self.tile_size
                             cx = ax * ts + self.offset_x
                             cy = ay * ts + self.offset_y
-                            self._rotating_aoe_angle = math.degrees(math.atan2(my - cy, mx - cx))
+                            self._rotating_aoe_angle = math.degrees(
+                                math.atan2(my - cy, mx - cx)
+                            )
 
                 elif event.type == pygame.MOUSEWHEEL:
                     self.handle_zoom(event)
@@ -1947,12 +2350,23 @@ class MapManager:
             center_x, center_y = pygame.display.get_surface().get_size()
             center_x //= 2
             center_y //= 2
-            self.offset_x = center_x - ((center_x - self.offset_x) * self.tile_size) // prev_size
-            self.offset_y = center_y - ((center_y - self.offset_y) * self.tile_size) // prev_size
-            (self.floor_texture, self.wall_texture, self.wooden_door_closed_texture,
-             self.wooden_door_open_texture, self.iron_door_closed_texture,
-             self.iron_door_open_texture, self.secret_door_texture,
-             self.trap_texture, self.grass_texture) = self.scale_textures(self.tile_size)
+            self.offset_x = (
+                center_x - ((center_x - self.offset_x) * self.tile_size) // prev_size
+            )
+            self.offset_y = (
+                center_y - ((center_y - self.offset_y) * self.tile_size) // prev_size
+            )
+            (
+                self.floor_texture,
+                self.wall_texture,
+                self.wooden_door_closed_texture,
+                self.wooden_door_open_texture,
+                self.iron_door_closed_texture,
+                self.iron_door_open_texture,
+                self.secret_door_texture,
+                self.trap_texture,
+                self.grass_texture,
+            ) = self.scale_textures(self.tile_size)
             self.rescale_icons()
             self.rescale_object_icons()
         if self.verbose:
@@ -1995,7 +2409,11 @@ class MapManager:
         row = (my - self.offset_y) // self.tile_size
 
         # AoE widgets — eye toggle (DM), anchor drag, rotation drag; commit on release
-        if button == 1 and self.active_tool not in ("aoe_place", "aoe_anchor", "aoe_rotate"):
+        if button == 1 and self.active_tool not in (
+            "aoe_place",
+            "aoe_anchor",
+            "aoe_rotate",
+        ):
             ts = self.tile_size
             ox, oy = self.offset_x, self.offset_y
             is_dm = self._player_name is None
@@ -2005,12 +2423,22 @@ class MapManager:
                 if not is_own:
                     continue
                 # Eye widget — DM always; player if they own the AoE and have aoe permission
-                if (is_dm or (is_own and self._can_place_aoe())) and _aoe_hide_rect(aoe, ts, ox, oy).collidepoint(mx, my):
+                if (is_dm or (is_own and self._can_place_aoe())) and _aoe_hide_rect(
+                    aoe, ts, ox, oy
+                ).collidepoint(mx, my):
                     self._submit({"action": "aoe_remove", "id": aoe["id"]})
-                    self._submit({**aoe, "action": "aoe_add", "hidden": not aoe.get("hidden", False)})
+                    self._submit(
+                        {
+                            **aoe,
+                            "action": "aoe_add",
+                            "hidden": not aoe.get("hidden", False),
+                        }
+                    )
                     return
                 # Rotation handle (cone/line only)
-                if aoe["shape"] != "sphere" and _aoe_rotate_rect(aoe, ts, ox, oy).collidepoint(mx, my):
+                if aoe["shape"] != "sphere" and _aoe_rotate_rect(
+                    aoe, ts, ox, oy
+                ).collidepoint(mx, my):
                     self._rotating_aoe = aoe
                     self._rotating_aoe_start = (mx, my)
                     self._rotating_aoe_committed = False
@@ -2021,7 +2449,10 @@ class MapManager:
                     ax, ay = aoe["anchor"]
                     self._dragging_aoe = aoe
                     self._dragging_aoe_start = (mx, my)
-                    self._dragging_aoe_offset = (mx - (ax * ts + ox), my - (ay * ts + oy))
+                    self._dragging_aoe_offset = (
+                        mx - (ax * ts + ox),
+                        my - (ay * ts + oy),
+                    )
                     self._dragging_aoe_committed = False
                     self._dragging_aoe_anchor = list(aoe["anchor"])
                     return
@@ -2057,15 +2488,23 @@ class MapManager:
             self.active_tool = "highlight"
             return
 
-
         # Add-object tool — place a map object at the clicked tile, then revert to select
         if button == 1 and self.active_tool == "add_object":
-            if (self._pending_object_icon
-                    and 0 <= row < len(self.map_data) and 0 <= col < len(self.map_data[0])):
+            if (
+                self._pending_object_icon
+                and 0 <= row < len(self.map_data)
+                and 0 <= col < len(self.map_data[0])
+            ):
                 icon, width, height = self._pending_object_icon
-                self._submit({"action": "add_map_object",
-                              "pos": [col, row], "icon": icon,
-                              "width": width, "height": height})
+                self._submit(
+                    {
+                        "action": "add_map_object",
+                        "pos": [col, row],
+                        "icon": icon,
+                        "width": width,
+                        "height": height,
+                    }
+                )
                 self._pending_object_icon = None
                 self.active_tool = "select"
             return
@@ -2077,7 +2516,7 @@ class MapManager:
                 if op:
                     oc, or_ = op
                     _s = obj.get("size", 1)
-                    ow = obj.get("width",  _s)
+                    ow = obj.get("width", _s)
                     oh = obj.get("height", _s)
                     if oc <= col < oc + ow and or_ <= row < or_ + oh:
                         self._submit({"action": "remove_map_object", "pos": op})
@@ -2086,11 +2525,21 @@ class MapManager:
 
         # Add-light tool — place a light source, then revert to select
         if button == 1 and self.active_tool == "add_light":
-            if (self._pending_light
-                    and 0 <= row < len(self.map_data) and 0 <= col < len(self.map_data[0])):
+            if (
+                self._pending_light
+                and 0 <= row < len(self.map_data)
+                and 0 <= col < len(self.map_data[0])
+            ):
                 radius, color, alpha = self._pending_light
-                self._submit({"action": "add_light_source",
-                              "pos": [col, row], "radius": radius, "color": color, "alpha": alpha})
+                self._submit(
+                    {
+                        "action": "add_light_source",
+                        "pos": [col, row],
+                        "radius": radius,
+                        "color": color,
+                        "alpha": alpha,
+                    }
+                )
                 self._pending_light = None
                 self.active_tool = "select"
             return
@@ -2110,8 +2559,14 @@ class MapManager:
                 if self._player_name:
                     self._submit({"action": "highlight_tile", "pos": [col, row]})
                 else:
-                    self._submit({"action": "highlight_tile", "pos": [col, row],
-                                  "owner": "DM", "color": "gold"})
+                    self._submit(
+                        {
+                            "action": "highlight_tile",
+                            "pos": [col, row],
+                            "owner": "DM",
+                            "color": "gold",
+                        }
+                    )
             return
 
         if self.verbose:
@@ -2125,8 +2580,12 @@ class MapManager:
                         x = cx * self.tile_size + self.offset_x
                         y = cy * self.tile_size + self.offset_y
                         rect = pygame.Rect(x, y, self.tile_size, self.tile_size)
-                        log_msg(f"[Map] Checking token {c.name} at tile {c.pos} -> pixel ({x},{y})")
-                        log_msg(f"rect: {rect}, tile size: {self.tile_size}, offset: ({self.offset_x}, {self.offset_y})")
+                        log_msg(
+                            f"[Map] Checking token {c.name} at tile {c.pos} -> pixel ({x},{y})"
+                        )
+                        log_msg(
+                            f"rect: {rect}, tile size: {self.tile_size}, offset: ({self.offset_x}, {self.offset_y})"
+                        )
 
             # Tokens have priority: check for a token before checking the tile type.
             # This ensures a token placed on a door can still be selected.
@@ -2137,26 +2596,42 @@ class MapManager:
                 if self.verbose:
                     log_msg(f"[Map] Selected token: {token.name}")
 
-            if not hit and 0 <= col < len(self.map_data[0]) and 0 <= row < len(self.map_data):
+            if (
+                not hit
+                and 0 <= col < len(self.map_data[0])
+                and 0 <= row < len(self.map_data)
+            ):
                 tile = self.map_data[row][col]
                 if tile in (3, 4, 5, 6):
-                    self._submit({"action": "toggle_door", "x": col, "y": row, "tile_type": tile})
+                    self._submit(
+                        {"action": "toggle_door", "x": col, "y": row, "tile_type": tile}
+                    )
                     if self.verbose:
                         log_msg(f"[Map] Toggled door at ({col}, {row})")
                     return
 
             if not hit and self.unplaced:
-                combatant = self.unplaced[0]  # peek; handle_server_event removes it on token_placed
+                combatant = self.unplaced[
+                    0
+                ]  # peek; handle_server_event removes it on token_placed
                 if self._footprint_ok(col, row, combatant.size):
-                    self._submit({"action": "place_token", "name": combatant.name, "pos": [col, row]})
+                    self._submit(
+                        {
+                            "action": "place_token",
+                            "name": combatant.name,
+                            "pos": [col, row],
+                        }
+                    )
                     self._submit({"action": "select", "name": combatant.name})
                     if self.verbose:
-                        log_msg(f"[Map] Placed new token: {combatant.name} at ({col},{row})")
+                        log_msg(
+                            f"[Map] Placed new token: {combatant.name} at ({col},{row})"
+                        )
                     hit = True
 
             if not hit:
                 if self.verbose:
-                    log_msg(f"[Map] No token selected")
+                    log_msg("[Map] No token selected")
                 self._submit({"action": "clear_selection"})
 
     def get_token_at_pixel(self, mx, my):
@@ -2165,7 +2640,9 @@ class MapManager:
                 cx, cy = c.pos
                 x = cx * self.tile_size + self.offset_x
                 y = cy * self.tile_size + self.offset_y
-                rect = pygame.Rect(x, y, c.size * self.tile_size, c.size * self.tile_size)
+                rect = pygame.Rect(
+                    x, y, c.size * self.tile_size, c.size * self.tile_size
+                )
                 if rect.collidepoint(mx, my):
                     return c
         return None
@@ -2200,7 +2677,9 @@ class MapManager:
                 self.dragging_token = self.drag_candidate
                 self.drag_candidate = None
                 if self.verbose:
-                    log_msg(f"[Map] Dragging token: {self.dragging_token.name} from {self.dragging_token.pos}")
+                    log_msg(
+                        f"[Map] Dragging token: {self.dragging_token.name} from {self.dragging_token.pos}"
+                    )
 
     def drop_token(self, mx, my):
         if not self.dragging_token:
@@ -2214,13 +2693,23 @@ class MapManager:
         row = (my - self.offset_y) // self.tile_size - tile_off_y
 
         if self._footprint_ok(col, row, token.size, ignore_token=token):
-            self._submit({"action": "move_token", "name": token.name, "pos": [col, row]})
+            self._submit(
+                {"action": "move_token", "name": token.name, "pos": [col, row]}
+            )
             if self.verbose:
                 log_msg(f"[Map] Dropped token {token.name} at ({col},{row})")
         else:
-            self._submit({"action": "move_token", "name": token.name, "pos": self.initial_token_pos})
+            self._submit(
+                {
+                    "action": "move_token",
+                    "name": token.name,
+                    "pos": self.initial_token_pos,
+                }
+            )
             if self.verbose:
-                log_msg(f"[Map] Invalid drop, reverted {token.name} to {self.initial_token_pos}")
+                log_msg(
+                    f"[Map] Invalid drop, reverted {token.name} to {self.initial_token_pos}"
+                )
 
         self.dragging_token = None
         self.drag_candidate = None

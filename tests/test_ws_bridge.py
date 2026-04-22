@@ -22,6 +22,7 @@ from Core.ws_bridge import WSBridge
 # Fixtures and helpers
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def ws_server():
     return GameServer()
@@ -29,7 +30,7 @@ def ws_server():
 
 @pytest.fixture
 def bridge(ws_server):
-    b = WSBridge(ws_server, host='localhost', port=0)
+    b = WSBridge(ws_server, host="localhost", port=0)
     b.start()
     yield b
     b.stop()
@@ -38,7 +39,7 @@ def bridge(ws_server):
 @pytest.fixture
 def bridge_pw(ws_server):
     """Bridge with a DM password set."""
-    b = WSBridge(ws_server, host='localhost', port=0, password='secret')
+    b = WSBridge(ws_server, host="localhost", port=0, password="secret")
     b.start()
     yield b
     b.stop()
@@ -72,11 +73,13 @@ async def player_hello(ws, name="Alice"):
 # Handshake
 # ---------------------------------------------------------------------------
 
+
 def test_dm_hello_accepted_no_password(bridge):
     async def _test():
         async with websockets.connect(ws_url(bridge)) as ws:
             ack, snap = await dm_hello(ws)
             return ack, snap
+
     ack, snap = run(_test())
     assert ack["ok"] is True
     assert ack["role"] == "dm"
@@ -88,6 +91,7 @@ def test_player_hello_accepted(bridge):
         async with websockets.connect(ws_url(bridge)) as ws:
             ack, snap = await player_hello(ws, "Thorin")
             return ack, snap
+
     ack, snap = run(_test())
     assert ack["ok"] is True
     assert ack["role"] == "player"
@@ -97,10 +101,14 @@ def test_player_hello_accepted(bridge):
 def test_dm_hello_correct_password(bridge_pw):
     async def _test():
         async with websockets.connect(ws_url(bridge_pw)) as ws:
-            await ws.send(json.dumps({"type": "hello", "role": "dm",
-                                       "name": "DM", "password": "secret"}))
+            await ws.send(
+                json.dumps(
+                    {"type": "hello", "role": "dm", "name": "DM", "password": "secret"}
+                )
+            )
             ack = json.loads(await ws.recv())
             return ack
+
     ack = run(_test())
     assert ack["ok"] is True
 
@@ -108,10 +116,14 @@ def test_dm_hello_correct_password(bridge_pw):
 def test_dm_hello_wrong_password_rejected(bridge_pw):
     async def _test():
         async with websockets.connect(ws_url(bridge_pw)) as ws:
-            await ws.send(json.dumps({"type": "hello", "role": "dm",
-                                       "name": "DM", "password": "wrong"}))
+            await ws.send(
+                json.dumps(
+                    {"type": "hello", "role": "dm", "name": "DM", "password": "wrong"}
+                )
+            )
             ack = json.loads(await ws.recv())
             return ack
+
     ack = run(_test())
     assert ack["ok"] is False
     assert "password" in ack["reason"]
@@ -120,9 +132,12 @@ def test_dm_hello_wrong_password_rejected(bridge_pw):
 def test_unknown_role_rejected(bridge):
     async def _test():
         async with websockets.connect(ws_url(bridge)) as ws:
-            await ws.send(json.dumps({"type": "hello", "role": "spectator", "name": "X"}))
+            await ws.send(
+                json.dumps({"type": "hello", "role": "spectator", "name": "X"})
+            )
             ack = json.loads(await ws.recv())
             return ack
+
     ack = run(_test())
     assert ack["ok"] is False
 
@@ -132,6 +147,7 @@ def test_snapshot_contains_full_state_fields(bridge):
         async with websockets.connect(ws_url(bridge)) as ws:
             _, snap = await dm_hello(ws)
             return snap
+
     state = run(_test())["state"]
     assert "combatants" in state
     assert "active_index" in state
@@ -148,12 +164,14 @@ def test_snapshot_contains_full_state_fields(bridge):
 # WS DM client sends intent → receives event
 # ---------------------------------------------------------------------------
 
+
 def test_ws_intent_advance_turn(bridge):
     async def _test():
         async with websockets.connect(ws_url(bridge)) as ws:
             await dm_hello(ws)
             await ws.send(json.dumps({"action": "advance_turn"}))
             return json.loads(await ws.recv())
+
     msg = run(_test())
     assert msg["type"] == "event"
     assert msg["action"] == "turn_advanced"
@@ -164,11 +182,16 @@ def test_ws_intent_add_combatant(bridge):
     async def _test():
         async with websockets.connect(ws_url(bridge)) as ws:
             await dm_hello(ws)
-            await ws.send(json.dumps({
-                "action": "add_combatant",
-                "combatant": {"name": "Gandalf", "initiative": 18},
-            }))
+            await ws.send(
+                json.dumps(
+                    {
+                        "action": "add_combatant",
+                        "combatant": {"name": "Gandalf", "initiative": 18},
+                    }
+                )
+            )
             return json.loads(await ws.recv())
+
     msg = run(_test())
     assert msg["action"] == "combatant_added"
     assert msg["combatant"]["name"] == "Gandalf"
@@ -178,12 +201,14 @@ def test_ws_intent_add_combatant(bridge):
 # Invalid intent → error
 # ---------------------------------------------------------------------------
 
+
 def test_invalid_action_returns_error(bridge):
     async def _test():
         async with websockets.connect(ws_url(bridge)) as ws:
             await dm_hello(ws)
             await ws.send(json.dumps({"action": "cast_fireball"}))
             return json.loads(await ws.recv())
+
     msg = run(_test())
     assert msg["type"] == "error"
     assert "cast_fireball" in msg["reason"]
@@ -195,6 +220,7 @@ def test_missing_field_returns_error(bridge):
             await dm_hello(ws)
             await ws.send(json.dumps({"action": "apply_damage", "name": "X"}))
             return json.loads(await ws.recv())
+
     assert run(_test())["type"] == "error"
 
 
@@ -202,12 +228,14 @@ def test_missing_field_returns_error(bridge):
 # Player permissions
 # ---------------------------------------------------------------------------
 
+
 def test_player_cannot_advance_turn(bridge):
     async def _test():
         async with websockets.connect(ws_url(bridge)) as ws:
             await player_hello(ws, "Thorin")
             await ws.send(json.dumps({"action": "advance_turn"}))
             return json.loads(await ws.recv())
+
     msg = run(_test())
     assert msg["type"] == "error"
     assert "not permitted" in msg["reason"]
@@ -215,13 +243,15 @@ def test_player_cannot_advance_turn(bridge):
 
 def test_player_cannot_move_another_token(bridge, ws_server):
     ws_server.combatants = []
+
     async def _test():
         async with websockets.connect(ws_url(bridge)) as ws:
             await player_hello(ws, "Thorin")
-            await ws.send(json.dumps({
-                "action": "move_token", "name": "Gandalf", "pos": [1, 1]
-            }))
+            await ws.send(
+                json.dumps({"action": "move_token", "name": "Gandalf", "pos": [1, 1]})
+            )
             return json.loads(await ws.recv())
+
     msg = run(_test())
     assert msg["type"] == "error"
     assert "own token" in msg["reason"]
@@ -230,15 +260,18 @@ def test_player_cannot_move_another_token(bridge, ws_server):
 def test_player_move_blocked_when_locked(bridge, ws_server):
     """Player movement is blocked by default (locked)."""
     from Core.combatant import Combatant
+
     ws_server.combatants = [Combatant("Thorin", 15, pos=[0, 0])]
     ws_server.player_move_locks["Thorin"] = False
+
     async def _test():
         async with websockets.connect(ws_url(bridge)) as ws:
             await player_hello(ws, "Thorin")
-            await ws.send(json.dumps({
-                "action": "move_token", "name": "Thorin", "pos": [1, 1]
-            }))
+            await ws.send(
+                json.dumps({"action": "move_token", "name": "Thorin", "pos": [1, 1]})
+            )
             return json.loads(await ws.recv())
+
     msg = run(_test())
     assert msg["type"] == "error"
     assert "not currently allowed" in msg["reason"]
@@ -246,15 +279,18 @@ def test_player_move_blocked_when_locked(bridge, ws_server):
 
 def test_player_move_allowed_when_unlocked(bridge, ws_server):
     from Core.combatant import Combatant
+
     ws_server.combatants = [Combatant("Thorin", 15, pos=[0, 0])]
     ws_server.player_move_locks["Thorin"] = True
+
     async def _test():
         async with websockets.connect(ws_url(bridge)) as ws:
             await player_hello(ws, "Thorin")
-            await ws.send(json.dumps({
-                "action": "move_token", "name": "Thorin", "pos": [2, 3]
-            }))
+            await ws.send(
+                json.dumps({"action": "move_token", "name": "Thorin", "pos": [2, 3]})
+            )
             return json.loads(await ws.recv())
+
     msg = run(_test())
     assert msg["type"] == "event"
     assert msg["action"] == "token_moved"
@@ -264,11 +300,18 @@ def test_set_player_lock_only_for_dm(bridge):
     async def _test():
         async with websockets.connect(ws_url(bridge)) as ws:
             await player_hello(ws, "Thorin")
-            await ws.send(json.dumps({
-                "action": "set_player_lock", "name": "Thorin",
-                "lock_type": "move", "locked": True
-            }))
+            await ws.send(
+                json.dumps(
+                    {
+                        "action": "set_player_lock",
+                        "name": "Thorin",
+                        "lock_type": "move",
+                        "locked": True,
+                    }
+                )
+            )
             return json.loads(await ws.recv())
+
     msg = run(_test())
     assert msg["type"] == "error"
     assert "not permitted" in msg["reason"]
@@ -278,8 +321,10 @@ def test_set_player_lock_only_for_dm(bridge):
 # player_connected / player_disconnected events
 # ---------------------------------------------------------------------------
 
+
 def test_player_connected_event_broadcast(bridge):
     """DM should receive a player_connected event when a player joins."""
+
     async def _test():
         async with (
             websockets.connect(ws_url(bridge)) as dm_ws,
@@ -289,6 +334,7 @@ def test_player_connected_event_broadcast(bridge):
             await player_hello(p_ws, "Gimli")
             msg = json.loads(await asyncio.wait_for(dm_ws.recv(), timeout=2.0))
             return msg
+
     msg = run(_test())
     assert msg["action"] == "player_connected"
     assert msg["name"] == "Gimli"
@@ -297,6 +343,7 @@ def test_player_connected_event_broadcast(bridge):
 # ---------------------------------------------------------------------------
 # Broadcast
 # ---------------------------------------------------------------------------
+
 
 def test_broadcast_reaches_all_clients(bridge):
     async def _test():
@@ -310,6 +357,7 @@ def test_broadcast_reaches_all_clients(bridge):
             m1 = json.loads(await ws1.recv())
             m2 = json.loads(await ws2.recv())
         return m1, m2
+
     m1, m2 = run(_test())
     assert m1["action"] == "turn_advanced"
     assert m2["action"] == "turn_advanced"
@@ -327,6 +375,7 @@ def test_broadcast_seq_identical_across_clients(bridge):
             m1 = json.loads(await ws1.recv())
             m2 = json.loads(await ws2.recv())
         return m1["seq"], m2["seq"]
+
     s1, s2 = run(_test())
     assert s1 == s2
 
@@ -335,12 +384,14 @@ def test_broadcast_seq_identical_across_clients(bridge):
 # In-process submit (GUI thread path)
 # ---------------------------------------------------------------------------
 
+
 def test_in_process_submit_reaches_ws_client(bridge):
     async def _test():
         async with websockets.connect(ws_url(bridge)) as ws:
             await dm_hello(ws)
             bridge.submit({"action": "advance_turn"})
             return json.loads(await asyncio.wait_for(ws.recv(), timeout=2.0))
+
     assert run(_test())["action"] == "turn_advanced"
 
 
@@ -348,11 +399,14 @@ def test_in_process_submit_state_visible_after_ack(bridge, ws_server):
     async def _test():
         async with websockets.connect(ws_url(bridge)) as ws:
             await dm_hello(ws)
-            bridge.submit({
-                "action": "add_combatant",
-                "combatant": {"name": "Legolas", "initiative": 20},
-            })
+            bridge.submit(
+                {
+                    "action": "add_combatant",
+                    "combatant": {"name": "Legolas", "initiative": 20},
+                }
+            )
             await asyncio.wait_for(ws.recv(), timeout=2.0)
+
     run(_test())
     assert any(c.name == "Legolas" for c in ws_server.combatants)
 
@@ -361,15 +415,21 @@ def test_in_process_submit_state_visible_after_ack(bridge, ws_server):
 # client_req_id echo
 # ---------------------------------------------------------------------------
 
+
 def test_client_req_id_echoed_on_ws_event(bridge):
     async def _test():
         async with websockets.connect(ws_url(bridge)) as ws:
             await dm_hello(ws)
-            await ws.send(json.dumps({
-                "action": "advance_turn",
-                "client_req_id": "my-req-42",
-            }))
+            await ws.send(
+                json.dumps(
+                    {
+                        "action": "advance_turn",
+                        "client_req_id": "my-req-42",
+                    }
+                )
+            )
             return json.loads(await ws.recv())
+
     assert run(_test()).get("client_req_id") == "my-req-42"
 
 
@@ -377,13 +437,16 @@ def test_client_req_id_echoed_on_ws_event(bridge):
 # Tile highlight permissions
 # ---------------------------------------------------------------------------
 
+
 def test_player_can_highlight_when_selection_locked(bridge, ws_server):
     ws_server.player_selection_locks["Alice"] = True
+
     async def _test():
         async with websockets.connect(ws_url(bridge)) as ws:
             await player_hello(ws, "Alice")
             await ws.send(json.dumps({"action": "highlight_tile", "pos": [2, 3]}))
             return json.loads(await asyncio.wait_for(ws.recv(), timeout=2.0))
+
     msg = run(_test())
     assert msg["type"] == "event"
     assert msg["action"] == "highlights_changed"
@@ -391,11 +454,13 @@ def test_player_can_highlight_when_selection_locked(bridge, ws_server):
 
 def test_player_cannot_highlight_when_not_locked(bridge, ws_server):
     ws_server.player_selection_locks["Alice"] = False
+
     async def _test():
         async with websockets.connect(ws_url(bridge)) as ws:
             await player_hello(ws, "Alice")
             await ws.send(json.dumps({"action": "highlight_tile", "pos": [2, 3]}))
             return json.loads(await asyncio.wait_for(ws.recv(), timeout=2.0))
+
     msg = run(_test())
     assert msg["type"] == "error"
     assert "not currently allowed" in msg["reason"]
@@ -404,12 +469,16 @@ def test_player_cannot_highlight_when_not_locked(bridge, ws_server):
 def test_bridge_injects_owner_into_highlight(bridge, ws_server):
     """Player cannot spoof another owner — bridge overwrites owner field."""
     ws_server.player_selection_locks["Alice"] = True
+
     async def _test():
         async with websockets.connect(ws_url(bridge)) as ws:
             await player_hello(ws, "Alice")
             # Attempt to claim DM as owner
-            await ws.send(json.dumps({"action": "highlight_tile", "pos": [1, 1], "owner": "DM"}))
+            await ws.send(
+                json.dumps({"action": "highlight_tile", "pos": [1, 1], "owner": "DM"})
+            )
             return json.loads(await asyncio.wait_for(ws.recv(), timeout=2.0))
+
     run(_test())
     # Server should have Alice's highlight, not DM's
     assert all(h["owner"] == "Alice" for h in ws_server.tile_highlights)
@@ -419,8 +488,10 @@ def test_bridge_injects_owner_into_highlight(bridge, ws_server):
 # Chat routing
 # ---------------------------------------------------------------------------
 
+
 def test_duplicate_player_name_rejected(bridge):
     """Two players with the same name — second should be rejected."""
+
     async def _test():
         async with (
             websockets.connect(ws_url(bridge)) as ws1,
@@ -428,9 +499,12 @@ def test_duplicate_player_name_rejected(bridge):
         ):
             await player_hello(ws1, "Alice")
             # Send hello for second Alice — bridge sends ack then closes the socket.
-            await ws2.send(json.dumps({"type": "hello", "role": "player", "name": "Alice"}))
+            await ws2.send(
+                json.dumps({"type": "hello", "role": "player", "name": "Alice"})
+            )
             ack = json.loads(await ws2.recv())
             return ack
+
     ack = run(_test())
     assert ack["ok"] is False
     assert "already connected" in ack["reason"]
@@ -438,6 +512,7 @@ def test_duplicate_player_name_rejected(bridge):
 
 def test_player_disconnected_event_reaches_dm(bridge):
     """DM should receive player_disconnected when a player's connection closes."""
+
     async def _test():
         async with websockets.connect(ws_url(bridge)) as dm_ws:
             await dm_hello(dm_ws)
@@ -448,6 +523,7 @@ def test_player_disconnected_event_reaches_dm(bridge):
             # Player has disconnected — DM should be notified
             msg = json.loads(await asyncio.wait_for(dm_ws.recv(), timeout=2.0))
             return msg
+
     msg = run(_test())
     assert msg["action"] == "player_disconnected"
     assert msg["name"] == "Alice"
@@ -455,6 +531,7 @@ def test_player_disconnected_event_reaches_dm(bridge):
 
 def test_chat_dm_to_player_only_reaches_target(bridge):
     """DM→player chat message should arrive only at the named player."""
+
     async def _test():
         async with (
             websockets.connect(ws_url(bridge)) as dm_ws,
@@ -469,7 +546,9 @@ def test_chat_dm_to_player_only_reaches_target(bridge):
             await asyncio.wait_for(dm_ws.recv(), timeout=1.0)
 
             # DM sends to Alice only
-            bridge.submit({"action": "chat_message", "text": "hello Alice", "to": "Alice"})
+            bridge.submit(
+                {"action": "chat_message", "text": "hello Alice", "to": "Alice"}
+            )
 
             alice_msg = json.loads(await asyncio.wait_for(alice_ws.recv(), timeout=2.0))
 

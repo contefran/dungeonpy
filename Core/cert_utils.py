@@ -10,8 +10,9 @@ import datetime
 import os
 
 
-def ensure_cert(cert_path: str = "dm_cert.pem",
-                key_path:  str = "dm_key.pem") -> tuple[str, str]:
+def ensure_cert(
+    cert_path: str = "dm_cert.pem", key_path: str = "dm_key.pem"
+) -> tuple[str, str]:
     """
     Return (cert_path, key_path).  If either file is missing, generate a fresh
     self-signed RSA-2048 / SHA-256 cert valid for 10 years and save both files.
@@ -34,9 +35,11 @@ def ensure_cert(cert_path: str = "dm_cert.pem",
 
     key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
 
-    subject = issuer = x509.Name([
-        x509.NameAttribute(NameOID.COMMON_NAME, "DungeonPy"),
-    ])
+    subject = issuer = x509.Name(
+        [
+            x509.NameAttribute(NameOID.COMMON_NAME, "DungeonPy"),
+        ]
+    )
     now = datetime.datetime.now(datetime.timezone.utc)
     cert = (
         x509.CertificateBuilder()
@@ -56,11 +59,13 @@ def ensure_cert(cert_path: str = "dm_cert.pem",
     with open(cert_path, "wb") as f:
         f.write(cert.public_bytes(serialization.Encoding.PEM))
     with open(key_path, "wb") as f:
-        f.write(key.private_bytes(
-            serialization.Encoding.PEM,
-            serialization.PrivateFormat.TraditionalOpenSSL,
-            serialization.NoEncryption(),
-        ))
+        f.write(
+            key.private_bytes(
+                serialization.Encoding.PEM,
+                serialization.PrivateFormat.TraditionalOpenSSL,
+                serialization.NoEncryption(),
+            )
+        )
 
     print(f"[DungeonPy] Certificate saved to {cert_path} / {key_path}")
     print("[DungeonPy] Players should connect with --insecure to accept this cert.")
