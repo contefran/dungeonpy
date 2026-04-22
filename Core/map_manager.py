@@ -2,7 +2,7 @@ import pygame
 import os
 import struct
 from Core.log_utils import log_msg
-from Core.los import compute_los
+from Core.los import compute_los, _clear_line as _los_clear_line
 import math
 
 PLAYER_COLORS = {
@@ -29,38 +29,72 @@ _ALL_COLORS = {**PLAYER_COLORS, DM_COLOR_NAME: DM_COLOR}
 TOOLBAR_WIDTH = 60   # pixel width of the right-side tool panel
 
 
-def _aoe_tiles(aoe: dict, grid_rows: int, grid_cols: int, map_data=None) -> set:
-    """Return the set of (col, row) tile coords covered by *aoe*, excluding walls and voids."""
-    ac, ar   = aoe["anchor"]
-    size     = aoe["size"]
-    shape    = aoe["shape"]
-    angle    = aoe.get("angle", 0)
-    half_ap  = aoe.get("aperture", 53) / 2
+def _aoe_tiles(aoe: dict, grid_rows: int, grid_cols: int, map_data=None,
+               door_states=None, iron_door_states=None, secret_door_states=None) -> set:
+    """Return floor tiles covered by *aoe*, respecting LOS from the anchor.
+    Walls and void tiles are never included; closed doors block the effect."""
+    ac, ar  = aoe["anchor"]
+    size    = aoe["size"]
+    shape   = aoe["shape"]
+    angle   = aoe.get("angle", 0)
+    half_ap = aoe.get("aperture", 53) / 2
+
+    # Integer anchor tile used as LOS origin
+    origin_c, origin_r = int(ac), int(ar)
+
+    ds  = door_states        or {}
+    ids = iron_door_states   or {}
+    sds = secret_door_states or {}
+
+    def _is_opaque(c, r):
+        if map_data is None:
+            return False
+        if not (0 <= r < grid_rows and 0 <= c < grid_cols):
+            return True
+        t = map_data[r][c]
+        if t in (1, 6):  return False          # floor, trap — transparent
+        if t == 0:       return True           # void
+        if t == 2:       return True           # wall
+        if t == 3:       return ds.get((r, c),  "closed") != "open"
+        if t == 4:       return ids.get((r, c), "closed") != "open"
+        if t == 5:       return sds.get((r, c), "closed") != "open"
+        return False
 
     tiles = set()
     for r in range(grid_rows):
         for c in range(grid_cols):
-            if map_data is not None and map_data[r][c] in (0, 2):  # void, wall
+            # Only floor-like tiles are affected
+            if map_data is not None and map_data[r][c] not in (1, 6):
                 continue
             dc = c - ac + 0.5   # vector from anchor to tile centre
             dr = r - ar + 0.5
             dist = math.sqrt(dc * dc + dr * dr)
+
+            # Geometric shape test
+            in_shape = False
             if shape == "sphere":
-                if dist <= size + 0.5:
-                    tiles.add((c, r))
+                in_shape = dist <= size + 0.5
             elif shape == "cone":
                 if dist <= size + 0.5:
                     ta   = math.degrees(math.atan2(dr, dc))
                     diff = (ta - angle + 180) % 360 - 180
-                    if abs(diff) <= half_ap:
-                        tiles.add((c, r))
+                    in_shape = abs(diff) <= half_ap
             elif shape == "line":
-                dx   = math.cos(math.radians(angle))
-                dy   = math.sin(math.radians(angle))
-                proj = dc * dx + dr * dy
-                perp = abs(dc * (-dy) + dr * dx)
-                if 0 <= proj <= size + 0.5 and perp <= 0.5:
-                    tiles.add((c, r))
+                dx_  = math.cos(math.radians(angle))
+                dy_  = math.sin(math.radians(angle))
+                proj = dc * dx_ + dr * dy_
+                perp = abs(dc * (-dy_) + dr * dx_)
+                in_shape = 0 <= proj <= size + 0.5 and perp <= 0.5
+
+            if not in_shape:
+                continue
+
+            # LOS test: effect can only reach tiles with an unobstructed path
+            if map_data is not None and not _los_clear_line(
+                    origin_c, origin_r, c, r, _is_opaque):
+                continue
+
+            tiles.add((c, r))
     return tiles
 
 
@@ -731,7 +765,10 @@ class MapManager:
             alpha = alpha_override if alpha_override is not None else self._AOE_ALPHA
             surf = pygame.Surface((ts, ts), pygame.SRCALPHA)
             surf.fill((*rgb, alpha))
-            for (c, r) in _aoe_tiles(aoe_dict, rows, cols, self.map_data):
+            for (c, r) in _aoe_tiles(aoe_dict, rows, cols, self.map_data,
+                                      self.server.door_states,
+                                      self.server.iron_door_states,
+                                      self.server.secret_door_states):
                 screen.blit(surf, (c * ts + ox, r * ts + oy))
 
         dragging_id = self._dragging_aoe["id"] if self._dragging_aoe else None
