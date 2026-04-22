@@ -14,21 +14,20 @@ import sys
 import PySimpleGUI as sg
 
 
-_UI_FONT = 'Noto Sans' if sys.platform == 'win32' else 'gothic'
-_FONT      = (_UI_FONT, 12)
-_FONT_BOLD = (_UI_FONT, 12, 'bold')
+_UI_FONT = "Noto Sans" if sys.platform == "win32" else "gothic"
+_FONT = (_UI_FONT, 12)
+_FONT_BOLD = (_UI_FONT, 12, "bold")
 
 
 class ChatWindow:
-
     def __init__(self, submit_fn):
         self._submit = submit_fn
         # pc_name → list of display lines, e.g. ["DM: watch out", "Alice: ok"]
         self._history: dict[str, list[str]] = {}
-        self._pc_names: list[str] = []   # current tab order
+        self._pc_names: list[str] = []  # current tab order
         self.window: sg.Window | None = None
-        self._unread: set[str] = set()   # pc names with unread inbound messages
-        self._ping_fn = None             # injected by Game; called on inbound message
+        self._unread: set[str] = set()  # pc names with unread inbound messages
+        self._ping_fn = None  # injected by Game; called on inbound message
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -62,41 +61,53 @@ class ChatWindow:
     def _build_window(self) -> sg.Window:
         if not self._pc_names:
             layout = [
-                [sg.Text('No player characters yet.',  font=_FONT)],
-                [sg.Text('Add combatants and flag them as PC.', font=_FONT)],
+                [sg.Text("No player characters yet.", font=_FONT)],
+                [sg.Text("Add combatants and flag them as PC.", font=_FONT)],
             ]
         else:
             tabs = []
             for name in self._pc_names:
                 history_text = "\n".join(self._history.get(name, []))
                 tab_layout = [
-                    [sg.Multiline(
-                        history_text,
-                        key=f'-LOG_{name}-',
-                        expand_x=True, expand_y=True,
-                        disabled=True, autoscroll=True,
-                        font=_FONT,
-                    )],
                     [
-                        sg.Input(key=f'-INPUT_{name}-', expand_x=True, font=_FONT),
-                        sg.Button('Send', key=f'-SEND_{name}-'),
+                        sg.Multiline(
+                            history_text,
+                            key=f"-LOG_{name}-",
+                            expand_x=True,
+                            expand_y=True,
+                            disabled=True,
+                            autoscroll=True,
+                            font=_FONT,
+                        )
+                    ],
+                    [
+                        sg.Input(key=f"-INPUT_{name}-", expand_x=True, font=_FONT),
+                        sg.Button("Send", key=f"-SEND_{name}-"),
                     ],
                 ]
-                tabs.append(sg.Tab(name, tab_layout, key=f'-TAB_{name}-'))
+                tabs.append(sg.Tab(name, tab_layout, key=f"-TAB_{name}-"))
             layout = [
-                [sg.TabGroup([tabs], key='-TABS-', enable_events=True,
-                             expand_x=True, expand_y=True, font=_FONT_BOLD)],
+                [
+                    sg.TabGroup(
+                        [tabs],
+                        key="-TABS-",
+                        enable_events=True,
+                        expand_x=True,
+                        expand_y=True,
+                        font=_FONT_BOLD,
+                    )
+                ],
             ]
 
         win = sg.Window(
-            'DM Chat',
+            "DM Chat",
             layout,
             resizable=True,
             finalize=True,
             size=(420, 480),
         )
         for name in self._pc_names:
-            win[f'-INPUT_{name}-'].bind('<Return>', '_RETURN')
+            win[f"-INPUT_{name}-"].bind("<Return>", "_RETURN")
         return win
 
     # ------------------------------------------------------------------
@@ -106,7 +117,11 @@ class ChatWindow:
     def _update_title(self):
         if not self.window:
             return
-        title = f'DM Chat  ●  {", ".join(sorted(self._unread))}' if self._unread else 'DM Chat'
+        title = (
+            f"DM Chat  ●  {', '.join(sorted(self._unread))}"
+            if self._unread
+            else "DM Chat"
+        )
         try:
             self.window.TKroot.title(title)
         except Exception:
@@ -129,19 +144,19 @@ class ChatWindow:
             return False
 
         # Tab switched — clear unread for the newly visible tab only
-        if event == '-TABS-':
-            self._current_tab = values.get('-TABS-')
+        if event == "-TABS-":
+            self._current_tab = values.get("-TABS-")
             if self._current_tab:
                 self._unread.discard(self._current_tab)
                 self._update_title()
 
         for name in self._pc_names:
-            if event in (f'-SEND_{name}-', f'-INPUT_{name}-_RETURN'):
-                text = (values.get(f'-INPUT_{name}-') or '').strip()
+            if event in (f"-SEND_{name}-", f"-INPUT_{name}-_RETURN"):
+                text = (values.get(f"-INPUT_{name}-") or "").strip()
                 if text:
                     self._submit({"action": "chat_message", "to": name, "text": text})
-                    self.window[f'-INPUT_{name}-'].update('')
-                self._unread.discard(name)   # clear this tab's notification only
+                    self.window[f"-INPUT_{name}-"].update("")
+                self._unread.discard(name)  # clear this tab's notification only
                 self._update_title()
                 break
 
@@ -162,9 +177,9 @@ class ChatWindow:
         self._history.setdefault(pc_name, []).append(line)
         if self.window:
             try:
-                key = f'-LOG_{pc_name}-'
+                key = f"-LOG_{pc_name}-"
                 current = self.window[key].get()
-                updated = (current.rstrip('\n') + '\n' + line).lstrip('\n')
+                updated = (current.rstrip("\n") + "\n" + line).lstrip("\n")
                 self.window[key].update(updated)
             except Exception:
                 pass

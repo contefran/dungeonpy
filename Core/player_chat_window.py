@@ -12,12 +12,11 @@ import threading
 import PySimpleGUI as sg
 
 
-_UI_FONT = 'Noto Sans' if sys.platform == 'win32' else 'gothic'
-_FONT    = (_UI_FONT, 12)
+_UI_FONT = "Noto Sans" if sys.platform == "win32" else "gothic"
+_FONT = (_UI_FONT, 12)
 
 
 class PlayerChatWindow:
-
     def __init__(self, player_name: str, submit_fn):
         self.player_name = player_name
         self._submit = submit_fn
@@ -31,28 +30,32 @@ class PlayerChatWindow:
     def _build_window(self) -> sg.Window:
         history_text = "\n".join(self._history)
         layout = [
-            [sg.Multiline(
-                history_text,
-                key='-LOG-',
-                expand_x=True, expand_y=True,
-                disabled=True, autoscroll=True,
-                font=_FONT,
-            )],
             [
-                sg.Button('Quit', key='Quit', button_color=('white', '#7a2020')),
-                sg.Input(key='-INPUT-', expand_x=True, font=_FONT),
-                sg.Button('Send', key='Send'),
+                sg.Multiline(
+                    history_text,
+                    key="-LOG-",
+                    expand_x=True,
+                    expand_y=True,
+                    disabled=True,
+                    autoscroll=True,
+                    font=_FONT,
+                )
+            ],
+            [
+                sg.Button("Quit", key="Quit", button_color=("white", "#7a2020")),
+                sg.Input(key="-INPUT-", expand_x=True, font=_FONT),
+                sg.Button("Send", key="Send"),
             ],
         ]
         win = sg.Window(
-            f'Chat — {self.player_name}',
+            f"Chat — {self.player_name}",
             layout,
             resizable=True,
             finalize=True,
             size=(350, 400),
             enable_close_attempted_event=True,  # intercept X — do nothing (use Quit button)
         )
-        win['-INPUT-'].bind('<Return>', '_RETURN')
+        win["-INPUT-"].bind("<Return>", "_RETURN")
         return win
 
     # ------------------------------------------------------------------
@@ -79,11 +82,11 @@ class PlayerChatWindow:
                 # X button on the chat window — ignored; use Quit button or map toggle
                 continue
 
-            if event == 'Quit':
+            if event == "Quit":
                 quit_event.set()
                 break
 
-            if event == '_TOGGLE_CHAT_':
+            if event == "_TOGGLE_CHAT_":
                 if self._is_hidden:
                     self.window.un_hide()
                     self._is_hidden = False
@@ -92,18 +95,18 @@ class PlayerChatWindow:
                     self._is_hidden = True
                 continue
 
-            if event in ('Send', '-INPUT-_RETURN'):
-                text = (values.get('-INPUT-') or '').strip()
+            if event in ("Send", "-INPUT-_RETURN"):
+                text = (values.get("-INPUT-") or "").strip()
                 if text:
                     self._submit({"action": "chat_message", "text": text})
                     self._append(f"You: {text}")
-                    self.window['-INPUT-'].update('')
+                    self.window["-INPUT-"].update("")
 
-            elif event == 'SERVER_EVENT':
+            elif event == "SERVER_EVENT":
                 chat_event = values.get(event, {})
                 if chat_event.get("action") == "chat_message":
                     sender = chat_event.get("from", "DM")
-                    text   = chat_event.get("text", "")
+                    text = chat_event.get("text", "")
                     self._append(f"{sender}: {text}")
 
         self.window.close()
@@ -116,19 +119,19 @@ class PlayerChatWindow:
     def _append(self, line: str):
         self._history.append(line)
         if self.window:
-            current = self.window['-LOG-'].get()
-            updated = (current.rstrip('\n') + '\n' + line).lstrip('\n')
-            self.window['-LOG-'].update(updated)
+            current = self.window["-LOG-"].get()
+            updated = (current.rstrip("\n") + "\n" + line).lstrip("\n")
+            self.window["-LOG-"].update(updated)
 
     def toggle(self):
         """Called from another thread (map toolbar) to show/hide the window."""
         if self.window:
-            self.window.write_event_value('_TOGGLE_CHAT_', None)
+            self.window.write_event_value("_TOGGLE_CHAT_", None)
 
     def handle_server_event(self, event: dict):
         """Called from the player_client subscriber thread — posts to GUI queue."""
         if self.window:
-            self.window.write_event_value('SERVER_EVENT', event)
+            self.window.write_event_value("SERVER_EVENT", event)
 
     def close(self):
         """Signal the run() loop to exit (called from another thread)."""

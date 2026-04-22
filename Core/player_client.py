@@ -21,17 +21,23 @@ from Core.combatant import Combatant
 
 
 class PlayerClient:
-
-    def __init__(self, server, host: str, port: int, name: str,
-                 color: str = "red", ssl_context=None):
-        self.server = server          # local GameServer mirror (read by MapManager)
+    def __init__(
+        self,
+        server,
+        host: str,
+        port: int,
+        name: str,
+        color: str = "red",
+        ssl_context=None,
+    ):
+        self.server = server  # local GameServer mirror (read by MapManager)
         self.host = host
         self.port = port
         self.name = name
         self.color = color
         self._ssl_context = ssl_context
         self._loop: asyncio.AbstractEventLoop | None = None
-        self._ws = None               # current live WebSocket (None when disconnected)
+        self._ws = None  # current live WebSocket (None when disconnected)
         self._running = True
 
     # ------------------------------------------------------------------
@@ -46,7 +52,7 @@ class PlayerClient:
         """
         ready = threading.Event()
         threading.Thread(
-            target=self._run, args=(ready,), daemon=True, name='player-client'
+            target=self._run, args=(ready,), daemon=True, name="player-client"
         ).start()
         ready.wait()  # no timeout — unblocked by success or permanent failure
 
@@ -78,10 +84,16 @@ class PlayerClient:
                     self._ws = ws
 
                     # Handshake
-                    await ws.send(json.dumps({
-                        "type": "hello", "role": "player", "name": self.name,
-                        "color": self.color,
-                    }))
+                    await ws.send(
+                        json.dumps(
+                            {
+                                "type": "hello",
+                                "role": "player",
+                                "name": self.name,
+                                "color": self.color,
+                            }
+                        )
+                    )
                     ack = json.loads(await asyncio.wait_for(ws.recv(), timeout=10.0))
                     if not ack.get("ok"):
                         print(f"[PlayerClient] Rejected: {ack.get('reason')}")
@@ -89,13 +101,15 @@ class PlayerClient:
                         break
 
                     if "color" in ack and ack["color"] != self.color:
-                        print(f"[PlayerClient] Color '{self.color}' was taken; assigned '{ack['color']}'.")
+                        print(
+                            f"[PlayerClient] Color '{self.color}' was taken; assigned '{ack['color']}'."
+                        )
                         self.color = ack["color"]
                     print(f"[PlayerClient] Connected as '{self.name}'.")
                     if first:
                         ready.set()
                         first = False
-                        initial_tries = 0   # reset — we're in a live session now
+                        initial_tries = 0  # reset — we're in a live session now
 
                     # Normal receive loop
                     async for raw in ws:
@@ -108,14 +122,20 @@ class PlayerClient:
                 if first:
                     initial_tries += 1
                     if initial_tries >= self._MAX_INITIAL_TRIES:
-                        print(f"[PlayerClient] Could not reach {url} after "
-                              f"{self._MAX_INITIAL_TRIES} attempts — giving up.")
+                        print(
+                            f"[PlayerClient] Could not reach {url} after "
+                            f"{self._MAX_INITIAL_TRIES} attempts — giving up."
+                        )
                         self._running = False
                         break
-                    print(f"[PlayerClient] Attempt {initial_tries}/{self._MAX_INITIAL_TRIES} "
-                          f"failed ({e}) — retrying in 5 s ...")
+                    print(
+                        f"[PlayerClient] Attempt {initial_tries}/{self._MAX_INITIAL_TRIES} "
+                        f"failed ({e}) — retrying in 5 s ..."
+                    )
                 else:
-                    print(f"[PlayerClient] Disconnected ({e}) — reconnecting in 5 s ...")
+                    print(
+                        f"[PlayerClient] Disconnected ({e}) — reconnecting in 5 s ..."
+                    )
                 await asyncio.sleep(5)
 
         if first:
@@ -142,15 +162,22 @@ class PlayerClient:
                 print(f"[PlayerClient] Subscriber error: {e}")
 
     def _apply_snapshot(self, state: dict):
-        self.server.combatants = [Combatant.from_dict(c)
-                                   for c in state.get("combatants", [])]
+        self.server.combatants = [
+            Combatant.from_dict(c) for c in state.get("combatants", [])
+        ]
         self.server.active_index = state.get("active_index", 0)
         self.server.turn = state.get("turn", 1)
         self.server.door_states = self._parse_key_dict(state.get("door_states", {}))
-        self.server.iron_door_states = self._parse_key_dict(state.get("iron_door_states", {}))
-        self.server.secret_door_states = self._parse_key_dict(state.get("secret_door_states", {}))
+        self.server.iron_door_states = self._parse_key_dict(
+            state.get("iron_door_states", {})
+        )
+        self.server.secret_door_states = self._parse_key_dict(
+            state.get("secret_door_states", {})
+        )
         self.server.trap_states = self._parse_key_dict(state.get("trap_states", {}))
-        self.server.player_selection_locks = dict(state.get("player_selection_locks", {}))
+        self.server.player_selection_locks = dict(
+            state.get("player_selection_locks", {})
+        )
         self.server.player_move_locks = dict(state.get("player_move_locks", {}))
         self.server.map_path = state.get("map_path")
         self.server.map_visible = state.get("map_visible", False)
@@ -242,7 +269,9 @@ class PlayerClient:
 
         elif action == "aoe_removed":
             aoe_id = event.get("id")
-            self.server.aoe_areas = [a for a in self.server.aoe_areas if a["id"] != aoe_id]
+            self.server.aoe_areas = [
+                a for a in self.server.aoe_areas if a["id"] != aoe_id
+            ]
 
         elif action == "map_visibility_changed":
             self.server.map_visible = event.get("visible", False)
@@ -257,7 +286,9 @@ class PlayerClient:
 
         elif action == "map_object_removed":
             pos = event.get("pos")
-            self.server.map_objects = [o for o in self.server.map_objects if o["pos"] != pos]
+            self.server.map_objects = [
+                o for o in self.server.map_objects if o["pos"] != pos
+            ]
 
         elif action == "light_source_added":
             ls = event.get("light")
@@ -266,7 +297,9 @@ class PlayerClient:
 
         elif action == "light_source_removed":
             pos = event.get("pos")
-            self.server.light_sources = [ls for ls in self.server.light_sources if ls["pos"] != pos]
+            self.server.light_sources = [
+                ls for ls in self.server.light_sources if ls["pos"] != pos
+            ]
 
         elif action == "explored_updated":
             new_tiles = {tuple(t) for t in event.get("new_tiles", [])}

@@ -15,6 +15,7 @@ from Core.player_client import PlayerClient
 # Fixture
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def client_and_mirror():
     """Return a (PlayerClient, mirror_server) pair. No network is started."""
@@ -26,6 +27,7 @@ def client_and_mirror():
 # ---------------------------------------------------------------------------
 # _parse_key_dict
 # ---------------------------------------------------------------------------
+
 
 def test_parse_key_dict_converts_string_keys(client_and_mirror):
     client, _ = client_and_mirror
@@ -42,6 +44,7 @@ def test_parse_key_dict_empty(client_and_mirror):
 # ---------------------------------------------------------------------------
 # _apply_snapshot
 # ---------------------------------------------------------------------------
+
 
 def _minimal_state(**overrides):
     """Return a minimal valid snapshot state dict."""
@@ -157,10 +160,12 @@ def test_snapshot_sets_tile_highlights(client_and_mirror):
 
 def test_snapshot_sets_player_locks(client_and_mirror):
     client, mirror = client_and_mirror
-    client._apply_snapshot(_minimal_state(
-        player_selection_locks={"Alice": True},
-        player_move_locks={"Alice": False},
-    ))
+    client._apply_snapshot(
+        _minimal_state(
+            player_selection_locks={"Alice": True},
+            player_move_locks={"Alice": False},
+        )
+    )
     assert mirror.player_selection_locks["Alice"] is True
     assert mirror.player_move_locks["Alice"] is False
 
@@ -169,22 +174,27 @@ def test_snapshot_sets_player_locks(client_and_mirror):
 # _apply_incremental — combatant events
 # ---------------------------------------------------------------------------
 
+
 def test_incremental_combatant_updated(client_and_mirror):
     client, mirror = client_and_mirror
     mirror.combatants = [Combatant("Goblin", 8, hp=10)]
-    client._apply_incremental({
-        "action": "combatant_updated",
-        "combatant": {"name": "Goblin", "initiative": 8, "hp": 3},
-    })
+    client._apply_incremental(
+        {
+            "action": "combatant_updated",
+            "combatant": {"name": "Goblin", "initiative": 8, "hp": 3},
+        }
+    )
     assert mirror.combatants[0].hp == 3
 
 
 def test_incremental_combatant_added(client_and_mirror):
     client, mirror = client_and_mirror
-    client._apply_incremental({
-        "action": "combatant_added",
-        "combatant": {"name": "Orc", "initiative": 12, "hp": 15},
-    })
+    client._apply_incremental(
+        {
+            "action": "combatant_added",
+            "combatant": {"name": "Orc", "initiative": 12, "hp": 15},
+        }
+    )
     assert len(mirror.combatants) == 1
     assert mirror.combatants[0].name == "Orc"
 
@@ -192,10 +202,12 @@ def test_incremental_combatant_added(client_and_mirror):
 def test_incremental_combatant_added_sorted_by_initiative(client_and_mirror):
     client, mirror = client_and_mirror
     mirror.combatants = [Combatant("A", 20)]
-    client._apply_incremental({
-        "action": "combatant_added",
-        "combatant": {"name": "B", "initiative": 5},
-    })
+    client._apply_incremental(
+        {
+            "action": "combatant_added",
+            "combatant": {"name": "B", "initiative": 5},
+        }
+    )
     assert mirror.combatants[0].name == "A"
     assert mirror.combatants[1].name == "B"
 
@@ -217,7 +229,9 @@ def test_incremental_token_moved(client_and_mirror):
 def test_incremental_token_placed(client_and_mirror):
     client, mirror = client_and_mirror
     mirror.combatants = [Combatant("Alice", 15)]
-    client._apply_incremental({"action": "token_placed", "name": "Alice", "pos": [2, 2]})
+    client._apply_incremental(
+        {"action": "token_placed", "name": "Alice", "pos": [2, 2]}
+    )
     assert mirror.combatants[0].pos == [2, 2]
 
 
@@ -233,35 +247,60 @@ def test_incremental_turn_advanced(client_and_mirror):
 # _apply_incremental — door events
 # ---------------------------------------------------------------------------
 
+
 def test_incremental_wooden_door_toggled(client_and_mirror):
     client, mirror = client_and_mirror
-    client._apply_incremental({
-        "action": "door_toggled", "x": 3, "y": 2, "tile_type": 3, "state": "open",
-    })
+    client._apply_incremental(
+        {
+            "action": "door_toggled",
+            "x": 3,
+            "y": 2,
+            "tile_type": 3,
+            "state": "open",
+        }
+    )
     assert mirror.door_states[(2, 3)] == "open"
 
 
 def test_incremental_iron_door_toggled(client_and_mirror):
     client, mirror = client_and_mirror
-    client._apply_incremental({
-        "action": "door_toggled", "x": 1, "y": 1, "tile_type": 4, "state": "open",
-    })
+    client._apply_incremental(
+        {
+            "action": "door_toggled",
+            "x": 1,
+            "y": 1,
+            "tile_type": 4,
+            "state": "open",
+        }
+    )
     assert mirror.iron_door_states[(1, 1)] == "open"
 
 
 def test_incremental_secret_door_toggled(client_and_mirror):
     client, mirror = client_and_mirror
-    client._apply_incremental({
-        "action": "door_toggled", "x": 2, "y": 0, "tile_type": 5, "state": "closed",
-    })
+    client._apply_incremental(
+        {
+            "action": "door_toggled",
+            "x": 2,
+            "y": 0,
+            "tile_type": 5,
+            "state": "closed",
+        }
+    )
     assert mirror.secret_door_states[(0, 2)] == "closed"
 
 
 def test_incremental_trap_toggled(client_and_mirror):
     client, mirror = client_and_mirror
-    client._apply_incremental({
-        "action": "door_toggled", "x": 4, "y": 3, "tile_type": 6, "state": "open",
-    })
+    client._apply_incremental(
+        {
+            "action": "door_toggled",
+            "x": 4,
+            "y": 3,
+            "tile_type": 6,
+            "state": "open",
+        }
+    )
     assert mirror.trap_states[(3, 4)] == "open"
 
 
@@ -269,12 +308,15 @@ def test_incremental_trap_toggled(client_and_mirror):
 # _apply_incremental — map / light / object events
 # ---------------------------------------------------------------------------
 
+
 def test_incremental_light_source_added(client_and_mirror):
     client, mirror = client_and_mirror
-    client._apply_incremental({
-        "action": "light_source_added",
-        "light": {"pos": [2, 3], "radius": 5, "color": "warm", "alpha": 60},
-    })
+    client._apply_incremental(
+        {
+            "action": "light_source_added",
+            "light": {"pos": [2, 3], "radius": 5, "color": "warm", "alpha": 60},
+        }
+    )
     assert len(mirror.light_sources) == 1
     assert mirror.light_sources[0]["color"] == "warm"
 
@@ -288,10 +330,12 @@ def test_incremental_light_source_removed(client_and_mirror):
 
 def test_incremental_map_object_added(client_and_mirror):
     client, mirror = client_and_mirror
-    client._apply_incremental({
-        "action": "map_object_added",
-        "object": {"pos": [1, 2], "icon": "chest.png", "width": 1, "height": 1},
-    })
+    client._apply_incremental(
+        {
+            "action": "map_object_added",
+            "object": {"pos": [1, 2], "icon": "chest.png", "width": 1, "height": 1},
+        }
+    )
     assert len(mirror.map_objects) == 1
 
 
@@ -306,19 +350,30 @@ def test_incremental_map_object_removed(client_and_mirror):
 # _apply_incremental — player / visibility events
 # ---------------------------------------------------------------------------
 
+
 def test_incremental_player_lock_changed_move(client_and_mirror):
     client, mirror = client_and_mirror
-    client._apply_incremental({
-        "action": "player_lock_changed", "name": "Alice", "lock_type": "move", "locked": True,
-    })
+    client._apply_incremental(
+        {
+            "action": "player_lock_changed",
+            "name": "Alice",
+            "lock_type": "move",
+            "locked": True,
+        }
+    )
     assert mirror.player_move_locks["Alice"] is True
 
 
 def test_incremental_player_lock_changed_select(client_and_mirror):
     client, mirror = client_and_mirror
-    client._apply_incremental({
-        "action": "player_lock_changed", "name": "Alice", "lock_type": "select", "locked": True,
-    })
+    client._apply_incremental(
+        {
+            "action": "player_lock_changed",
+            "name": "Alice",
+            "lock_type": "select",
+            "locked": True,
+        }
+    )
     assert mirror.player_selection_locks["Alice"] is True
 
 
@@ -343,7 +398,9 @@ def test_incremental_visibility_radius_changed(client_and_mirror):
 
 def test_incremental_explored_updated(client_and_mirror):
     client, mirror = client_and_mirror
-    client._apply_incremental({"action": "explored_updated", "new_tiles": [[1, 1], [2, 2]]})
+    client._apply_incremental(
+        {"action": "explored_updated", "new_tiles": [[1, 1], [2, 2]]}
+    )
     assert (1, 1) in mirror.explored_tiles.get("Alice", set())
     assert (2, 2) in mirror.explored_tiles.get("Alice", set())
 

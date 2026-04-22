@@ -6,7 +6,6 @@ Tile codes: 0=void (opaque), 1=floor (transparent), 2=wall (opaque),
             3=wooden door, 4=iron door, 5=secret door.
 """
 
-import pytest
 from Core.los import compute_los
 
 
@@ -44,6 +43,7 @@ CORRIDOR_VOID = [[1, 1, 0, 1, 1]]
 # Edge cases
 # ---------------------------------------------------------------------------
 
+
 def test_empty_grid_returns_empty():
     assert compute_los([], (0, 0), radius=5) == set()
 
@@ -74,6 +74,7 @@ def test_out_of_bounds_tiles_not_returned():
 # Basic visibility
 # ---------------------------------------------------------------------------
 
+
 def test_all_floor_tiles_visible_in_small_room():
     result = compute_los(ROOM, (2, 2), radius=5)
     for col in range(1, 4):
@@ -98,22 +99,24 @@ def test_radius_limits_range():
 # Wall blocking
 # ---------------------------------------------------------------------------
 
+
 def test_wall_blocks_sight_beyond_it():
     result = compute_los(CORRIDOR_WALL, (0, 0), radius=10)
-    assert (2, 0) in result   # wall tile itself is visible
+    assert (2, 0) in result  # wall tile itself is visible
     assert (3, 0) not in result  # blocked beyond the wall
     assert (4, 0) not in result
 
 
 def test_void_tile_blocks_sight_beyond_it():
     result = compute_los(CORRIDOR_VOID, (0, 0), radius=10)
-    assert (2, 0) in result   # void tile itself is visible (you see the edge)
+    assert (2, 0) in result  # void tile itself is visible (you see the edge)
     assert (3, 0) not in result
 
 
 # ---------------------------------------------------------------------------
 # Doors
 # ---------------------------------------------------------------------------
+
 
 def test_wooden_door_closed_by_default_blocks():
     # No door_states passed → defaults to closed.
@@ -152,13 +155,16 @@ def test_secret_door_closed_blocks():
 
 def test_secret_door_open_transparent():
     secret_states = {(0, 2): "open"}
-    result = compute_los(CORRIDOR_SECRET, (0, 0), radius=10, secret_door_states=secret_states)
+    result = compute_los(
+        CORRIDOR_SECRET, (0, 0), radius=10, secret_door_states=secret_states
+    )
     assert (3, 0) in result
 
 
 # ---------------------------------------------------------------------------
 # Corner blocking (LOS travels in straight lines)
 # ---------------------------------------------------------------------------
+
 
 def test_cannot_see_around_a_corner():
     # L-shaped map: observer at (0,0), wall at (1,0), open floor at (1,1).

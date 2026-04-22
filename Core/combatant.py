@@ -29,9 +29,21 @@ class Combatant:
         is_pc: True for player characters — PCs persist across map loads.
         size: Token footprint in tiles on one side (1 = normal, 2 = large, 3 = huge).
     """
-    
-    def __init__(self, name, initiative, hp=None, max_hp=None, conditions=None,
-                 condition_timers=None, pos=None, icon=None, notes='', is_pc=False, size=1):
+
+    def __init__(
+        self,
+        name,
+        initiative,
+        hp=None,
+        max_hp=None,
+        conditions=None,
+        condition_timers=None,
+        pos=None,
+        icon=None,
+        notes="",
+        is_pc=False,
+        size=1,
+    ):
         self.name = name
         self.initiative = initiative
         self.hp = hp  # int or None
@@ -42,7 +54,9 @@ class Combatant:
         self.icon = icon
         self.notes = notes
         self.is_pc = is_pc  # True → kept across map loads; False → removed on new map
-        self.size = max(1, int(size))  # footprint side length in tiles (1=normal, 2=large, 3=huge…)
+        self.size = max(
+            1, int(size)
+        )  # footprint side length in tiles (1=normal, 2=large, 3=huge…)
 
     def to_dict(self) -> dict:
         """Serialise to a JSON-compatible dict (used for save files and wire protocol)."""
@@ -72,7 +86,7 @@ class Combatant:
             condition_timers=_migrate_timers(data.get("condition_timers", {})),
             pos=data.get("pos"),
             icon=data.get("icon"),
-            notes=data.get("notes", ''),
+            notes=data.get("notes", ""),
             is_pc=data.get("is_pc", False),
             size=data.get("size", 1),
         )
@@ -83,4 +97,3 @@ class Combatant:
 
     def __repr__(self):
         return f"<Combatant {self.name} (init: {self.initiative})>"
-    

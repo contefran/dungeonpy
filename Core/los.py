@@ -24,13 +24,17 @@ Tile opacity rules  (must match draw_map numbering):
   6  trap         — transparent (floor-like)
 """
 
-WALL_BONUS = 4   # extra tiles of radius granted to opaque boundary tiles
+WALL_BONUS = 4  # extra tiles of radius granted to opaque boundary tiles
 
 
-def compute_los(map_grid, pos, radius,
-                door_states=None,
-                iron_door_states=None,
-                secret_door_states=None):
+def compute_los(
+    map_grid,
+    pos,
+    radius,
+    door_states=None,
+    iron_door_states=None,
+    secret_door_states=None,
+):
     """
     Return a set of (col, row) tiles visible from *pos* within *radius*.
 
@@ -51,20 +55,26 @@ def compute_los(map_grid, pos, radius,
     n_rows = len(map_grid)
     n_cols = len(map_grid[0]) if n_rows else 0
     ox, oy = pos
-    ds  = door_states        or {}
-    ids = iron_door_states   or {}
+    ds = door_states or {}
+    ids = iron_door_states or {}
     sds = secret_door_states or {}
 
     def is_opaque(c, r):
         if not (0 <= r < n_rows and 0 <= c < n_cols):
             return True
         t = map_grid[r][c]
-        if t == 0:        return True
-        if t in (1, 6):   return False
-        if t == 2:        return True
-        if t == 3:        return ds.get((r, c), "closed") != "open"
-        if t == 4:        return ids.get((r, c), "closed") != "open"
-        if t == 5:        return sds.get((r, c), "closed") != "open"
+        if t == 0:
+            return True
+        if t in (1, 6):
+            return False
+        if t == 2:
+            return True
+        if t == 3:
+            return ds.get((r, c), "closed") != "open"
+        if t == 4:
+            return ids.get((r, c), "closed") != "open"
+        if t == 5:
+            return sds.get((r, c), "closed") != "open"
         return False
 
     # ------------------------------------------------------------------
@@ -157,6 +167,6 @@ def _clear_line(x0, y0, x1, y1, is_opaque):
             err += dx
             cy += sy
         if cx == x1 and cy == y1:
-            return True          # reached destination — always visible
+            return True  # reached destination — always visible
         if is_opaque(cx, cy):
-            return False         # path blocked
+            return False  # path blocked
