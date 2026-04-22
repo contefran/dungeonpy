@@ -24,11 +24,12 @@ A Dungeon Master toolkit for virtual tabletop D&D sessions. DungeonPy runs two s
 - Chat system: the DM has one tab the player, per-tab read notifications
 
 ### 2D Map
-- Tile-based grid renderer (floor, wall, void, door, secret door)
+- Tile-based grid renderer (floor, wall, void, door, secret door, trap, grass)
 - Token placement, drag-and-drop movement, and zoom (20–120 px per tile)
 - Right-click pan, minimap, and per-tile fog of war
 - Map objects: place furniture and decorations with configurable width × height in tiles
-- Lighting system: place light sources with configurable radius, color (warm, cool, white, red, green, blue, black), and intensity; light is blocked by walls and travels in straight lines (LOS-aware)
+- Lighting system: place light sources with configurable radius, color, and intensity; light is blocked by walls and travels in straight lines (LOS-aware)
+- **Area of Effect overlays**: place sphere, cone, or line AoEs with configurable size and color; AoE spread is blocked by walls and closed doors (LOS-aware); players can place their own AoEs when permitted by the DM
 
 ### Visibility System
 - **Fog of war**: players only see tiles within their token's line of sight
@@ -78,6 +79,11 @@ Requires Python 3.11+ on Linux or Windows.
 ```bash
 git clone https://github.com/contefran/DungeonPy.git
 cd DungeonPy
+pip install -e .
+```
+
+Or without editable install:
+```bash
 pip install -r requirements.txt
 ```
 
@@ -142,7 +148,7 @@ python3 run_dnd_py.py --mode player --name "Aeriael" --host 192.168.1.10
 | `--name` | Your character name |
 | `--host` | DM's IP address or hostname |
 | `--port` | WebSocket port (default: `8765`) |
-| `--color` | Token highlight color (`red`, `blue`, `green`, `purple`, `cyan`, `pink`, `white`) |
+| `--color` | Preferred token color (`red`, `orange`, `amber`, `lime`, `green`, `teal`, `sky`, `blue`, `purple`, `pink`); reassigned automatically if already taken |
 | `--insecure` | Skip TLS certificate verification (for self-signed certs) |
 
 ---
@@ -260,7 +266,8 @@ They enter this in the **DM address** field of the Player connection dialog. For
 | Load a session | **Load** — restores combatants, turn, and map state |
 | Open chat | **Open Chat** — one tab per connected player; unread messages are flagged |
 | Allow a player to move | Player panel → toggle the **Move** lock |
-| Allow a player to select tokens | Player panel → toggle the **Select** lock |
+| Allow a player to select tiles | Player panel → toggle the **Select** lock |
+| Allow a player to place AoEs | Player panel → toggle the **AoE** lock |
 
 Conditions with a duration (e.g. Invisible for 2 rounds) expire automatically at the correct initiative tick — no manual tracking needed.
 
@@ -277,10 +284,14 @@ Conditions with a duration (e.g. Invisible for 2 rounds) expire automatically at
 | Toggle a door | Click a door tile |
 | Zoom | Scroll wheel |
 | Pan | Right-click drag |
-| Add a light source | Toolbar → **Add Light** → click a tile → set radius, color, and intensity |
-| Remove a light source | Toolbar → **Remove Light** → click the light tile |
+| Add a light source | Toolbar → **Add Light** → set radius, color, intensity → click a tile |
+| Remove a light source | Click the **×** button on the light source |
 | Place an object | Toolbar → **Add Object** → pick an image → click a tile |
-| Remove an object | Toolbar → **Remove Object** → click the object |
+| Remove an object | Click the **×** button on the object |
+| Add an AoE | Toolbar → **Add AoE** → pick shape, size, color → click to place (sphere: one click; cone/line: click anchor then click direction) |
+| Move an AoE | Drag the **×** handle at the anchor |
+| Remove an AoE | Click the **×** handle at the anchor |
+| Toggle AoE visibility for players | Click the **eye** button beside the AoE handle |
 | Show/hide map to players | Toolbar → **Show Map** / **Hide Map** |
 | Recenter all players | Toolbar → **Recenter** |
 
@@ -294,6 +305,8 @@ When you launch DungeonPy and select **Player**, a dialog asks for your characte
 |--------|-----|
 | Move your token | Drag it (only when the DM has enabled movement) |
 | Highlight a tile | Click a floor tile (only when the DM has enabled selection) |
+| Place an AoE | Toolbar → **Add AoE** (only when the DM has enabled AoE placement) |
+| Remove your AoE | Click the **×** handle on your own AoE |
 | Toggle chat | Toolbar button in the map window |
 | Quit | **Quit** button in the chat window, or close the map |
 
@@ -336,7 +349,8 @@ Even after connecting, players have limited capabilities by default:
 | Action | Default | DM can change |
 |--------|---------|---------------|
 | Move own token | Locked | ✓ per-player toggle |
-| Select / highlight tokens | Locked | ✓ per-player toggle |
+| Select / highlight tiles | Locked | ✓ per-player toggle |
+| Place / remove own AoEs | Locked | ✓ per-player toggle |
 | Advance turn, edit combatants, load maps | Never | — (DM only) |
 
 Players cannot spoof another player's identity, claim DM privileges, or connect twice under the same name.
@@ -358,30 +372,38 @@ Maps are plain-text `.txt` files in `Maps/`. Each character represents one tile:
 
 | Code | Tile |
 |------|------|
-| `0` | Floor |
-| `1` | Wall |
-| `2` | Void (impassable, no rendering) |
-| `3` | Door |
-| `4` | Secret door |
+| `0` | Void (impassable, not rendered) |
+| `1` | Floor |
+| `2` | Wall |
+| `3` | Wooden door |
+| `4` | Iron door |
+| `5` | Secret door (looks like a wall until opened) |
+| `6` | Trap (looks like floor until revealed) |
 | `g` | Grass |
 
 ---
 
 ## Save File Format
 
-Session files are JSON and live in `Data/` (examples) or `Savegames/` (runtime saves):
+Session files are JSON and live in `Savegames/`:
 
 ```json
 {
-  "initiative": [
-    { "name": "Aeriael", "initiative": 18, "hp": 30, "conditions": [], "pos": [3, 5], "icon": "aeriael.png", "is_pc": true }
+  "combatants": [
+    { "name": "Aeriael", "initiative": 18, "hp": 30, "conditions": [], "pos": [3, 5], "icon": "aeriael.png" }
   ],
   "active_index": 0,
   "turn": 1,
-  "map": "dungeon.txt",
+  "map_path": "/path/to/Maps/dungeon.txt",
+  "map_visible": true,
   "light_sources": [
     { "pos": [4, 4], "radius": 5, "color": "warm", "alpha": 80 }
-  ]
+  ],
+  "aoe_areas": [
+    { "id": 1, "shape": "sphere", "anchor": [6, 4], "size": 3,
+      "angle": 0.0, "aperture": 53.0, "color": "red", "owner": null, "hidden": false }
+  ],
+  "visibility_radius": 10
 }
 ```
 
@@ -415,4 +437,4 @@ python3 run_dnd_py.py [--mode MODE] [--dir PATH] [--verbose] [--super_verbose]
 
 ## License
 
-MIT License — see [LICENSE](LICENSE).
+GPL-3.0-or-later — see [LICENSE](LICENSE).

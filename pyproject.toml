@@ -1,16 +1,16 @@
 [build-system]
-requires = ["setuptools>=68"]
-build-backend = "setuptools.backends.legacy:build"
+requires = ["setuptools>=42"]
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "dungeonpy"
-version = "0.1.0"
+version = "4.4.1"
 requires-python = ">=3.11"
 license = { text = "GPL-3.0-or-later" }
 authors = [{ name = "Francesco Conte", email = "contefrances@gmail.com" }]
 dependencies = [
     "pygame==2.6.1",
-    "PySimpleGUI==4.60.5",
+    "PySimpleGUI==4.60.5.1",
     "Pillow>=9.2.0",
     "websockets>=12.0",
     "cryptography>=42.0",
@@ -33,3 +33,8 @@ line-length = 100
 
 [tool.ruff.lint]
 select = ["E", "F", "W"]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.15.11",
+]
