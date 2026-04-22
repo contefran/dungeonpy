@@ -7,10 +7,10 @@ name = "dungeonpy"
 version = "0.1.0"
 requires-python = ">=3.11"
 license = { text = "GPL-3.0-or-later" }
-authors = [{ name = "Francesco", email = "contefrances@gmail.com" }]
+authors = [{ name = "Francesco Conte", email = "contefrances@gmail.com" }]
 dependencies = [
     "pygame==2.6.1",
-    "PySimpleGUI>=4.60.5",
+    "PySimpleGUI==4.60.5",
     "Pillow>=9.2.0",
     "websockets>=12.0",
     "cryptography>=42.0",
