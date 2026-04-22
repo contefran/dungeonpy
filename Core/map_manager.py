@@ -352,13 +352,24 @@ class MapManager:
         self.draw_tokens(screen, self.selected_token, self.server.get_active(), (mx, my))
         self.draw_aoe_widgets(screen)
         self.draw_minimap(screen)
-        if self.unplaced and self.ui_font:
-            label = f"Click to place: {self.unplaced[0].name}"
-            text = self.ui_font.render(label, True, (255, 220, 50))
-            map_w = screen.get_width() - TOOLBAR_WIDTH
-            x = map_w // 2 - text.get_width() // 2
-            y = screen.get_height() - text.get_height() - 10
-            screen.blit(text, (x, y))
+        if self.ui_font:
+            status = None
+            if self._picking_aoe:
+                status = "Picking AoE… (dialog open)"
+            elif self.active_tool == "aoe_place":
+                status = "Click to place AoE"
+            elif self.active_tool == "aoe_anchor":
+                status = "Click AoE anchor"
+            elif self.active_tool == "aoe_rotate":
+                status = "Click to set AoE direction"
+            elif self.unplaced:
+                status = f"Click to place: {self.unplaced[0].name}"
+            if status:
+                text = self.ui_font.render(status, True, (255, 220, 50))
+                map_w = screen.get_width() - TOOLBAR_WIDTH
+                x = map_w // 2 - text.get_width() // 2
+                y = screen.get_height() - text.get_height() - 10
+                screen.blit(text, (x, y))
         self._draw_toolbar(screen)
 
     def scale_textures(self, tile_size):
@@ -413,7 +424,10 @@ class MapManager:
                     [sys.executable, "--_picker", "object", objects_dir],
                     capture_output=True, text=True, timeout=300,
                 )
-                lines = result.stdout.strip().splitlines()
+                all_lines = result.stdout.strip().splitlines()
+                # Skip pygame startup banner in frozen builds
+                lines = [l for l in all_lines if l.strip() and not l.startswith("pygame")
+                         and "pygame community" not in l]
                 if not lines or not lines[0]:
                     return None, 1, 1
                 icon   = lines[0]
@@ -500,7 +514,10 @@ class MapManager:
                     [sys.executable, "--_picker", "light"],
                     capture_output=True, text=True, timeout=300,
                 )
-                lines = result.stdout.strip().splitlines()
+                all_lines = result.stdout.strip().splitlines()
+                # Skip pygame startup banner in frozen builds
+                lines = [l for l in all_lines if l.strip() and not l.startswith("pygame")
+                         and "pygame community" not in l]
                 if not lines or not lines[0].isdigit():
                     return None, "warm", 60
                 radius = int(lines[0])
@@ -586,9 +603,12 @@ class MapManager:
                     [sys.executable, "--_picker", "aoe"],
                     capture_output=True, text=True, timeout=300,
                 )
-                lines = result.stdout.strip().splitlines()
-                if len(lines) < 4 or lines[0] not in _shapes:
+                all_lines = result.stdout.strip().splitlines()
+                idx = next((i for i, l in enumerate(all_lines)
+                            if l.strip() in _shapes), None)
+                if idx is None or idx + 3 >= len(all_lines):
                     return None
+                lines = all_lines[idx:idx + 4]
                 return {
                     "shape":    lines[0],
                     "size":     int(lines[1]),

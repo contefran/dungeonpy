@@ -50,8 +50,18 @@ def _run_picker_mode(argv):
     """Hidden subcommand used by the frozen binary to host tkinter picker dialogs.
     The map_manager spawns `<exe> --_picker object <dir>` or `<exe> --_picker light`
     so that tkinter runs in a clean process without conflicting with pygame's SDL."""
+    import io
     import tkinter as tk
     from tkinter import filedialog, simpledialog
+
+    # Windowed PyInstaller builds set sys.stdout = None (no console).
+    # Re-attach to fd 1 so print() reaches the parent's subprocess.PIPE.
+    if sys.stdout is None:
+        try:
+            sys.stdout = io.TextIOWrapper(
+                io.open(1, 'wb', closefd=False), line_buffering=True)
+        except Exception:
+            pass
 
     if not argv:
         return
