@@ -1,4 +1,4 @@
-# DungeonPy
+![Banner](docs/Screenshots/Banner.png)
 
 ![Python](https://img.shields.io/badge/python-3.11+-blue)
 ![License](https://img.shields.io/badge/license-GPL--3.0-green)
