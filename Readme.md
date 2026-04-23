@@ -10,7 +10,7 @@ A Dungeon Master toolkit for virtual tabletop D&D sessions. DungeonPy runs two s
 
 ---
 
-## Table of Contents
+## Quick links
 
 - [Screenshots](#screenshots)
 - [Features](#features)
