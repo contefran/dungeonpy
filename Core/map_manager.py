@@ -59,8 +59,8 @@ def _aoe_tiles(
         if not (0 <= r < grid_rows and 0 <= c < grid_cols):
             return True
         t = map_data[r][c]
-        if t in (1, 6):
-            return False  # floor, trap — transparent
+        if t in (1, 6, 16):
+            return False  # floor, trap, grass — transparent
         if t == 0:
             return True  # void
         if t == 2:
@@ -77,7 +77,7 @@ def _aoe_tiles(
     for r in range(grid_rows):
         for c in range(grid_cols):
             # Only floor-like tiles are affected
-            if map_data is not None and map_data[r][c] not in (1, 6):
+            if map_data is not None and map_data[r][c] not in (1, 6, 16):
                 continue
             dc = c - ac + 0.5  # vector from anchor to tile centre
             dr = r - ar + 0.5
