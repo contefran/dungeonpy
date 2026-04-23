@@ -1,16 +1,37 @@
 # DungeonPy
 
+![Python](https://img.shields.io/badge/python-3.11+-blue)
+![License](https://img.shields.io/badge/license-GPL--3.0-green)
+![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20Windows-lightgrey)
+
 A Dungeon Master toolkit for virtual tabletop D&D sessions. DungeonPy runs two synchronized interfaces — a **combat tracker** and an **interactive 2D map** — and supports a **multiplayer mode** where the DM hosts a server and players connect as clients, each seeing only what their character would see.
 
 > **No Python required.** Download the pre-built binary for your platform from the [Releases](../../releases) page and run it directly.
 
 ---
 
+## Table of Contents
+
+- [Screenshots](#screenshots)
+- [Features](#features)
+- [Installation](#installation)
+- [Usage](#usage)
+- [Map Creator](#map-creator)
+- [DM Setup — Hosting a Session](#dm-setup--hosting-a-session)
+- [How to Use DungeonPy](#how-to-use-dungeonpy)
+- [Security](#security)
+- [Map Format](#map-format)
+- [Save File Format](#save-file-format)
+- [Command-line Reference](#command-line-reference)
+- [License](#license)
+
+---
+
 ## Screenshots
 
-| Combat Tracker | DM 2D Map | Player 2D Map |
+| Combat Tracker | 2D Map (DM/Players) | Areas of Effect |
 |:-:|:-:|:-:|
-| ![Tracker](docs/Screenshots/DM_tracker.png) | ![Map](docs/Screenshots/DM_map.png) | ![Player](docs/Screenshots/Player.png) |
+| ![Tracker](docs/Screenshots/Tracker_screen.png) | ![Maps](docs/Screenshots/All_screenshots.png) | ![AoE](docs/Screenshots/Open_AoE.png) |
 
 ---
 
