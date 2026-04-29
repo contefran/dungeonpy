@@ -108,6 +108,11 @@ Or without editable install:
 pip install -r requirements.txt
 ```
 
+For development (adds pytest and ruff):
+```bash
+pip install -r requirements-dev.txt
+```
+
 Dependencies:
 
 | Package | Role |
