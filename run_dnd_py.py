@@ -330,18 +330,17 @@ def _run_launcher() -> argparse.Namespace | None:
             sg.Input("", key="-HOST-", size=(24, 1)),
         ],
         [
-            sg.Text("Color:", size=(12, 1)),
-            sg.Combo(
-                _PLAYER_COLORS,
-                default_value=random.choice(_PLAYER_COLORS),
-                key="-COLOR-",
-                size=(22, 1),
-                readonly=True,
-            ),
-        ],
-        [
             sg.Checkbox(
                 "Skip TLS verification", key="-INSECURE-", default=True, pad=(0, (4, 0))
+            )
+        ],
+        [
+            sg.Text(
+                "Your color and icon will be chosen after connecting\n"
+                "(or restored automatically for returning characters).",
+                font=("Arial", 9),
+                text_color="gray",
+                pad=(0, (4, 0)),
             )
         ],
     ]
@@ -425,7 +424,8 @@ def _run_launcher() -> argparse.Namespace | None:
                     )
                     continue
             if (
-                values.get("-LOAD_GAME-")
+                values["-MODE_DM-"]
+                and values.get("-LOAD_GAME-")
                 and not (values.get("-LOAD_PATH-") or "").strip()
             ):
                 sg.popup_error("Please select a save file to load.", title="DungeonPy")
@@ -449,7 +449,7 @@ def _run_launcher() -> argparse.Namespace | None:
         args.host = None
         args.password = values["-DM_PASS-"].strip() or None
         args.name = None
-        args.color = "white"
+        args.color = "#C8A400"  # DM gold — visible on dark tracker background
         args.insecure = False
         load_path = (values.get("-LOAD_PATH-") or "").strip()
         if values.get("-LOAD_GAME-") and load_path:
@@ -460,7 +460,7 @@ def _run_launcher() -> argparse.Namespace | None:
         args.mode = "player"
         args.name = values["-NAME-"].strip()
         args.host = values["-HOST-"].strip()
-        args.color = values["-COLOR-"]
+        args.color = None  # determined after connect (new) or from save (returning)
         args.insecure = values["-INSECURE-"]
         args.password = None
         args.load_path = None
@@ -575,16 +575,6 @@ def main():
                     sg.Input(args.host or "", key="-HOST-", size=(28, 1)),
                 ],
                 [
-                    sg.Text("Color:", size=(10, 1)),
-                    sg.Combo(
-                        _PLAYER_COLORS,
-                        default_value=args.color or random.choice(_PLAYER_COLORS),
-                        key="-COLOR-",
-                        size=(26, 1),
-                        readonly=True,
-                    ),
-                ],
-                [
                     sg.Checkbox(
                         "Skip TLS verification",
                         key="-INSECURE-",
@@ -606,14 +596,11 @@ def main():
                 sys.exit(0)
             args.name = values["-NAME-"].strip()
             args.host = values["-HOST-"].strip()
-            args.color = values["-COLOR-"]
+            args.color = None  # determined after connect
             args.insecure = values["-INSECURE-"]
             if not args.name or not args.host:
                 sg.popup_error("Name and DM address are required.", title="DungeonPy")
                 sys.exit(1)
-
-        if args.mode == "player" and not args.color:
-            args.color = random.choice(_PLAYER_COLORS)
 
     game = Game(
         dir_path=args.dir,
@@ -623,7 +610,7 @@ def main():
         host=args.host,
         port=args.port,
         player_name=args.name,
-        player_color=args.color or "red",
+        player_color=args.color or "",
         password=args.password,
         insecure=args.insecure,
         cert=args.cert,

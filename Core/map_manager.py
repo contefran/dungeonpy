@@ -26,6 +26,16 @@ DM_COLOR_NAME = "gold"
 # Combined lookup used by rendering code (highlights, remote selections).
 _ALL_COLORS = {**PLAYER_COLORS, DM_COLOR_NAME: DM_COLOR}
 
+
+def _resolve_color(color: str, default: tuple = DM_COLOR) -> tuple:
+    """Resolve a color name or hex string to an RGB tuple."""
+    if color and color.startswith("#"):
+        try:
+            return (int(color[1:3], 16), int(color[3:5], 16), int(color[5:7], 16))
+        except (ValueError, IndexError):
+            return default
+    return _ALL_COLORS.get(color, default)
+
 TOOLBAR_WIDTH = 60  # pixel width of the right-side tool panel
 
 
@@ -1835,7 +1845,7 @@ class MapManager:
                 continue
             if x > screen.get_width() or y > screen.get_height():
                 continue
-            rgb = _ALL_COLORS.get(h["color"], (255, 200, 0))
+            rgb = _resolve_color(h["color"])
             surf = pygame.Surface((self.tile_size, self.tile_size), pygame.SRCALPHA)
             pygame.draw.rect(
                 surf,
@@ -2031,7 +2041,7 @@ class MapManager:
             offset = 0
             for selector, (token_name, color_name) in self._remote_selections.items():
                 if c.name == token_name:
-                    rgb = _ALL_COLORS.get(color_name, (255, 255, 255))
+                    rgb = _resolve_color(color_name, default=(255, 255, 255))
                     pygame.draw.rect(
                         screen,
                         rgb,

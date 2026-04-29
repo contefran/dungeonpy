@@ -240,9 +240,13 @@ class WSBridge:
             "clear_highlights",
             "aoe_add",
             "aoe_remove",
+            "claim_identity",
         }
         if action not in _PLAYER_ALLOWED:
             return False, f"action '{action}' not permitted for players"
+        # Players can only claim their own identity
+        if action == "claim_identity" and intent.get("name") != client["name"]:
+            return False, "players may only claim their own identity"
         if action in ("select", "highlight_tile"):
             if not self.server.player_selection_locks.get(client["name"]):
                 return (
@@ -316,7 +320,17 @@ class WSBridge:
     def _on_server_event(self, event: dict):
         """Sync callback registered with server.subscribe(). Runs on the asyncio thread."""
         action = event.get("action")
-        if action in ("player_connected", "player_disconnected"):
+        if action == "identity_claimed":
+            # Update the live client record so highlight_tile injections use the new color
+            name = event.get("name")
+            color = event.get("color", "")
+            for info in self._clients.values():
+                if info.get("name") == name:
+                    info["color"] = color
+                    break
+            print(f"[DungeonPy] Player '{name}' claimed identity — color: {color}")
+            self._loop.create_task(self._broadcast(json.dumps(event)))
+        elif action in ("player_connected", "player_disconnected"):
             # DM-only notifications
             self._loop.create_task(self._broadcast_dm_only(json.dumps(event)))
         elif action == "chat_message":

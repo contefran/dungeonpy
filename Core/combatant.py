@@ -43,6 +43,8 @@ class Combatant:
         notes="",
         is_pc=False,
         size=1,
+        color=None,
+        portrait_source=None,
     ):
         self.name = name
         self.initiative = initiative
@@ -57,6 +59,8 @@ class Combatant:
         self.size = max(
             1, int(size)
         )  # footprint side length in tiles (1=normal, 2=large, 3=huge…)
+        self.color = color                    # hex string e.g. "#4488FF", None until claimed
+        self.portrait_source = portrait_source  # source portrait filename used to build icon
 
     def to_dict(self) -> dict:
         """Serialise to a JSON-compatible dict (used for save files and wire protocol)."""
@@ -72,6 +76,8 @@ class Combatant:
             "notes": self.notes,
             "is_pc": self.is_pc,
             "size": self.size,
+            "color": self.color,
+            "portrait_source": self.portrait_source,
         }
 
     @classmethod
@@ -89,6 +95,8 @@ class Combatant:
             notes=data.get("notes", ""),
             is_pc=data.get("is_pc", False),
             size=data.get("size", 1),
+            color=data.get("color"),
+            portrait_source=data.get("portrait_source"),
         )
 
     def is_down(self) -> bool:

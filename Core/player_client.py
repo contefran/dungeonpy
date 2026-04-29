@@ -14,6 +14,7 @@ After a successful handshake, reconnects indefinitely on drop (5 s back-off).
 import asyncio
 import json
 import threading
+from typing import Callable
 
 import websockets
 
@@ -39,6 +40,7 @@ class PlayerClient:
         self._loop: asyncio.AbstractEventLoop | None = None
         self._ws = None  # current live WebSocket (None when disconnected)
         self._running = True
+        self._first_snapshot_ready = threading.Event()
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -165,6 +167,7 @@ class PlayerClient:
         self.server.combatants = [
             Combatant.from_dict(c) for c in state.get("combatants", [])
         ]
+        self._first_snapshot_ready.set()
         self.server.active_index = state.get("active_index", 0)
         self.server.turn = state.get("turn", 1)
         self.server.door_states = self._parse_key_dict(state.get("door_states", {}))
@@ -253,6 +256,15 @@ class PlayerClient:
             else:
                 self.server.door_states[key] = state
 
+        elif action == "identity_claimed":
+            name = event.get("name")
+            for c in self.server.combatants:
+                if c.name == name:
+                    c.color = event.get("color")
+                    c.icon = event.get("icon")
+                    c.portrait_source = event.get("portrait_source")
+                    break
+
         elif action == "player_lock_changed":
             lock_type = event.get("lock_type", "move")
             if lock_type == "select":
@@ -320,6 +332,34 @@ class PlayerClient:
         """Forward an intent to the DM server. Thread-safe."""
         if self._loop and self._ws:
             asyncio.run_coroutine_threadsafe(self._send(intent), self._loop)
+
+    def submit_and_wait(
+        self,
+        intent: dict,
+        match: Callable[[dict], bool],
+        timeout: float = 15.0,
+    ) -> tuple[bool, dict | None]:
+        """Send an intent and block until a matching event arrives or timeout.
+
+        Returns (True, event) on match, (False, None) on timeout.
+        The caller supplies a match function that inspects incoming events.
+        """
+        done = threading.Event()
+        result: list[dict | None] = [None]
+
+        def _listener(event: dict):
+            if match(event):
+                result[0] = event
+                done.set()
+
+        self.server.subscribe(_listener)
+        try:
+            self.submit(intent)
+            done.wait(timeout=timeout)
+        finally:
+            self.server.unsubscribe(_listener)
+
+        return (result[0] is not None, result[0])
 
     async def _send(self, intent: dict):
         if self._ws:

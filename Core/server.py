@@ -65,7 +65,8 @@ class GameServer:
         explored_tiles: ``{player_name: {(col, row), ...}}`` — permanently revealed tiles.
     """
 
-    def __init__(self, snapshot_interval: int = 50):
+    def __init__(self, snapshot_interval: int = 50, combatants_dir: str = ""):
+        self._combatants_dir = combatants_dir  # used to check icon filename uniqueness
         self.combatants: list[Combatant] = []
         self.active_index: int = 0
         self.turn: int = 1
@@ -120,6 +121,13 @@ class GameServer:
         """Register a callback(event: dict) to receive all broadcast events."""
         self._subscribers.append(callback)
 
+    def unsubscribe(self, callback):
+        """Remove a previously registered callback."""
+        try:
+            self._subscribers.remove(callback)
+        except ValueError:
+            pass
+
     def submit(self, intent: dict):
         """
         Submit an intent: validate → process → stamp seq → echo client_req_id
@@ -142,8 +150,10 @@ class GameServer:
             self._seq += 1
             if raw.get("type") == "snapshot":
                 msg = make_snapshot(raw["state"], self._seq, client_req_id)
+            elif raw.get("type") == "error":
+                msg = make_error(raw["reason"], self._seq, client_req_id)
             else:
-                fields = {k: v for k, v in raw.items() if k not in ("type", "action")}
+                fields = {k: v for k, v in raw.items() if k not in ("type", "action", "seq")}
                 msg = make_event(raw["action"], self._seq, client_req_id, **fields)
             stamped.append(msg)
 
@@ -690,6 +700,34 @@ class GameServer:
             self.player_move_locks.pop(name, None)
             self.player_aoe_locks.pop(name, None)
             return [{"type": "event", "action": "player_disconnected", "name": name}]
+
+        if action == "claim_identity":
+            name = intent.get("name")
+            color = intent.get("color")
+            icon = intent.get("icon")
+            portrait_source = intent.get("portrait_source")
+
+            combatant = next((c for c in self.combatants if c.name == name), None)
+            if combatant is None:
+                return [{"type": "error", "reason": f"No combatant named '{name}' in this session."}]
+
+            for c in self.combatants:
+                if c.name != name and c.color and c.color.lower() == color.lower():
+                    return [{"type": "error", "reason": f"Color {color} is already taken."}]
+
+            for c in self.combatants:
+                if c.name != name and c.portrait_source and c.portrait_source == portrait_source:
+                    return [{"type": "error", "reason": f"Portrait '{portrait_source}' is already taken."}]
+
+            for c in self.combatants:
+                if c.name != name and c.icon and c.icon == icon:
+                    return [{"type": "error", "reason": f"Icon name '{icon}' is already in use."}]
+
+            combatant.color = color
+            combatant.icon = icon
+            combatant.portrait_source = portrait_source
+            return [{"type": "event", "action": "identity_claimed",
+                     "name": name, "color": color, "icon": icon, "portrait_source": portrait_source}]
 
         # --- Map lifecycle ---
         if action == "load_map":

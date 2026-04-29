@@ -15,8 +15,11 @@ player
     from the DM server; no local files are needed.
 """
 
+import json
 import os
 import ssl
+import subprocess
+import sys
 import threading
 import time
 
@@ -106,7 +109,9 @@ class Game:
         ssl_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         ssl_ctx.load_cert_chain(cert_path, key_path)
 
-        self.server = GameServer()
+        self.server = GameServer(
+            combatants_dir=os.path.join(self.dir_path, "Assets", "Combatants"),
+        )
         self.bridge = WSBridge(
             self.server,
             host=host,
@@ -201,6 +206,78 @@ class Game:
 
         if self.verbose:
             log_msg(f"[Game] Player '{player_name}' connected to {host}:{port}")
+
+        self._claim_identity_if_needed(player_name)
+
+    # ------------------------------------------------------------------
+    # Identity claim (player mode — new adventure)
+    # ------------------------------------------------------------------
+
+    def _claim_identity_if_needed(self, player_name: str):
+        """If the player's combatant has no color yet, run the token composer and
+        send claim_identity. Retries until the server accepts or the player quits."""
+        if not self.player_client._first_snapshot_ready.wait(timeout=10.0):
+            print("[DungeonPy] Warning: timed out waiting for initial snapshot.")
+            return
+
+        combatant = next(
+            (c for c in self.server.combatants if c.name == player_name), None
+        )
+        if combatant is None:
+            print(
+                f"[DungeonPy] Warning: no combatant named '{player_name}' found in session."
+            )
+            return
+        if combatant.color:
+            # Returning player — inherit existing identity; update local client color
+            self.player_client.color = combatant.color
+            return
+
+        assets_dir = os.path.join(self.dir_path, "Assets")
+        composer = os.path.join(os.path.dirname(__file__), "..", "Tools", "token_composer.py")
+
+        while True:
+            print("[DungeonPy] No identity found — opening token composer …")
+            proc = subprocess.run(
+                [sys.executable, composer, "--assets-dir", assets_dir],
+                capture_output=False,
+                stdout=subprocess.PIPE,
+                text=True,
+            )
+            raw = proc.stdout.strip()
+            if not raw:
+                print("[DungeonPy] Token composer was closed without saving — exiting.")
+                raise SystemExit(0)
+
+            try:
+                result = json.loads(raw.splitlines()[-1])
+                icon = result["icon"]
+                color = result["color"]
+                portrait_source = result["portrait_source"]
+            except (json.JSONDecodeError, KeyError) as e:
+                print(f"[DungeonPy] Could not parse composer output: {e}")
+                continue
+
+            ok, event = self.player_client.submit_and_wait(
+                intent={
+                    "action": "claim_identity",
+                    "name": player_name,
+                    "color": color,
+                    "icon": icon,
+                    "portrait_source": portrait_source,
+                },
+                match=lambda ev: (
+                    ev.get("action") == "identity_claimed" and ev.get("name") == player_name
+                ) or ev.get("type") == "error",
+            )
+
+            if ok and event.get("action") == "identity_claimed":
+                self.player_client.color = color
+                print(f"[DungeonPy] Identity claimed: {player_name} / {color} / {icon}")
+                return
+
+            reason = event.get("reason", "unknown error") if event else "timeout"
+            print(f"[DungeonPy] claim_identity rejected: {reason} — re-opening composer …")
 
     # ------------------------------------------------------------------
     # Map window lifecycle
