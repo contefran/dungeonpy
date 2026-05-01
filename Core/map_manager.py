@@ -2031,10 +2031,10 @@ class MapManager:
                 else:
                     pygame.draw.circle(screen, color, (cx, cy), px_size // 3)
 
-            # Highlight selected (DM local selection — gold)
+            # Highlight selected (DM local selection — white)
             if c == selected_token:
                 pygame.draw.rect(
-                    screen, (255, 200, 0), pygame.Rect(x, y, px_size, px_size), 3
+                    screen, (255, 255, 255), pygame.Rect(x, y, px_size, px_size), 3
                 )
 
             # Highlight remote player selections (each with their own color)

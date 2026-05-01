@@ -259,14 +259,13 @@ class TokenComposer(tk.Tk):
         g = int(hex_color[3:5], 16)
         b = int(hex_color[5:7], 16)
         luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255
-        return luminance > 0.75
+        return luminance > 0.92
 
     def _set_color(self, hex_color: str):
         if self._is_too_bright(hex_color):
             messagebox.showwarning(
                 "Color too bright",
-                "That color is too light to be visible in the tracker.\n"
-                "Please choose a darker color.",
+                "Pure white is reserved for the DM — please choose any other color.",
             )
             return
         self._color = hex_color
@@ -335,8 +334,7 @@ class TokenComposer(tk.Tk):
         if self._is_too_bright(self._color):
             messagebox.showerror(
                 "Color too bright",
-                "The selected color is too light to be visible in the tracker.\n"
-                "Please choose a darker color.",
+                "Pure white is reserved for the DM — please choose any other color.",
             )
             return
         tinted = _tint(self._frame_base, self._color)
