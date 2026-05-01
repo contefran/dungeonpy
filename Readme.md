@@ -17,6 +17,7 @@ A Dungeon Master toolkit for virtual tabletop D&D sessions. DungeonPy runs two s
 - [Installation](#installation)
 - [Usage](#usage)
 - [Map Creator](#map-creator)
+- [Token Composer](#token-composer)
 - [DM Setup — Hosting a Session](#dm-setup--hosting-a-session)
 - [How to Use DungeonPy](#how-to-use-dungeonpy)
 - [Security](#security)
@@ -62,6 +63,16 @@ A Dungeon Master toolkit for virtual tabletop D&D sessions. DungeonPy runs two s
 - Players receive a live-updated map view restricted to their character's LOS
 - A connection dialog lets players enter their name and the DM's address without touching the command line
 - Chat system: the DM has one tab per player; per-tab unread notifications
+- **Player identity**: on first connection, the Token Composer opens so the player picks a portrait and a frame color; the resulting token icon is saved locally and the identity (color + portrait) is registered with the server. On reconnect the identity is restored automatically — no re-selection needed.
+
+### Token Composer
+- Standalone portrait-to-token tool (`Tools/token_composer.py`)
+- Scrollable portrait browser (thumbnails from `Assets/Portraits/`) plus a **Browse…** picker
+- Drag the portrait to position it inside the circular frame; scroll wheel to zoom
+- Choose a frame color from presets (Gold, Silver, Red, Blue, Green, Purple) or free-pick any color
+- Preview is pixel-accurate: what you see is what gets saved
+- Outputs a 512 × 512 RGBA PNG to `Assets/Combatants/`
+- Called automatically when a new player connects; can also be run standalone
 
 ### Session Persistence
 - Full save/load of combatants, map state, light sources, and placed objects
@@ -122,6 +133,8 @@ Dependencies:
 | `Pillow` | Image loading and scaling |
 | `websockets` | Multiplayer networking |
 | `cryptography` | TLS certificate generation |
+| `numpy` | Token composer image processing |
+| `scipy` | Token composer frame masking |
 
 ---
 
@@ -174,8 +187,9 @@ python3 run_dnd_py.py --mode player --name "Aeriael" --host 192.168.1.10
 | `--name` | Your character name |
 | `--host` | DM's IP address or hostname |
 | `--port` | WebSocket port (default: `8765`) |
-| `--color` | Preferred token color (`red`, `orange`, `amber`, `lime`, `green`, `teal`, `sky`, `blue`, `purple`, `pink`); reassigned automatically if already taken |
 | `--insecure` | Skip TLS certificate verification (for self-signed certs) |
+
+> Token color is chosen interactively through the Token Composer on first connection — there is no `--color` flag for players.
 
 ---
 
@@ -202,6 +216,30 @@ python3 generate_map.py Maps/dungeon.txt # open and edit an existing map
 | New map | Ctrl+N or **New** button |
 
 Maps are saved as `.txt` files in `Maps/` and can be loaded directly into a DungeonPy session via **Load Map** in the tracker.
+
+---
+
+## Token Composer
+
+The Token Composer creates the player token icons that appear on the map. It is launched automatically the first time a player connects, but can also be run standalone:
+
+```bash
+python3 Tools/token_composer.py
+```
+
+Place portrait images (PNG/JPG) in `Assets/Portraits/`. The composer shows thumbnails of everything in that folder — click one to select it, or use **Browse…** to pick a file from anywhere.
+
+| Control | Action |
+|---------|--------|
+| Click a portrait thumbnail | Select that portrait |
+| Browse… | Pick a portrait from any location |
+| Drag on the preview | Reposition the portrait inside the frame |
+| Scroll wheel | Zoom the portrait in/out (centered on the frame) |
+| Color presets / Pick color… | Choose the frame tint color |
+| Name field | Set the output filename (without `.png`) |
+| Save token | Composite and save to `Assets/Combatants/` |
+
+The frame color becomes the player's identity color — it appears as the token border color on the map and as the row highlight in the tracker. Pure white is reserved and cannot be selected. Each player must use a unique color and a unique portrait; NPCs are not subject to these constraints.
 
 ---
 
@@ -327,6 +365,10 @@ Conditions with a duration (e.g. Invisible for 2 rounds) expire automatically at
 
 When you launch DungeonPy and select **Player**, a dialog asks for your character name and the DM's address. Once connected:
 
+**First connection** — the Token Composer opens automatically. Pick a portrait from the grid (or click **Browse…**), drag it to position it inside the frame, choose a frame color, and click **Save token**. Your token icon is saved to `Assets/Combatants/` and your identity (color + portrait) is registered with the server. If your chosen color or portrait is already taken by another player you will be prompted to pick a different one.
+
+**Returning player** — if the DM's session already has your identity on file, the composer is skipped and your color and icon are restored automatically.
+
 | Action | How |
 |--------|-----|
 | Move your token | Drag it (only when the DM has enabled movement) |
@@ -416,7 +458,8 @@ Session files are JSON and live in `Savegames/`:
 ```json
 {
   "combatants": [
-    { "name": "Aeriael", "initiative": 18, "hp": 30, "conditions": [], "pos": [3, 5], "icon": "aeriael.png" }
+    { "name": "Aeriael", "initiative": 18, "hp": 30, "conditions": [], "pos": [3, 5],
+      "icon": "Aeriael.png", "color": "#228822", "portrait_source": "Elf_09.png", "is_pc": true }
   ],
   "active_index": 0,
   "turn": 1,
