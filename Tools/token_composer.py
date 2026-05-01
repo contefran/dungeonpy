@@ -228,6 +228,7 @@ class TokenComposer(tk.Tk):
     def _browse_portrait(self):
         path = filedialog.askopenfilename(
             title="Select portrait",
+            initialdir=self._portraits_dir,
             filetypes=[("Images", "*.png *.jpg *.jpeg"), ("All files", "*.*")],
         )
         if path:
