@@ -971,7 +971,7 @@ class Tracker:
                 "Save tracker as",
                 save_as=True,
                 initial_folder=savegames_dir,
-                default_path=default_name,
+                default_path=os.path.join(savegames_dir, default_name),
                 file_types=(("JSON Files", "*.json"),),
             )
             if path:
