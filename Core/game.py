@@ -273,7 +273,7 @@ class Game:
 
             if ok and event.get("action") == "identity_claimed":
                 self.player_client.color = color
-                print(f"[DungeonPy] Identity claimed: {player_name} / {color} / {icon}")
+                print(f"[DungeonPy] Identity claimed: {player_name} — chosen color: {color}, portrait: {icon}")
                 return
 
             reason = event.get("reason", "unknown error") if event else "timeout"

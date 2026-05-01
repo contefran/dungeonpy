@@ -328,9 +328,18 @@ class WSBridge:
                 if info.get("name") == name:
                     info["color"] = color
                     break
-            print(f"[DungeonPy] Player '{name}' claimed identity — color: {color}")
+            portrait = event.get("portrait_source", "")
+            print(f"[DungeonPy] Player '{name}' claimed identity — chosen color: {color}, portrait: {portrait}")
             self._loop.create_task(self._broadcast(json.dumps(event)))
         elif action in ("player_connected", "player_disconnected"):
+            if action == "player_connected":
+                # Sync the live client record with the server's resolved color (reconnect case)
+                name = event.get("name")
+                color = event.get("color", "")
+                for info in self._clients.values():
+                    if info.get("name") == name:
+                        info["color"] = color
+                        break
             # DM-only notifications
             self._loop.create_task(self._broadcast_dm_only(json.dumps(event)))
         elif action == "chat_message":

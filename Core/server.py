@@ -682,6 +682,12 @@ class GameServer:
         if action == "player_connected":
             name = intent.get("name")
             color = intent.get("color", "white")
+            # Prefer the previously-claimed color stored on the combatant (reconnect case)
+            for c in self.combatants:
+                if c.name == name and c.color:
+                    color = c.color
+                    print(f"[DungeonPy] Player '{name}' reconnected — restoring identity: chosen color: {color}, portrait: {c.portrait_source or 'unknown'}")
+                    break
             self.player_selection_locks.setdefault(name, False)
             self.player_move_locks.setdefault(name, False)
             self.player_aoe_locks.setdefault(name, False)
