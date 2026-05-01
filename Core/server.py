@@ -717,17 +717,17 @@ class GameServer:
             if combatant is None:
                 return [{"type": "error", "reason": f"No combatant named '{name}' in this session."}]
 
-            for c in self.combatants:
-                if c.name != name and c.color and c.color.lower() == color.lower():
-                    return [{"type": "error", "reason": f"Color {color} is already taken."}]
+            # Uniqueness checks are scoped to PCs only — NPCs may legitimately share icons/portraits
+            other_pcs = [c for c in self.combatants if c.name != name and c.is_pc]
 
-            for c in self.combatants:
-                if c.name != name and c.portrait_source and c.portrait_source == portrait_source:
-                    return [{"type": "error", "reason": f"Portrait '{portrait_source}' is already taken."}]
+            if any(c.color and c.color.lower() == color.lower() for c in other_pcs):
+                return [{"type": "error", "reason": f"Color {color} is already taken."}]
 
-            for c in self.combatants:
-                if c.name != name and c.icon and c.icon == icon:
-                    return [{"type": "error", "reason": f"Icon name '{icon}' is already in use."}]
+            if any(c.portrait_source and c.portrait_source == portrait_source for c in other_pcs):
+                return [{"type": "error", "reason": f"Portrait '{portrait_source}' is already taken."}]
+
+            if any(c.icon and c.icon == icon for c in other_pcs):
+                return [{"type": "error", "reason": f"Icon name '{icon}' is already in use."}]
 
             combatant.color = color
             combatant.icon = icon

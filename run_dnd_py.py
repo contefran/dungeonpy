@@ -262,6 +262,19 @@ def _run_picker_mode(argv):
         print(color_var.get())
         print(alpha_var.get())
 
+    elif kind == "token_composer":
+        assets_dir = argv[1] if len(argv) > 1 else "."
+        color = argv[2] if len(argv) > 2 else "#FFD700"
+        lock_color = (argv[3] == "1") if len(argv) > 3 else False
+        output_dir = os.path.join(assets_dir, "Combatants")
+        from Tools.token_composer import TokenComposer
+        TokenComposer(
+            preset_color=color,
+            lock_color=lock_color,
+            assets_dir=assets_dir,
+            output_dir=output_dir,
+        ).mainloop()
+
 
 def _run_launcher() -> argparse.Namespace | None:
     """Show the startup mode-selection dialog. Returns a populated Namespace or None if cancelled."""

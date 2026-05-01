@@ -36,10 +36,12 @@
         27,
         21
       ],
-      "icon": "Ranger.png",
+      "icon": "Aeriael.png",
       "notes": "",
       "is_pc": true,
-      "size": 1
+      "size": 1,
+      "color": "#22bc22",
+      "portrait_source": "Aeriael.png"
     },
     {
       "name": "Garland",
@@ -59,10 +61,12 @@
         30,
         21
       ],
-      "icon": "Warrior.png",
+      "icon": "Garland.png",
       "notes": "",
       "is_pc": true,
-      "size": 1
+      "size": 1,
+      "color": "#cc6600",
+      "portrait_source": "Garland.png"
     },
     {
       "name": "Eoren",
@@ -82,10 +86,12 @@
         33,
         17
       ],
-      "icon": "Mage.png",
+      "icon": "Eoren.png",
       "notes": "",
       "is_pc": true,
-      "size": 1
+      "size": 1,
+      "color": "#bc844e",
+      "portrait_source": "Eoren.png"
     },
     {
       "name": "Fetzah",
@@ -110,10 +116,12 @@
         29,
         19
       ],
-      "icon": "Cleric.png",
+      "icon": "Fetzah.png",
       "notes": "",
       "is_pc": true,
-      "size": 1
+      "size": 1,
+      "color": "#22aecc",
+      "portrait_source": "Fetzah.png"
     }
   ],
   "active_index": 1,

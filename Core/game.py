@@ -234,12 +234,17 @@ class Game:
             return
 
         assets_dir = os.path.join(self.dir_path, "Assets")
-        composer = os.path.join(os.path.dirname(__file__), "..", "Tools", "token_composer.py")
+
+        if getattr(sys, "frozen", False):
+            composer_cmd = [sys.executable, "--_picker", "token_composer", assets_dir]
+        else:
+            composer = os.path.join(os.path.dirname(__file__), "..", "Tools", "token_composer.py")
+            composer_cmd = [sys.executable, composer, "--assets-dir", assets_dir]
 
         while True:
             print("[DungeonPy] No identity found — opening token composer …")
             proc = subprocess.run(
-                [sys.executable, composer, "--assets-dir", assets_dir],
+                composer_cmd,
                 capture_output=False,
                 stdout=subprocess.PIPE,
                 text=True,
