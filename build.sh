@@ -15,9 +15,10 @@ echo "[build] Copying external assets..."
 cp -r Assets   "$DIST/"
 cp -r Maps     "$DIST/"
 
-# Savegames/ must be writable at runtime; ship the example session
+# Savegames/ must be writable at runtime; ship the example sessions
 mkdir -p "$DIST/Savegames"
 cp Savegames/combat_tracker_example.json "$DIST/Savegames/"
+cp Savegames/open_map.json "$DIST/Savegames/"
 
 # Copy example data if present
 [ -d Data ] && cp -r Data "$DIST/"

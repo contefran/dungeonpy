@@ -45,6 +45,10 @@ INTENTS: dict[str, list[str]] = {
     "remove_light_source": ["pos"],  # DM only
     "aoe_add": ["anchor", "shape", "size", "angle", "aperture", "color"],  # DM only
     "aoe_remove": ["id"],  # DM only
+    # Sent once by a player on connect to claim their color, icon, and portrait source.
+    # Server rejects if color or portrait_source is already taken by another combatant,
+    # or if the icon filename already exists in Assets/Combatants/.
+    "claim_identity": ["name", "color", "icon", "portrait_source"],
 }
 
 

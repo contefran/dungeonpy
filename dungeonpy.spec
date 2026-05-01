@@ -28,13 +28,17 @@ a = Analysis(
         'tkinter.ttk',
         'tkinter.filedialog',
         'tkinter.simpledialog',
+        # Token composer deps
+        'numpy',
+        'scipy',
+        'scipy.ndimage',
+        'Tools.token_composer',
     ],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
     excludes=[
-        # Trim large scientific packages that are not used
-        'matplotlib', 'numpy', 'scipy', 'pandas',
+        'matplotlib', 'pandas',
         'notebook', 'IPython', 'jupyter',
         'PyQt5', 'PyQt6', 'PySide2', 'PySide6',
     ],

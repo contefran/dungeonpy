@@ -241,6 +241,14 @@ class Tracker:
             self._refresh_players_table()
             self.refresh_table(self._selected_index)
 
+        elif action == "identity_claimed":
+            name = event.get("name")
+            color = event.get("color", "")
+            if name in self._connected_players:
+                self._connected_players[name]["color"] = color
+            self._known_players[name] = color
+            self.refresh_table(self._selected_index)
+
         elif action == "player_disconnected":
             self._connected_players.pop(event["name"], None)
             self._refresh_players_table()
@@ -569,7 +577,13 @@ class Tracker:
         tree.tag_configure("dead", font=(_UI_FONT, 16, "overstrike"))
         for info in self._connected_players.values():
             c = info.get("color", "red")
-            rgb = _PLAYER_COLOR_RGB.get(c)
+            if c and c.startswith("#") and len(c) == 7:
+                try:
+                    rgb = (int(c[1:3], 16), int(c[3:5], 16), int(c[5:7], 16))
+                except ValueError:
+                    rgb = None
+            else:
+                rgb = _PLAYER_COLOR_RGB.get(c)
             if rgb:
                 r, g, b = rgb
                 dimmed = (
@@ -951,11 +965,13 @@ class Tracker:
             default_name = (
                 f"combat_tracker_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
             )
+            savegames_dir = os.path.join(dir_path, "Savegames")
+            os.makedirs(savegames_dir, exist_ok=True)
             path = sg.popup_get_file(
                 "Save tracker as",
                 save_as=True,
-                initial_folder=os.path.join(dir_path, "Savegames"),
-                default_path=default_name,
+                initial_folder=savegames_dir,
+                default_path=os.path.join(savegames_dir, default_name),
                 file_types=(("JSON Files", "*.json"),),
             )
             if path:
@@ -965,9 +981,11 @@ class Tracker:
                 sg.popup(f"Saved to {path}")
 
         elif event == "📂 Load":
+            savegames_dir = os.path.join(dir_path, "Savegames")
+            os.makedirs(savegames_dir, exist_ok=True)
             file_path = sg.popup_get_file(
                 "Select tracker file",
-                initial_folder=os.path.join(dir_path, "Savegames"),
+                initial_folder=savegames_dir,
                 file_types=(("JSON Files", "*.json"),),
             )
             if file_path:
